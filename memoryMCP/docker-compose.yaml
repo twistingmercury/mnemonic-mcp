@@ -1,0 +1,198 @@
+---
+
+services:
+  # PostgreSQL for relational data
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: cognee_postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=cognee_db
+      - POSTGRES_USER=cognee
+      - POSTGRES_PASSWORD=cognee_password
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cognee -d cognee_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - cognee_network
+
+  # Neo4j Graph Database
+  neo4j:
+    image: neo4j:5-community
+    container_name: cognee_neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    environment:
+      - NEO4J_AUTH=neo4j/cognee_neo4j_password
+      - NEO4J_PLUGINS=["apoc", "graph-data-science"]
+      - NEO4J_dbms_memory_heap_max__size=2G
+      - NEO4J_dbms_memory_pagecache_size=1G
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - cognee_network
+
+  # Cognee MCP Server
+  cognee-mcp:
+    image: cognee/cognee-mcp:local-main
+    container_name: cognee_mcp
+    ports:
+      - "4000:8000"
+    volumes:
+      - cognee_data:/app/.cognee_data
+      - cognee_system:/app/.cognee_system
+    environment:
+      # Transport
+      - TRANSPORT_MODE=sse
+      - HTTP_PORT=8000
+
+      # LLM - OpenAI GPT-5-mini
+      - LLM_API_KEY=${OPENAI_COGNEE_API_KEY}
+      - LLM_MODEL=gpt-5-mini
+      - LLM_PROVIDER=openai
+
+      # Embeddings - OpenAI
+      - EMBEDDING_PROVIDER=openai
+      - EMBEDDING_MODEL=text-embedding-3-small
+      - EMBEDDING_API_KEY=${OPENAI_COGNEE_API_KEY}
+      - EMBEDDING_DIMENSIONS=1536
+      - HUGGINGFACE_TOKENIZER=nomic-ai/nomic-embed-text-v1.5
+
+      # Databases
+      - DB_PROVIDER=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=cognee_db
+      - DB_USERNAME=cognee
+      - DB_PASSWORD=cognee_password
+
+      - VECTOR_DB_PROVIDER=pgvector
+      - VECTOR_DB_URL=postgresql://cognee:cognee_password@postgres:5432/cognee_db
+
+      - GRAPH_DATABASE_PROVIDER=neo4j
+      - GRAPH_DATABASE_URL=bolt://neo4j:7687
+      - GRAPH_DATABASE_USERNAME=neo4j
+      - GRAPH_DATABASE_PASSWORD=cognee_neo4j_password
+
+      # Storage
+      - DATA_ROOT_DIRECTORY=/app/.cognee_data
+      - SYSTEM_ROOT_DIRECTORY=/app/.cognee_system
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - cognee_network
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8GB
+
+  # Cognee REST API Server
+  cognee-api:
+    image: cognee/cognee-api:local-main
+    container_name: cognee_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - cognee_data:/app/.cognee_data
+      - cognee_system:/app/.cognee_system
+    environment:
+      # Environment
+      - ENV=prod
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:7474
+
+      # LLM - OpenAI GPT-5-mini
+      - LLM_API_KEY=${OPENAI_COGNEE_API_KEY}
+      - LLM_MODEL=gpt-5-mini
+      - LLM_PROVIDER=openai
+
+      # Embeddings - OpenAI
+      - EMBEDDING_PROVIDER=openai
+      - EMBEDDING_MODEL=text-embedding-3-small
+      - EMBEDDING_API_KEY=${OPENAI_COGNEE_API_KEY}
+      - EMBEDDING_DIMENSIONS=1536
+      - HUGGINGFACE_TOKENIZER=nomic-ai/nomic-embed-text-v1.5
+
+      # Databases (shared with MCP server)
+      - DB_PROVIDER=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=cognee_db
+      - DB_USERNAME=cognee
+      - DB_PASSWORD=cognee_password
+
+      - VECTOR_DB_PROVIDER=pgvector
+      - VECTOR_DB_URL=postgresql://cognee:cognee_password@postgres:5432/cognee_db
+
+      - GRAPH_DATABASE_PROVIDER=neo4j
+      - GRAPH_DATABASE_URL=bolt://neo4j:7687
+      - GRAPH_DATABASE_USERNAME=neo4j
+      - GRAPH_DATABASE_PASSWORD=cognee_neo4j_password
+
+      # Storage (shared with MCP server)
+      - DATA_ROOT_DIRECTORY=/app/.cognee_data
+      - SYSTEM_ROOT_DIRECTORY=/app/.cognee_system
+
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        cd /app
+        source .venv/bin/activate
+        python3 -m uvicorn cognee.api.client:app --host 0.0.0.0 --port 8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - cognee_network
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8GB
+
+volumes:
+  postgres_data:
+  neo4j_data:
+  neo4j_logs:
+  cognee_data:
+  cognee_system:
+
+networks:
+  cognee_network:
+    name: cognee_network

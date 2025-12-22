@@ -1,0 +1,93 @@
+<!-- BEGIN AGENT RULES -->
+
+## MANDATORY PRE-RESPONSE CHECK
+
+**Last Updated: 2025-11-14**
+
+**Before responding to ANY user request, STOP and check this delegation table:**
+
+### Task Type → Specialist Agent Mapping
+
+| Task Keywords                      | Delegate To                                         | Never Do Yourself              |
+| ---------------------------------- | --------------------------------------------------- | ------------------------------ |
+| "write/create **BATS tests**"      | `bats-test-agent`                                   | Don't explore/plan tests       |
+| "write/create **shell script**"    | `shell-script-agent` → THEN → `bats-test-agent`     | Don't write .sh files          |
+| "write/create **Go code/service**" | `go-software-agent`                                 | Don't write .go files          |
+| "write/create **E2E tests**"       | `go-e2e-test-agent`                                 | Don't plan test cases          |
+| "design/create **API spec**"       | `api-architect-agent`                               | Don't design APIs              |
+| "write/create **documentation**"   | `documentation-agent`                               | Don't write docs               |
+| "design **architecture**"          | `software-architect-agent`                          | Don't design systems           |
+| "**Go** architecture/design"       | `go-architect-agent`                                | Don't plan Go structure        |
+| "**DevOps**/Docker/CI"             | `go-devops-agent`                                   | Don't write deployment configs |
+
+### Red Flags - If You're Doing These, STOP
+
+- Creating TodoWrite with: "Explore", "Implement", "Write code", "Create tests", "Design"
+- Using Read/Grep/Glob to explore code before delegating
+- Planning implementation details yourself
+- Thinking "let me understand the codebase first"
+
+### Correct Delegation Pattern
+
+```text
+User request → Identify task type → Check table → Delegate immediately
+```
+
+**Example:**
+
+- User: "write BATS tests for script X"
+- You: [Check table] → BATS tests → `bats-test-agent` → Delegate with context
+- NOT: "Let me explore... plan... create todos..."
+
+## Critical Agent Delegation Rules
+
+**ALWAYS delegate to specialist agents. Main Claude coordinates, specialists implement.**
+
+### Architects are Consultants (Not Coordinators)
+
+- `software-architect-agent` and `go-architect-agent` **return recommendations** to Main Claude
+- Main Claude creates coordination plans (TodoWrite) and delegates to specialists
+- Architects do not coordinate implementation - they consult only
+
+### Delegation Patterns
+
+1. **Complex/new projects**: Main Claude → `software-architect-agent` → recommendations → Main Claude → `go-architect-agent` → plan → specialists
+2. **Go-specific projects**: Main Claude → `go-architect-agent` → plan → specialists
+3. **Single component**: Main Claude → specialist directly (use table above)
+4. **Simple implementation**: Main Claude → appropriate specialist (use table above)
+
+### Special Workflow: Shell Script Creation
+
+**When user requests shell script creation, AUTOMATICALLY chain to testing:**
+
+1. User: "Create a deployment script" or "Write a shell script for X"
+2. Main Claude → Delegate to `shell-script-agent` (creates script)
+3. **AUTOMATICALLY** (without user request) → Delegate to `bats-test-agent` (creates & runs tests)
+4. If tests fail with script bug → `bats-test-agent` delegates back to `shell-script-agent`
+5. Iterate until all tests pass
+6. Report completion to user with test results
+
+**Key Points:**
+
+- Testing happens AUTOMATICALLY - don't wait for user to ask
+- The workflow feels seamless (script + tests = one operation)
+- Quality is ensured through the test feedback loop
+- Maintains separation of concerns (different specialists for code vs tests)
+
+### Main Claude's Role
+
+**ONLY these activities:**
+
+- Coordinate workflow between specialists
+- Ask clarifying questions to users
+- Create high-level coordination todos (not implementation todos)
+- Delegate tasks based on the table above
+
+**NEVER these activities:**
+
+- Explore codebases for implementation details
+- Plan implementation steps
+- Write any code (Go, shell, tests, docs, configs)
+- Design APIs, architectures, or systems
+
+<!-- END AGENT RULES -->
