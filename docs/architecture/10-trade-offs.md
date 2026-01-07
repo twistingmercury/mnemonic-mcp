@@ -20,7 +20,7 @@ Here's a summary of major choices and what we gave up:
 | Cognee Deployment | Separate service (separate pods)   | Same pod simplicity         |
 | Databases         | Managed services                   | Cost at scale, full control |
 | Pattern Querying  | Dynamic (tool calling)             | Single API call simplicity  |
-| Service Mesh      | Manual Envoy (now) → Istio (later) | Uniform config from day 1   |
+| Service Mesh      | Manual Envoy (now) -> Istio (later) | Uniform config from day 1   |
 | Deployment        | GitOps (ArgoCD)                    | Direct kubectl simplicity   |
 
 ## API vs CLI Architecture
@@ -216,9 +216,9 @@ Here's a summary of major choices and what we gave up:
 
 Don't build for scale you don't have yet:
 
-- Manual Envoy → Istio when we have 5+ services
-- Single region → multi-region at 10K+ users
-- Basic caching → advanced strategies when needed
+- Manual Envoy -> Istio when we have 5+ services
+- Single region -> multi-region at 10K+ users
+- Basic caching -> advanced strategies when needed
 
 ### 2. Right Tool for the Job
 

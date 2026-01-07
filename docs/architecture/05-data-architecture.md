@@ -128,16 +128,20 @@ For a small team, managed wins easily.
 
 **Vertical first** - Start small, upgrade instance type as needed:
 
-```text
-db.t3.medium (2 vCPU, 4GB) → db.t3.large → db.r6g.xlarge
+```mermaid
+flowchart LR
+    T3M[db.t3.medium<br/>2 vCPU, 4GB] --> T3L[db.t3.large] --> R6G[db.r6g.xlarge]
 ```
 
 **Read replicas when needed** - Separate read and write workloads:
 
-```text
-Primary: All writes, critical reads
-Replica 1: Analytics queries
-Replica 2: Reporting
+```mermaid
+flowchart TB
+    Primary[Primary<br/>All writes + critical reads]
+    R1[Replica 1<br/>Analytics queries]
+    R2[Replica 2<br/>Reporting]
+    Primary --> R1
+    Primary --> R2
 ```
 
 **Partitioning** - usage_records table is partitioned by month. Old partitions can be archived to S3.
@@ -314,14 +318,11 @@ Trade-off worth it for reliability.
 
 Start single-node, add replicas when needed:
 
-```text
-Single node (cache.t3.medium)
-  ↓ Need HA
-Primary + 1 replica
-  ↓ Need more read capacity
-Primary + 2 replicas
-  ↓ Need more capacity
-Cluster mode (sharding)
+```mermaid
+flowchart TB
+    Single[Single node<br/>cache.t3.medium] -->|Need HA| HA[Primary + 1 replica]
+    HA -->|Need more read capacity| ReadScale[Primary + 2 replicas]
+    ReadScale -->|Need more capacity| Cluster[Cluster mode<br/>sharding]
 ```
 
 ## Data Flow Patterns
@@ -330,8 +331,9 @@ Cluster mode (sharding)
 
 Asynchronous with batching:
 
-```text
-Agent executes → Emit event → Queue → Batch processor → PostgreSQL
+```mermaid
+flowchart LR
+    Agent[Agent executes] --> Event[Emit event] --> Queue --> Batch[Batch processor] --> PG[(PostgreSQL)]
 ```
 
 We batch writes to PostgreSQL (every 10 seconds or 100 records). Better throughput, fewer transactions.
@@ -340,16 +342,13 @@ We batch writes to PostgreSQL (every 10 seconds or 100 records). Better throughp
 
 Cache-first with fallback:
 
-```text
-Request arrives
-  ↓
-Check Redis for user context
-  ↓ Cache miss
-Query PostgreSQL
-  ↓
-Store in Redis (5 min TTL)
-  ↓
-Return context
+```mermaid
+flowchart TB
+    Request[Request arrives] --> CheckRedis{Check Redis}
+    CheckRedis -->|Cache hit| Return[Return context]
+    CheckRedis -->|Cache miss| QueryPG[Query PostgreSQL]
+    QueryPG --> StoreRedis[Store in Redis<br/>5 min TTL]
+    StoreRedis --> Return
 ```
 
 Subsequent requests for the same user hit Redis. Fast.
@@ -358,16 +357,13 @@ Subsequent requests for the same user hit Redis. Fast.
 
 Similar cache-first approach:
 
-```text
-Agent needs pattern
-  ↓
-Check Redis (session cache)
-  ↓ Cache miss
-Query Neo4j (Cognee)
-  ↓
-Store in Redis (session TTL)
-  ↓
-Return patterns
+```mermaid
+flowchart TB
+    Agent[Agent needs pattern] --> CheckRedis{Check Redis<br/>session cache}
+    CheckRedis -->|Cache hit| Return[Return patterns]
+    CheckRedis -->|Cache miss| QueryNeo4j[Query Neo4j via Cognee]
+    QueryNeo4j --> StoreRedis[Store in Redis<br/>session TTL]
+    StoreRedis --> Return
 ```
 
 ## Data Consistency
@@ -468,9 +464,9 @@ GDPR Right to Deletion:
 Start small, scale based on actual metrics:
 
 ```text
-PostgreSQL: db.t3.medium → Monitor CPU/Memory → Upgrade if needed
-Neo4j: Professional → Monitor query performance → Upgrade tier
-Redis: cache.t3.medium → Monitor memory → Add replicas or upgrade
+PostgreSQL: db.t3.medium -> Monitor CPU/Memory -> Upgrade if needed
+Neo4j: Professional -> Monitor query performance -> Upgrade tier
+Redis: cache.t3.medium -> Monitor memory -> Add replicas or upgrade
 ```
 
 ### Reserved Instances

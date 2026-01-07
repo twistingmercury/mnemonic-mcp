@@ -12,7 +12,7 @@ Observability is built on three types of data:
 
 **Metrics** - Numbers over time (request rate, error rate, latency)  
 **Logs** - Individual events (request received, error occurred)  
-**Traces** - Request journey across services (API → Cognee → Neo4j)
+**Traces** - Request journey across services (API -> Cognee -> Neo4j)
 
 All three tied together with OpenTelemetry so you can jump between them.
 
@@ -203,20 +203,41 @@ Traces show how a request flows through the system.
 
 A single agent execution might look like:
 
-```text
-Trace ID: abc123
-  │
-  ├─ Span: HTTP POST /execute (1200ms)
-  │  ├─ Span: Authenticate (50ms)
-  │  ├─ Span: Authorize (30ms)
-  │  ├─ Span: Route to agent (20ms)
-  │  └─ Span: Execute agent (1100ms)
-  │     ├─ Span: Load agent definition (10ms)
-  │     ├─ Span: Call Claude API (800ms)
-  │     ├─ Span: Query Cognee (100ms)
-  │     │  └─ Span: Neo4j query (80ms)
-  │     └─ Span: Record usage (50ms)
-  │        └─ Span: PostgreSQL insert (40ms)
+```mermaid
+flowchart TB
+    subgraph Trace["Trace ID: abc123"]
+        HTTP["HTTP POST /execute<br/>1200ms"]
+
+        subgraph HTTPSpans[" "]
+            Auth["Authenticate<br/>50ms"]
+            Authz["Authorize<br/>30ms"]
+            Route["Route to agent<br/>20ms"]
+            Exec["Execute agent<br/>1100ms"]
+        end
+
+        subgraph ExecSpans[" "]
+            Load["Load agent definition<br/>10ms"]
+            Claude["Call Claude API<br/>800ms"]
+            Cognee["Query Cognee<br/>100ms"]
+            Usage["Record usage<br/>50ms"]
+        end
+
+        subgraph CogneeSpans[" "]
+            Neo4j["Neo4j query<br/>80ms"]
+        end
+
+        subgraph UsageSpans[" "]
+            PG["PostgreSQL insert<br/>40ms"]
+        end
+
+        HTTP --> Auth --> Authz --> Route --> Exec
+        Exec --> Load
+        Exec --> Claude
+        Exec --> Cognee
+        Exec --> Usage
+        Cognee --> Neo4j
+        Usage --> PG
+    end
 ```
 
 Each span has:
@@ -312,7 +333,7 @@ The power is in connecting metrics, logs, and traces.
 
 ### From Metrics to Traces
 
-See latency spike in metrics → Click data point → See trace IDs → Jump to Jaeger
+See latency spike in metrics -> Click data point -> See trace IDs -> Jump to Jaeger
 
 Prometheus supports exemplars (sample trace IDs attached to metrics):
 
@@ -322,7 +343,7 @@ http_request_duration_seconds_bucket{le="1.0"} 42 # {trace_id="abc123"}
 
 ### From Logs to Traces
 
-See error in logs → Click trace_id → Jump to full trace in Jaeger
+See error in logs -> Click trace_id -> Jump to full trace in Jaeger
 
 All logs include trace_id and span_id:
 
@@ -336,7 +357,7 @@ All logs include trace_id and span_id:
 
 ### From Traces to Logs
 
-Looking at trace → See slow span → Click "View Logs" → Filter logs for that span
+Looking at trace -> See slow span -> Click "View Logs" -> Filter logs for that span
 
 ## SLOs (Service Level Objectives)
 

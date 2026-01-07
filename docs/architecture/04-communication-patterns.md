@@ -140,7 +140,7 @@ Clean, typed, easy to reason about.
 API server communicates with Cognee MCP server using the standard MCP protocol:
 
 ```json
-// API Server → MCP Request → Cognee MCP Server
+// API Server -> MCP Request -> Cognee MCP Server
 
 {
   "method": "tools/call",
@@ -168,7 +168,7 @@ API server communicates with Cognee MCP server using the standard MCP protocol:
 **gRPC (for other internal services):**
 
 ```text
-Service A → gRPC Call → Service B
+Service A -> gRPC Call -> Service B
 
 // Internal routing, orchestration, etc.
 ```
@@ -260,9 +260,10 @@ Different communication patterns for different needs:
 
 Most API calls use simple request-response:
 
-```text
-Client → Request → Server
-Client ← Response ← Server
+```mermaid
+sequenceDiagram
+    Client->>Server: Request
+    Server-->>Client: Response
 ```
 
 Good for: Quick operations, simple queries, most CRUD operations
@@ -273,12 +274,13 @@ Timeout: 60 seconds for external API, 30 seconds for internal
 
 For long operations, stream updates:
 
-```text
-Client → Request → Server
-Client ← Update 1 ← Server
-Client ← Update 2 ← Server
-Client ← Update 3 ← Server
-Client ← Final ← Server
+```mermaid
+sequenceDiagram
+    Client->>Server: Request
+    Server-->>Client: Update 1
+    Server-->>Client: Update 2
+    Server-->>Client: Update 3
+    Server-->>Client: Final
 ```
 
 Good for: Agent executions, long-running queries, progress updates
@@ -289,8 +291,9 @@ Timeout: 120 seconds for complete execution
 
 For operations that don't need a response:
 
-```text
-Client → Event → Queue → Background Processor
+```mermaid
+flowchart LR
+    Client --> Event --> Queue --> Processor[Background Processor]
 ```
 
 Good for: Usage tracking, analytics, logging
@@ -348,10 +351,9 @@ Everything has a timeout. Never wait forever.
 
 gRPC propagates deadlines automatically:
 
-```text
-API Server (120s timeout)
-  → Cognee Service (inherits 120s deadline)
-    → Neo4j Query (inherits deadline)
+```mermaid
+flowchart LR
+    API[API Server<br/>120s timeout] --> Cognee[Cognee Service<br/>inherits deadline] --> Neo4j[Neo4j Query<br/>inherits deadline]
 ```
 
 If 60 seconds have elapsed, remaining services only have 60 seconds. This prevents work on requests that already timed out.
@@ -360,7 +362,7 @@ If 60 seconds have elapsed, remaining services only have 60 seconds. This preven
 
 Different authentication for different contexts:
 
-### External API (Client → API)
+### External API (Client -> API)
 
 **API Key in Header:**
 
@@ -374,7 +376,7 @@ Or:
 X-API-Key: sk-ace-abc123...
 ```
 
-### Internal Services (Service → Service)
+### Internal Services (Service -> Service)
 
 **Mutual TLS (mTLS):**
 
@@ -389,19 +391,15 @@ X-API-Key: sk-ace-abc123...
 
 **HTTP Keep-Alive:**
 
-```text
-Reuse TCP connections
-Reduce handshake overhead
-Pool size: 100 connections per host
-```
+- Reuse TCP connections
+- Reduce handshake overhead
+- Pool size: 100 connections per host
 
 **gRPC Long-Lived Connections:**
 
-```text
-Single connection per service
-HTTP/2 multiplexing
-Connection pool size: 10 per target
-```
+- Single connection per service
+- HTTP/2 multiplexing
+- Connection pool size: 10 per target
 
 ### Compression
 

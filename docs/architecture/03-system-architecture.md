@@ -307,7 +307,7 @@ We prevent small failures from cascading:
 
 #### Circuit Breakers
 
-- If Cognee has 50% error rate → Open circuit
+- If Cognee has 50% error rate -> Open circuit
 - Fast-fail requests instead of waiting
 - Periodically test if service recovered
 - Close circuit when healthy
@@ -315,8 +315,8 @@ We prevent small failures from cascading:
 #### Timeouts
 
 - Every external call has a timeout
-- API → Cognee: 30 seconds
-- API → Claude: 120 seconds
+- API -> Cognee: 30 seconds
+- API -> Claude: 120 seconds
 - Auth check: 500ms
 - Fail fast, don't wait forever
 

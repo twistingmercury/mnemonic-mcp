@@ -58,7 +58,6 @@ Using Envoy sidecars for infrastructure concerns. We can adopt full Istio later 
 graph TB
     subgraph Clients["Client Applications"]
         CLI["CLI Client"]
-        WebUI["Web UI"]
         IDE["IDE Plugins"]
     end
 

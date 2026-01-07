@@ -21,8 +21,9 @@ We're building an API server with the CLI as a client, not a standalone CLI bina
 
 **The architecture:**
 
-```text
-User → CLI Client → REST API → Backend Services
+```mermaid
+flowchart LR
+    User --> CLI[CLI Client] --> API[REST API] --> Backend[Backend Services]
 ```
 
 ### Rationale
@@ -97,9 +98,14 @@ REST/HTTP for external API, gRPC for internal service-to-service communication.
 
 **The split:**
 
-```text
-External:  Client → REST API → Business Logic
-Internal:  Service A → gRPC → Service B
+```mermaid
+flowchart LR
+    subgraph External
+        Client --> REST[REST API] --> BL[Business Logic]
+    end
+    subgraph Internal
+        A[Service A] -->|gRPC| B[Service B]
+    end
 ```
 
 ### Rationale
@@ -120,7 +126,7 @@ Internal:  Service A → gRPC → Service B
 
 3. **Streaming** - Built-in support for streaming responses. Useful for long-running agent executions.
 
-4. **Better for high-frequency calls** - API → Cognee might happen 5-10 times per request. gRPC shines here.
+4. **Better for high-frequency calls** - API -> Cognee might happen 5-10 times per request. gRPC shines here.
 
 ### Alternatives Considered
 
@@ -179,14 +185,17 @@ Deploy Cognee as a separate service in its own pod.
 
 **The architecture:**
 
-```text
-API Server Pod:
-  - Envoy Sidecar
-  - OPA Sidecar
-  - API Server Container
-
-Cognee Service Pod:
-  - Cognee MCP Server Container
+```mermaid
+flowchart TB
+    subgraph APIPod[API Server Pod]
+        Envoy[Envoy Sidecar]
+        OPA[OPA Sidecar]
+        APIServer[API Server Container]
+    end
+    subgraph CogneePod[Cognee Service Pod]
+        CogneeMCP[Cognee MCP Server Container]
+    end
+    APIPod -->|MCP Protocol| CogneePod
 ```
 
 ### Rationale
@@ -330,8 +339,9 @@ Handle authentication and authorization at the infrastructure layer using Envoy 
 
 **The flow:**
 
-```text
-Request → Envoy → ext_authz (Auth Service) → OPA (Policy) → Application
+```mermaid
+flowchart LR
+    Request --> Envoy -->|ext_authz| Auth[Auth Service] --> OPA[OPA Policy] --> App[Application]
 ```
 
 ### Rationale
@@ -405,8 +415,9 @@ Query patterns dynamically using Claude's tool calling feature.
 
 **The approach:**
 
-```text
-Agent needs pattern → Calls search() tool → Query Cognee → Return relevant patterns
+```mermaid
+flowchart LR
+    Agent[Agent needs pattern] --> Search[Calls search tool] --> Cognee[Query Cognee] --> Return[Return relevant patterns]
 ```
 
 ### Rationale

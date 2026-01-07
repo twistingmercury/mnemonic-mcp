@@ -140,23 +140,11 @@ allow_team_management {
 
 Different plans get different features:
 
-```text
-Free Plan:
-  - 2 agents (shell-script, bats-test)
-  - 100 requests/month
-  - No team sharing
-
-Pro Plan:
-  - All agents
-  - 10,000 requests/month
-  - Team sharing
-  - Priority support
-
-Enterprise:
-  - Everything + custom agents
-  - Unlimited requests
-  - SLA guarantees
-```
+| Plan       | Agents                          | Requests/Month | Team Sharing | Extras             |
+| ---------- | ------------------------------- | -------------- | ------------ | ------------------ |
+| Free       | 2 (shell-script, bats-test)     | 100            | No           | -                  |
+| Pro        | All agents                      | 10,000         | Yes          | Priority support   |
+| Enterprise | All agents + custom             | Unlimited      | Yes          | SLA guarantees     |
 
 OPA enforces these limits automatically.
 
@@ -229,14 +217,11 @@ Users know exactly when they can retry.
 
 All infrastructure runs in a VPC (Virtual Private Cloud):
 
-```text
-Internet
-  ↓ (only HTTPS allowed)
-Load Balancer (public subnet)
-  ↓
-Application pods (private subnet)
-  ↓
-Databases (private subnet, no internet access)
+```mermaid
+flowchart TB
+    Internet -->|HTTPS only| LB[Load Balancer<br/>public subnet]
+    LB --> Apps[Application pods<br/>private subnet]
+    Apps --> DB[(Databases<br/>private subnet<br/>no internet access)]
 ```
 
 **Security groups** act like firewalls:
@@ -251,13 +236,13 @@ All communication is encrypted:
 
 **External:**
 
-- Client → Load Balancer: TLS 1.3
-- Load Balancer → Envoy: TLS 1.2+
+- Client -> Load Balancer: TLS 1.3
+- Load Balancer -> Envoy: TLS 1.2+
 
 **Internal:**
 
-- Service → Service: mTLS
-- Service → Database: TLS
+- Service -> Service: mTLS
+- Service -> Database: TLS
 
 **Configuration:**
 

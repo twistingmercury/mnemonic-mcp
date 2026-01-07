@@ -87,8 +87,8 @@ spec:
 
 **How it works:**
 
-- CPU > 70% → Add pods
-- CPU < 50% (after 5min) → Remove pods
+- CPU > 70% -> Add pods
+- CPU < 50% (after 5min) -> Remove pods
 - Never goes below 3 or above 10
 
 ## Health Checks
@@ -134,13 +134,34 @@ startupProbe:
 
 Replace pods gradually:
 
-```text
-Old v1.0: [Pod1] [Pod2] [Pod3]
-          [Pod1] [Pod2] [Pod3] [Pod4-v1.1]  <- Add new
-          [Pod1] [Pod2] [Pod4-v1.1]         <- Remove old
-          [Pod1] [Pod4-v1.1] [Pod5-v1.1]
-          [Pod4-v1.1] [Pod5-v1.1] [Pod6-v1.1]
-New v1.1: [Pod4-v1.1] [Pod5-v1.1] [Pod6-v1.1]
+```mermaid
+flowchart TB
+    subgraph Step1["Step 1: Old v1.0"]
+        P1a[Pod1 v1.0]
+        P2a[Pod2 v1.0]
+        P3a[Pod3 v1.0]
+    end
+
+    subgraph Step2["Step 2: Add new"]
+        P1b[Pod1 v1.0]
+        P2b[Pod2 v1.0]
+        P3b[Pod3 v1.0]
+        P4b[Pod4 v1.1]
+    end
+
+    subgraph Step3["Step 3: Remove old"]
+        P1c[Pod1 v1.0]
+        P2c[Pod2 v1.0]
+        P4c[Pod4 v1.1]
+    end
+
+    subgraph Step4["Step 4: New v1.1"]
+        P4d[Pod4 v1.1]
+        P5d[Pod5 v1.1]
+        P6d[Pod6 v1.1]
+    end
+
+    Step1 --> Step2 --> Step3 --> Step4
 ```
 
 Zero downtime, gradual transition.
@@ -149,14 +170,39 @@ Zero downtime, gradual transition.
 
 Deploy new version completely, switch all at once:
 
-```text
-Blue (v1.0):  [Pod1] [Pod2] [Pod3] <- 100% traffic
-Green (v1.1): [Pod4] [Pod5] [Pod6] <- 0% traffic, testing
+```mermaid
+flowchart TB
+    subgraph Before["Before Switch"]
+        direction LR
+        subgraph Blue1["Blue v1.0 - 100% traffic"]
+            BP1[Pod1]
+            BP2[Pod2]
+            BP3[Pod3]
+        end
+        subgraph Green1["Green v1.1 - 0% traffic, testing"]
+            GP1[Pod4]
+            GP2[Pod5]
+            GP3[Pod6]
+        end
+    end
 
-[Switch DNS/Service]
+    Switch[Switch DNS/Service]
 
-Blue (v1.0):  [Pod1] [Pod2] [Pod3] <- 0% traffic, can rollback
-Green (v1.1): [Pod4] [Pod5] [Pod6] <- 100% traffic
+    subgraph After["After Switch"]
+        direction LR
+        subgraph Blue2["Blue v1.0 - 0% traffic, rollback ready"]
+            BP4[Pod1]
+            BP5[Pod2]
+            BP6[Pod3]
+        end
+        subgraph Green2["Green v1.1 - 100% traffic"]
+            GP4[Pod4]
+            GP5[Pod5]
+            GP6[Pod6]
+        end
+    end
+
+    Before --> Switch --> After
 ```
 
 Instant switchover, easy rollback.

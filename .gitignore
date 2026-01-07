@@ -73,3 +73,6 @@ fix_markdown_lint.py
 site/
 **/out/
 **/bin/
+**/docs/**/*.pdf
+**/publish/
+**/*.err

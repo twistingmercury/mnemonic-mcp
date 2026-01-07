@@ -8,8 +8,8 @@ Let's talk about how the system grows from 10 users to 100,000.
 
 ## Horizontal vs Vertical Scaling
 
-**Vertical:** Bigger machines (2 CPU → 4 CPU → 8 CPU)  
-**Horizontal:** More machines (1 server → 2 servers → 10 servers)
+**Vertical:** Bigger machines (2 CPU -> 4 CPU -> 8 CPU)  
+**Horizontal:** More machines (1 server -> 2 servers -> 10 servers)
 
 We prefer horizontal. It's more cost-effective and has no ceiling.
 
@@ -112,16 +112,20 @@ Multi-level cache reduces database load:
 
 **Phase 1:** Single instance (vertical scaling)
 
-```text
-db.t3.medium → db.t3.large → db.t3.xlarge
+```mermaid
+flowchart LR
+    T3M[db.t3.medium] --> T3L[db.t3.large] --> T3XL[db.t3.xlarge]
 ```
 
 **Phase 2:** Add read replicas (horizontal)
 
-```text
-Primary: All writes + critical reads
-Replica 1: Analytics queries
-Replica 2: Reporting queries
+```mermaid
+flowchart TB
+    Primary[Primary<br/>All writes + critical reads]
+    R1[Replica 1<br/>Analytics queries]
+    R2[Replica 2<br/>Reporting queries]
+    Primary --> R1
+    Primary --> R2
 ```
 
 **Phase 3:** Partition large tables
@@ -172,11 +176,25 @@ max_lifetime: 10m
 
 Traffic distributed evenly across pods:
 
-```text
-Request 1 → Pod 1
-Request 2 → Pod 2
-Request 3 → Pod 3
-Request 4 → Pod 1  (repeat)
+```mermaid
+flowchart LR
+    subgraph Requests
+        R1[Request 1]
+        R2[Request 2]
+        R3[Request 3]
+        R4[Request 4]
+    end
+
+    subgraph Pods
+        P1[Pod 1]
+        P2[Pod 2]
+        P3[Pod 3]
+    end
+
+    R1 --> P1
+    R2 --> P2
+    R3 --> P3
+    R4 --> P1
 ```
 
 Good for stateless workloads.
@@ -274,16 +292,23 @@ All infrastructure in one AWS region (us-east-1):
 
 Deploy in multiple regions:
 
-```text
-US Region (primary):
-  - Full deployment
-  - Primary databases
+```mermaid
+flowchart TB
+    GeoDNS[GeoDNS<br/>routes users to nearest region]
 
-EU Region (secondary):
-  - Full deployment
-  - Read replicas
+    subgraph US["US Region (primary)"]
+        USApp[Full deployment]
+        USDb[(Primary databases)]
+    end
 
-GeoDNS routes users to nearest region
+    subgraph EU["EU Region (secondary)"]
+        EUApp[Full deployment]
+        EUDb[(Read replicas)]
+    end
+
+    GeoDNS --> US
+    GeoDNS --> EU
+    USDb -->|replication| EUDb
 ```
 
 **Benefits:**
