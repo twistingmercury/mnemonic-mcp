@@ -16,7 +16,7 @@ Configuration resources for setting up Claude Code with specialized development 
 
 ## Quick Start
 
-1. Configure Cognee MCP server following instructions in [../memory-mcp/README.md](../memory-mcp/README.md). This is a necessary first step, otherwise the agents will not function!
+1. Configure Cognee MCP server following instructions in [../memory-mcp-server/README.md](../memory-mcp-server/README.md). This is a necessary first step, otherwise the agents will not function!
 2. Run installation script:
 
    ```bash
@@ -45,7 +45,7 @@ Main Claude Code acts as coordinator, delegating to specialized agents based on 
 
 **Cognee MCP Integration**: Instead of embedding complete patterns in agent prompts (bloating token usage), agents query Cognee knowledge memory for patterns on-demand. This reduces agent prompt size by approximately 80% while maintaining access to comprehensive pattern libraries.
 
-**Pattern-Driven Development**: Example patterns in `patterns/` cover common development scenarios: REST/GraphQL/gRPC APIs, CLI tools, E2E testing, and containerized deployments. Agents retrieve these patterns from Cognee MCP when needed.
+**Pattern-Driven Development**: Example patterns in `../agent-patterns/` cover common development scenarios: REST/GraphQL/gRPC APIs, CLI tools, E2E testing, and containerized deployments. Agents retrieve these patterns from Cognee MCP when needed.
 
 **Agent Specialization**:
 
@@ -58,7 +58,7 @@ See [definitions/ABOUT-THE-AGENTS.md](definitions/ABOUT-THE-AGENTS.md) for compl
 
 ## Pattern Examples
 
-The `patterns/` directory contains pattern templates organized by domain:
+The `../agent-patterns/` directory contains pattern templates organized by domain:
 
 ### API Patterns
 
@@ -70,7 +70,7 @@ The `patterns/` directory contains pattern templates organized by domain:
 
 ### Shell Script Patterns
 
-Located in `patterns/shell-script-patterns/`:
+Located in `../agent-patterns/shell-script-patterns/`:
 
 - `cross-platform-pattern.md` - Writing portable shell scripts across different Unix systems
 - `never-nester-pattern.md` - Avoiding deep nesting and improving code flow
@@ -108,7 +108,7 @@ All patterns include YAML frontmatter metadata for categorization and Cognee MCP
 
 **Experimental architecture**: This is an emerging reference implementation. The hierarchical agent approach and Cognee MCP integration patterns are subject to change as we learn more about effective AI-assisted development workflows.
 
-**Pattern maintenance**: Patterns in `patterns/` should be kept synchronized with Cognee MCP. Patterns are loaded using the Cognee MCP tools during agent operations.
+**Pattern maintenance**: Patterns in `../agent-patterns/` should be kept synchronized with Cognee MCP. Patterns are loaded using the Cognee MCP tools during agent operations.
 
 **Not a framework**: This is a configuration reference, not a distributable framework or library. Adapt the patterns and agent definitions to your specific project needs.
 
@@ -134,7 +134,7 @@ To load and process patterns into Cognee:
 ../scripts/load-patterns.sh
 
 # Step 2: Process into knowledge graph (choose one)
-cat ../memory-mcp/logs/datasets-loaded.txt | ../scripts/cognify-patterns.sh  # Process loaded datasets
+cat ../memory-mcp-server/logs/datasets-loaded.txt | ../scripts/cognify-patterns.sh  # Process loaded datasets
 ../scripts/cognify-patterns.sh                                                # Process ALL datasets
 ```
 

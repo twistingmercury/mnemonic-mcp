@@ -7,16 +7,16 @@
 #
 # Usage:
 #   ./load-patterns.sh                              # Load patterns (writes dataset name to file)
-#   cat memory-mcp/logs/datasets-loaded.txt | ./cognify-patterns.sh  # Cognify loaded datasets
+#   cat memory-mcp-server/logs/datasets-loaded.txt | ./cognify-patterns.sh  # Cognify loaded datasets
 #
 # Environment Variables:
 #   COGNEE_URL    - Base URL for Cognee API (default: http://localhost:8000)
-#   PATTERNS_DIR  - Directory containing pattern files (default: ${PROJ_ROOT}/agents/patterns)
+#   PATTERNS_DIR  - Directory containing pattern files (default: ${PROJ_ROOT}/agent-patterns)
 #   DATASET_NAME  - Name of the dataset to load into (default: patterns)
 #
 # Output:
-#   Logs to ${PROJ_ROOT}/memory-mcp/logs/load-patterns-${TIMESTAMP}.log
-#   Writes dataset name to ${PROJ_ROOT}/memory-mcp/logs/datasets-loaded.txt
+#   Logs to ${PROJ_ROOT}/memory-mcp-server/logs/load-patterns-${TIMESTAMP}.log
+#   Writes dataset name to ${PROJ_ROOT}/memory-mcp-server/logs/datasets-loaded.txt
 
 set -e
 
@@ -25,10 +25,10 @@ PROJ_ROOT="${PROJ_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 
 # Global variable declarations
 COGNEE_URL="${COGNEE_URL:-http://localhost:8000}"
-PATTERNS_DIR="${PATTERNS_DIR:-${PROJ_ROOT}/agents/patterns}"
+PATTERNS_DIR="${PATTERNS_DIR:-${PROJ_ROOT}/agent-patterns}"
 DATASET_NAME="${DATASET_NAME:-patterns}"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-LOG_DIR="${PROJ_ROOT}/memory-mcp/logs"
+LOG_DIR="${PROJ_ROOT}/memory-mcp-server/logs"
 LOG_FILE="${LOG_DIR}/load-patterns-${TIMESTAMP}.log"
 DATASETS_FILE="${LOG_DIR}/datasets-loaded.txt"
 
@@ -58,7 +58,7 @@ check_cognee_health() {
 
     if ! curl -sf --max-time 30 "${health_url}" >/dev/null 2>&1; then
         printf "ERROR: Cognee server not reachable at %s\n" "${COGNEE_URL}" >&2
-        printf "       Start with: cd memory-mcp && docker compose up -d\n" >&2
+        printf "       Start with: cd memory-mcp-server && docker compose up -d\n" >&2
         return 1
     fi
 

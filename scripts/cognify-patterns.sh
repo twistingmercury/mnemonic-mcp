@@ -14,7 +14,7 @@
 #   COGNEE_URL - Base URL for Cognee API (default: http://localhost:8000)
 #
 # Output:
-#   Logs to ${PROJ_ROOT}/memory-mcp/logs/cognify-patterns-${TIMESTAMP}.log
+#   Logs to ${PROJ_ROOT}/memory-mcp-server/logs/cognify-patterns-${TIMESTAMP}.log
 
 set -e
 
@@ -24,7 +24,7 @@ PROJ_ROOT="${PROJ_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 # Global variable declarations
 COGNEE_URL="${COGNEE_URL:-http://localhost:8000}"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-LOG_DIR="${PROJ_ROOT}/memory-mcp/logs"
+LOG_DIR="${PROJ_ROOT}/memory-mcp-server/logs"
 LOG_FILE="${LOG_DIR}/cognify-patterns-${TIMESTAMP}.log"
 
 mkdir -p "${LOG_DIR}"
@@ -125,7 +125,7 @@ process_datasets() {
     fi
 
     printf "\nNote: Processing runs asynchronously. Check logs with:\n"
-    printf "      docker compose -f memory-mcp/docker-compose.yaml logs -f cognee-api\n"
+    printf "      docker compose -f memory-mcp-server/docker-compose.yaml logs -f cognee-api\n"
 
     if [ "${failed_count}" -gt 0 ]; then
         return 1

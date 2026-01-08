@@ -299,15 +299,15 @@ cd /path/to/team-agentic-setup
 This script:
 
 - Validates pattern metadata before loading
-- Loads all `.md` files (except README.md) from `claude-agents/patterns/`
+- Loads all `.md` files (except README.md) from `agent-patterns/`
 - Adds files to the `patterns` dataset via `/api/v1/add` endpoint
-- Writes dataset name to `memory-mcp/logs/datasets-loaded.txt`
-- Logs to `memory-mcp/logs/load-patterns-TIMESTAMP.log`
+- Writes dataset name to `memory-mcp-server/logs/datasets-loaded.txt`
+- Logs to `memory-mcp-server/logs/load-patterns-TIMESTAMP.log`
 
 **Environment variables:**
 
 - `COGNEE_URL` - Cognee API base URL (default: `http://localhost:8000`)
-- `PATTERNS_DIR` - Pattern files directory (default: `${PROJ_ROOT}/claude-agents/patterns`)
+- `PATTERNS_DIR` - Pattern files directory (default: `${PROJ_ROOT}/agent-patterns`)
 - `DATASET_NAME` - Dataset name (default: `patterns`)
 
 #### Step 2: Process into knowledge graph
@@ -315,7 +315,7 @@ This script:
 Process specific datasets (from file):
 
 ```bash
-cat memory-mcp/logs/datasets-loaded.txt | ./scripts/cognify-patterns.sh
+cat memory-mcp-server/logs/datasets-loaded.txt | ./scripts/cognify-patterns.sh
 ```
 
 Process specific dataset (via echo):
@@ -335,7 +335,7 @@ This script:
 - Accepts dataset names via stdin (piped or redirected)
 - If NO stdin data, cognifies ALL datasets
 - Calls `/api/v1/cognify` endpoint to build knowledge graphs
-- Logs to `memory-mcp/logs/cognify-patterns-TIMESTAMP.log`
+- Logs to `memory-mcp-server/logs/cognify-patterns-TIMESTAMP.log`
 - Processing runs asynchronously
 
 **Important:** The `cognify-patterns.sh` script does NOT accept command-line arguments. Arguments like `./scripts/cognify-patterns.sh patterns` will show an error. Use stdin only.
@@ -357,10 +357,10 @@ docker compose logs -f cognee-api
 ```bash
 # Load patterns into Cognee dataset
 ./scripts/load-patterns.sh
-# Output: Writes "patterns" to memory-mcp/logs/datasets-loaded.txt
+# Output: Writes "patterns" to memory-mcp-server/logs/datasets-loaded.txt
 
 # Process into knowledge graph (choose one):
-cat memory-mcp/logs/datasets-loaded.txt | ./scripts/cognify-patterns.sh  # Process loaded datasets
+cat memory-mcp-server/logs/datasets-loaded.txt | ./scripts/cognify-patterns.sh  # Process loaded datasets
 ./scripts/cognify-patterns.sh                                             # Process ALL datasets
 
 # Monitor async processing

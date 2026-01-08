@@ -65,7 +65,7 @@ lerna-debug.log*
 .cache/
 
 # Cognee logs
-memory-mcp/logs/
+memory-mcp-server/logs/
 fix_markdown.sh
 fix_markdown_lint.py
 

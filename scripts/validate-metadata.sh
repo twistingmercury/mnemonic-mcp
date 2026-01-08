@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/lib/print.sh"
 
 # Configuration
-PATTERNS_DIR="${PATTERNS_DIR:-${SCRIPT_DIR}/../agents/patterns}"
+PATTERNS_DIR="${PATTERNS_DIR:-${SCRIPT_DIR}/../agent-patterns}"
 
 # No dependency check - yq and jq are prerequisites (see README)
 

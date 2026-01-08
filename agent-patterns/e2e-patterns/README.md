@@ -164,7 +164,7 @@ brew install jq
 
 ```bash
 # Solution: Configure Cognee MCP server
-# See memory-mcp/README.md for setup instructions
+# See memory-mcp-server/README.md for setup instructions
 ```
 
 ### Cognee Query Issues
@@ -221,7 +221,7 @@ To add or update patterns:
 6. **Load patterns into Cognee** using Cognee MCP tools during agent operations
 7. **Commit to version control**:
    ```bash
-   git add examples/e2e-patterns/
+   git add agent-patterns/e2e-patterns/
    git commit -m "Add/update E2E testing pattern"
    ```
 
