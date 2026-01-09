@@ -56,10 +56,11 @@ Using Envoy sidecars for infrastructure concerns. We can adopt full Istio later 
 
 ```mermaid
 graph TB
-    subgraph Clients["Client Applications"]
-        CLI["CLI Client"]
-        IDE["IDE Plugins"]
-    end
+    %% subgraph 
+    Clients["Client Applications"]
+    %%     CLI["CLI Client"]
+    %%     IDE["IDE Plugins"]
+    %% end
 
     subgraph K8s["Kubernetes Cluster"]
         subgraph APIPod["API Server Pod"]
@@ -77,7 +78,8 @@ graph TB
     end
 
     subgraph ManagedServices["Managed Services"]
-        RDS["RDS PostgreSQL<br/>+ pgvector"]
+        AppDB["RDS PostgreSQL<br/>ACE App Data"]
+        CogneeDB["RDS PostgreSQL<br/>Cognee Data"]
         Neo4j["Neo4j Aura<br/>Knowledge Graph"]
     end
 
@@ -86,11 +88,12 @@ graph TB
     OPA --> API
     Envoy -->|Rate Check| Redis
     Envoy -->|Auth Check| AuthSvc
+    AuthSvc --> AppDB
     API -->|MCP Protocol| CogneeAPI
-    CogneeAPI --> RDS
+    CogneeAPI --> CogneeDB
     CogneeAPI --> Neo4j
 
-    style Clients fill:#E0E7FF
+    %% style Clients fill:#E0E7FF
     style K8s fill:#FEF3C7
     style ManagedServices fill:#DBEAFE
 ```

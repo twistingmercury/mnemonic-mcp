@@ -12,11 +12,12 @@ Here's the full system architecture:
 
 ```mermaid
 graph TB
-    subgraph Clients["Clients"]
-        CLI[CLI]
-        Web[Web UI]
-        IDE[IDE Plugins]
-    end
+    %% subgraph 
+Clients["Clients"]
+    %%     CLI[CLI]
+    %%     Web[Web UI]
+    %%     IDE[IDE Plugins]
+    %% end
 
     subgraph K8s["Kubernetes Cluster"]
         LB[Load Balancer]
@@ -38,7 +39,8 @@ graph TB
 
     subgraph Data["Data Layer"]
         Redis[(Redis<br/>Cache)]
-        RDS[(PostgreSQL<br/>+ pgvector)]
+        AppDB[(PostgreSQL<br/>ACE App Data)]
+        CogneeDB[(PostgreSQL<br/>Cognee Data)]
         Neo4j[(Neo4j Aura<br/>Knowledge Graph)]
     end
 
@@ -52,13 +54,13 @@ graph TB
     API -->|async| Usage
 
     Auth --> Redis
-    Auth --> RDS
+    Auth --> AppDB
     RateLimit --> Redis
-    Usage --> RDS
+    Usage --> AppDB
     CogneeApp --> Neo4j
-    CogneeApp --> RDS
+    CogneeApp --> CogneeDB
 
-    style Clients fill:#E0E7FF
+    %% style Clients fill:#E0E7FF
     style K8s fill:#FEF3C7
     style Data fill:#DBEAFE
 ```
@@ -178,7 +180,7 @@ sequenceDiagram
     Claude-->>API: Response
 
     API->>Usage: Record execution (async)
-    Usage->>RDS: Insert usage record
+    Usage->>AppDB: Insert usage record
 
     API-->>User: Agent response
 ```
@@ -220,28 +222,7 @@ Patterns are version controlled in git. When you commit, CI validates and loads 
 
 ## Scaling Characteristics
 
-Different components scale differently:
-
-### API Server (CPU-bound)
-
-- Horizontal scaling: 3-10 replicas
-- Autoscale on: CPU > 70%, request rate > 100/s
-- Resource profile: 1-2 CPU cores, 2-4GB RAM
-- Bottleneck: Request processing, JSON serialization
-
-### Cognee Service (Memory-bound)
-
-- Horizontal scaling: 2-5 replicas
-- Autoscale on: Memory > 75%, query latency > 1s
-- Resource profile: 1-2 CPU cores, 4-8GB RAM
-- Bottleneck: Embedding storage, graph queries
-
-### Databases (Managed)
-
-- Vertical scaling: Upsize instance type
-- Horizontal scaling: Read replicas for PostgreSQL
-- Autoscale: Managed service handles this
-- Bottleneck: Connections, storage IOPS
+Different components scale differently based on their resource profiles. For detailed scaling strategies, thresholds, and capacity planning, see [Scalability](09-scalability.md).
 
 ## Failure Modes
 
@@ -283,7 +264,7 @@ What breaks and how do we handle it?
 - User impact: Slower auth, degraded rate limiting
 - Time to recover: < 60 seconds
 
-#### PostgreSQL Dies
+#### App PostgreSQL Dies
 
 - Impact: Can't read user data, can't record usage
 - Detection: Connection failures
@@ -291,6 +272,15 @@ What breaks and how do we handle it?
 - User impact: 503 errors during failover
 - Time to recover: < 5 minutes (RDS SLA)
 - Mitigation: Read from replica if available
+
+#### Cognee PostgreSQL Dies
+
+- Impact: Cognee pattern queries may fail
+- Detection: Connection failures
+- Recovery: RDS automatic failover to standby
+- User impact: Agent executions fail with pattern query error
+- Time to recover: < 5 minutes (RDS SLA)
+- Mitigation: Cognee manages its own data; failures isolated from ACE app
 
 #### Neo4j Dies
 
@@ -303,68 +293,11 @@ What breaks and how do we handle it?
 
 ### Cascading Failure Prevention
 
-We prevent small failures from cascading:
-
-#### Circuit Breakers
-
-- If Cognee has 50% error rate -> Open circuit
-- Fast-fail requests instead of waiting
-- Periodically test if service recovered
-- Close circuit when healthy
-
-#### Timeouts
-
-- Every external call has a timeout
-- API -> Cognee: 30 seconds
-- API -> Claude: 120 seconds
-- Auth check: 500ms
-- Fail fast, don't wait forever
-
-#### Rate Limiting
-
-- Prevents thundering herd
-- Protects backend services
-- Graceful degradation under load
-
-#### Bulkheads
-
-- Separate connection pools per service
-- Cognee failures don't exhaust API connections
-- Resource isolation
+We prevent small failures from cascading using circuit breakers, timeouts, rate limiting, and bulkheads. For implementation details, see [Communication Patterns](04-communication-patterns.md#circuit-breaker-pattern).
 
 ## Security Boundaries
 
-Five trust zones with different security requirements:
-
-### Zone 1: Internet (Untrusted)
-
-- Anyone can send requests
-- No implicit trust
-- All traffic encrypted (TLS)
-
-### Zone 2: Load Balancer (DMZ)
-
-- Terminates external TLS
-- DDoS protection
-- Certificate validation
-
-### Zone 3: Application Pods (Authenticated)
-
-- Only authenticated requests
-- Envoy enforces auth
-- mTLS between pods
-
-### Zone 4: Supporting Services (Internal)
-
-- Service-to-service only
-- mTLS required
-- No external access
-
-### Zone 5: Data Layer (Encrypted)
-
-- TLS for all connections
-- Encryption at rest
-- Managed service security
+The system is organized into five trust zones (Internet, DMZ, Application, Internal, Data) with different security requirements. For details on network security, TLS configuration, and zone policies, see [Security Architecture](06-security-architecture.md#network-security).
 
 ## That's the Architecture
 

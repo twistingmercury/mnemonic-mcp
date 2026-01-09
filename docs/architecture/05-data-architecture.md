@@ -4,7 +4,7 @@
 **Version:** 1.0  
 **Last Updated:** December 22, 2025
 
-We're using three different data stores, each optimized for what it's good at. Let's talk about why and how.
+We're using three different data stores, each optimized for what it's good at. All are managed services - for the rationale behind this decision, see [ADR-004](02-architectural-decisions.md#adr-004). For scaling strategies, see [Scalability](09-scalability.md).
 
 ## The Three Data Stores
 
@@ -37,7 +37,6 @@ We're using managed RDS PostgreSQL for structured data. Here's what lives there:
 - Pattern descriptions
 - Tags and categories
 - Usage statistics
-- Embeddings (via pgvector)
 
 ### Why PostgreSQL?
 
@@ -45,7 +44,7 @@ We're using managed RDS PostgreSQL for structured data. Here's what lives there:
 
 **Mature tooling** - pgAdmin, DataGrip, every SQL client ever made. When something breaks at 2 AM, you can actually debug it.
 
-**pgvector extension** - Store vector embeddings right next to the metadata. No separate vector database needed.
+**pgvector extension** - Available if needed for future vector search capabilities.
 
 **Query flexibility** - Complex joins, aggregations, window functions. When product wants a new report, we can build it.
 
@@ -104,51 +103,11 @@ CREATE TABLE usage_records_2024_12 PARTITION OF usage_records
     FOR VALUES FROM ('2024-12-01') TO ('2025-01-01');
 ```
 
-### Managed vs Self-Hosted
-
-We're using RDS instead of self-hosted PostgreSQL:
-
-**What we get:**
-
-- Automated backups (daily, 7-day retention)
-- Point-in-time recovery (5-minute granularity)
-- Automatic failover (Multi-AZ)
-- Easy scaling (just change instance size)
-- Monitoring built-in
-
-**What we give up:**
-
-- Some control over configuration
-- Slightly higher cost than EC2
-- Vendor lock-in (though Postgres is portable)
-
-For a small team, managed wins easily.
-
-### Scaling Strategy
-
-**Vertical first** - Start small, upgrade instance type as needed:
-
-```mermaid
-flowchart LR
-    T3M[db.t3.medium<br/>2 vCPU, 4GB] --> T3L[db.t3.large] --> R6G[db.r6g.xlarge]
-```
-
-**Read replicas when needed** - Separate read and write workloads:
-
-```mermaid
-flowchart TB
-    Primary[Primary<br/>All writes + critical reads]
-    R1[Replica 1<br/>Analytics queries]
-    R2[Replica 2<br/>Reporting]
-    Primary --> R1
-    Primary --> R2
-```
-
-**Partitioning** - usage_records table is partitioned by month. Old partitions can be archived to S3.
-
 ## Neo4j: Knowledge Graph
 
 Patterns and their relationships live in Neo4j. This is where Cognee stores its knowledge graph.
+
+**Note:** ACE provides the managed Neo4j infrastructure (via Neo4j Aura), but Cognee manages all internal data structures including the graph schema, embeddings, and relationships. ACE treats Cognee as a black box - we query it via MCP protocol and don't directly interact with its data stores.
 
 ### Why Neo4j?
 
@@ -200,34 +159,6 @@ MATCH (p:Pattern)-[:APPLIES_TO]->(d:Domain {name: 'golang'})
 WHERE p.tags CONTAINS 'error-handling'
 RETURN p
 ```
-
-### Managed vs Self-Hosted
-
-We're using Neo4j Aura (managed):
-
-**What we get:**
-
-- Automatic backups
-- Security patches handled
-- Monitoring and alerts
-- Support from Neo4j experts
-
-**What we give up:**
-
-- Expensive at large scale
-- Some features limited compared to Enterprise
-
-But we don't need to become Neo4j experts to use it.
-
-### Scaling Strategy
-
-Neo4j Aura handles this:
-
-- Vertical scaling (increase memory)
-- Causal clustering (for HA)
-- Read replicas (for query load)
-
-We start on Professional tier, upgrade when we hit limits.
 
 ## Redis: Cache and State
 
@@ -295,35 +226,6 @@ EXPIRE requests:api:2024-12-19 86400  # 1 day
 **Sets** - For team member lists, active sessions
 
 **Sorted Sets** - For leaderboards, time-based indexes
-
-### Managed vs Self-Hosted
-
-We're using ElastiCache instead of self-hosted Redis:
-
-**What we get:**
-
-- Automatic failover (replica promotion)
-- Automated backups
-- VPC isolation
-- Monitoring
-
-**What we give up:**
-
-- Some Redis modules unavailable
-- Slight cost premium
-
-Trade-off worth it for reliability.
-
-### Scaling Strategy
-
-Start single-node, add replicas when needed:
-
-```mermaid
-flowchart TB
-    Single[Single node<br/>cache.t3.medium] -->|Need HA| HA[Primary + 1 replica]
-    HA -->|Need more read capacity| ReadScale[Primary + 2 replicas]
-    ReadScale -->|Need more capacity| Cluster[Cluster mode<br/>sharding]
-```
 
 ## Data Flow Patterns
 

@@ -10,24 +10,16 @@ Let's talk about how services talk to each other. We're using two different prot
 
 We're using different protocols for external vs internal communication:
 
-**External API:** REST/HTTP + JSON  
-**Internal Services:** gRPC + Protobuf
+**External API:** REST/HTTP + JSON
+**Internal Services:** gRPC + Protobuf (custom services), MCP (Cognee)
+
+Cognee uses the Model Context Protocol (MCP) - a standardized protocol for LLM tool integration. Other internal services use gRPC for performance and type safety.
 
 Why the split? Because external and internal have totally different requirements.
 
 ## REST for External API
 
-The external API is what developers interact with. We optimized for developer experience.
-
-### Why REST?
-
-**Everyone knows it** - No explanation needed. curl works. Postman works. Every HTTP client in every language works. Zero friction.
-
-**Easy debugging** - Open browser dev tools, see the request. Use curl to test. No special tooling required. When something breaks, you can see exactly what's happening.
-
-**Great tooling** - OpenAPI spec gives us automatic documentation. Interactive API explorer. Code generation for clients. Massive ecosystem.
-
-**Browser-friendly** - Web UI can call the API directly. No special proxy needed. CORS just works.
+The external API is what developers interact with. For the rationale behind choosing REST for external APIs, see [ADR-002](02-architectural-decisions.md#adr-002).
 
 ### API Structure
 
@@ -94,30 +86,9 @@ Errors include helpful messages:
 }
 ```
 
-### What We're Giving Up
-
-REST isn't perfect for everything:
-
-- **Larger payloads** - JSON is verbose compared to binary protocols
-- **No streaming** - Well, you can use Server-Sent Events, but it's not built-in
-- **No type safety** - The API spec is documentation, not enforcement
-- **Slower** - Text serialization is slower than binary
-
-But for external APIs, the developer experience wins are worth it.
-
 ## gRPC for Internal Services
 
-Internal service-to-service calls have different priorities. Here we optimize for performance.
-
-### Why gRPC?
-
-**Fast** - Binary protocol (protobuf) is 2-5x faster than JSON. When you're making 5-10 internal calls per request, that adds up.
-
-**Type safe** - Protobuf definitions are enforced at compile time. Break the contract, code won't compile. Catch bugs before they hit production.
-
-**Streaming** - Built-in bidirectional streaming. Perfect for long-running agent executions or pattern queries.
-
-**Code generation** - Generate client and server code from protobuf. Consistent across languages. Less room for bugs.
+Internal service-to-service calls use gRPC for performance and type safety. For the rationale, see [ADR-002](02-architectural-decisions.md#adr-002).
 
 ### gRPC Service Definitions
 
@@ -195,17 +166,6 @@ message ExecutionUpdate {
 ```
 
 Client gets real-time updates as the agent executes. No polling required.
-
-### What We're Giving Up
-
-gRPC isn't perfect either:
-
-- **Browser limitations** - Browsers need gRPC-Web proxy
-- **Debugging is harder** - Binary protocol, need special tools
-- **Less familiar** - Not everyone knows protobuf
-- **Tooling** - Need protoc, plugins, generated code
-
-But for internal services, performance and type safety win.
 
 ## Protocol Translation
 
@@ -471,7 +431,8 @@ When Auth service is down:
 ## Key Takeaways
 
 - **REST externally** - Developer experience matters most
-- **gRPC internally** - Performance and type safety win
+- **gRPC for custom internal services** - Performance and type safety win
+- **MCP for Cognee** - Standard protocol for LLM tool integration
 - **Right protocol for context** - Different needs, different tools
 - **Timeouts everywhere** - Never wait forever
 - **Circuit breakers** - Fail fast, prevent cascades

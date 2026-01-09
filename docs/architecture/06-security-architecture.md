@@ -4,7 +4,7 @@
 **Version:** 1.0  
 **Last Updated:** December 22, 2025
 
-Security isn't an afterthought - it's baked into the architecture from day one. Let's talk about how we're protecting the system.
+Security isn't an afterthought - it's baked into the architecture from day one. For the rationale behind infrastructure-layer authentication and OPA-based authorization, see [ADR-005](02-architectural-decisions.md#adr-005). This document covers implementation details.
 
 ## Defense in Depth
 
@@ -48,7 +48,7 @@ graph LR
     Auth -->|Fallback| DB[(PostgreSQL)]
     Auth -->|User Context| Envoy
     Envoy -->|Inject Headers| App[Application]
-    
+
     style Envoy fill:#F59E0B
     style Auth fill:#A78BFA
     style App fill:#34D399
@@ -63,13 +63,6 @@ graph LR
 5. Envoy injects headers: `X-User-ID`, `X-Team-ID`, `X-Plan-ID`
 6. Request forwarded to application
 7. Application trusts the headers (they came from Envoy, not the user)
-
-**Why this is better:**
-
-- Zero auth code in application
-- Can't bypass (Envoy is mandatory)
-- Update auth logic without deploying app
-- Language agnostic
 
 ### API Key Format
 
@@ -102,7 +95,7 @@ graph TB
     OPA -->|Evaluate| Policy[Rego Policies]
     Policy -->|Decision| OPA
     OPA -->|Allow/Deny| Response
-    
+
     style OPA fill:#A78BFA
 ```
 
@@ -140,11 +133,11 @@ allow_team_management {
 
 Different plans get different features:
 
-| Plan       | Agents                          | Requests/Month | Team Sharing | Extras             |
-| ---------- | ------------------------------- | -------------- | ------------ | ------------------ |
-| Free       | 2 (shell-script, bats-test)     | 100            | No           | -                  |
-| Pro        | All agents                      | 10,000         | Yes          | Priority support   |
-| Enterprise | All agents + custom             | Unlimited      | Yes          | SLA guarantees     |
+| Plan       | Agents                      | Requests/Month | Team Sharing | Extras           |
+| ---------- | --------------------------- | -------------- | ------------ | ---------------- |
+| Free       | 2 (shell-script, bats-test) | 100            | No           | -                |
+| Pro        | All agents                  | 10,000         | Yes          | Priority support |
+| Enterprise | All agents + custom         | Unlimited      | Yes          | SLA guarantees   |
 
 OPA enforces these limits automatically.
 
@@ -283,11 +276,11 @@ data:
 
 ```yaml
 env:
-- name: ANTHROPIC_API_KEY
-  valueFrom:
-    secretKeyRef:
-      name: api-credentials
-      key: anthropic-api-key
+  - name: ANTHROPIC_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: api-credentials
+        key: anthropic-api-key
 ```
 
 ### What Never Goes in Code
