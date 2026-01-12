@@ -19,7 +19,7 @@ Why the split? Because external and internal have totally different requirements
 
 ## REST for External API
 
-The external API is what developers interact with. For the rationale behind choosing REST for external APIs, see [ADR-002](02-architectural-decisions.md#adr-002).
+The external API is what developers interact with - it's REST/HTTP + JSON for the best developer experience. For the rationale behind choosing REST for external APIs and gRPC for internal services, see [ADR-002](02-architectural-decisions.md#adr-002-rest-external-grpc-internal).
 
 ### API Structure
 
@@ -88,7 +88,7 @@ Errors include helpful messages:
 
 ## gRPC for Internal Services
 
-Internal service-to-service calls use gRPC for performance and type safety. For the rationale, see [ADR-002](02-architectural-decisions.md#adr-002).
+Internal service-to-service calls use gRPC for performance and type safety (binary protocol, streaming support, compile-time type checking). For the full rationale, see [ADR-002](02-architectural-decisions.md#adr-002-rest-external-grpc-internal).
 
 ### gRPC Service Definitions
 

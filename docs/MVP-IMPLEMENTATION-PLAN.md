@@ -35,20 +35,20 @@ This plan defines a minimal viable product for ACE that proves **deterministic a
 
 ### OUT of Scope (Deferred)
 
-| Component                    | Deferral Reason                            |
-| ---------------------------- | ------------------------------------------ |
-| Envoy/OPA sidecars           | Security deferred                          |
-| Authentication/Authorization | Security deferred                          |
-| Rate limiting                | Not needed locally                         |
-| PostgreSQL for ACE app data  | Use file-based storage initially           |
-| Usage billing/cost tracking  | Not needed for MVP                         |
-| Web UI                       | CLI sufficient                             |
-| Multi-agent routing          | Prove single agent first                   |
-| Kubernetes deployment        | Docker Compose sufficient locally          |
-| CI/CD pipeline               | Manual builds                              |
-| Agent chaining               | Prove single execution first               |
-| Streaming responses          | Add after basic request-response works     |
-| Redis caching                | Optimize later                             |
+| Component                    | Deferral Reason                        |
+| ---------------------------- | -------------------------------------- |
+| Envoy/OPA sidecars           | Security deferred                      |
+| Authentication/Authorization | Security deferred                      |
+| Rate limiting                | Not needed locally                     |
+| PostgreSQL for ACE app data  | Use file-based storage initially       |
+| Usage billing/cost tracking  | Not needed for MVP                     |
+| Web UI                       | CLI sufficient                         |
+| Multi-agent routing          | Prove single agent first               |
+| Kubernetes deployment        | Docker Compose sufficient locally      |
+| CI/CD pipeline               | Manual builds                          |
+| Agent chaining               | Prove single execution first           |
+| Streaming responses          | Add after basic request-response works |
+| Redis caching                | Optimize later                         |
 
 ### Success Criteria
 
@@ -432,6 +432,7 @@ ace execute --agent go-software-agent --prompt "Write a function to reverse a st
 **Purpose**: Code-based agent selection based on prompt analysis
 
 **Behavior**:
+
 - Accept prompt and optional explicit agent override
 - Match keywords to determine agent (e.g., "go", "golang" → go-software-agent)
 - Return selected agent with confidence score and reason
@@ -444,6 +445,7 @@ ace execute --agent go-software-agent --prompt "Write a function to reverse a st
 **Purpose**: Communicate with Cognee MCP server for pattern queries
 
 **Behavior**:
+
 - Connect to Cognee via SSE transport
 - Send search queries with optional domain filters
 - Parse pattern results (ID, title, content, relevance score)
@@ -456,6 +458,7 @@ ace execute --agent go-software-agent --prompt "Write a function to reverse a st
 **Purpose**: Execute agents via Claude Messages API
 
 **Behavior**:
+
 - Assemble prompt from agent definition, user prompt, and retrieved patterns
 - Send to Claude Messages API with tool definitions
 - Handle tool calls (route pattern searches back to MCP client)
@@ -894,4 +897,3 @@ Defined by `twistingmercury/heartbeat` package. No custom spec needed.
 | **Pattern**               | Reusable coding best practice stored in Cognee             |
 | **Deterministic Routing** | Code-based agent selection (same input = same output)      |
 | **Agent**                 | Specialized Claude prompt for a specific task domain       |
-

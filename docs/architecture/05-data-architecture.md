@@ -40,13 +40,7 @@ We're using managed RDS PostgreSQL for structured data. Here's what lives there:
 
 ### Why PostgreSQL?
 
-**ACID transactions** - User creates API key and gets added to team in one transaction. Either both happen or neither happens.
-
-**Mature tooling** - pgAdmin, DataGrip, every SQL client ever made. When something breaks at 2 AM, you can actually debug it.
-
-**pgvector extension** - Available if needed for future vector search capabilities.
-
-**Query flexibility** - Complex joins, aggregations, window functions. When product wants a new report, we can build it.
+PostgreSQL gives us ACID transactions (user + API key creation in one atomic operation), mature tooling (pgAdmin, DataGrip), the pgvector extension for future vector search, and query flexibility for complex reports. For why we chose managed RDS over self-hosted, see [ADR-004](02-architectural-decisions.md#adr-004-managed-databases).
 
 ### Schema Design
 
@@ -111,13 +105,7 @@ Patterns and their relationships live in Neo4j. This is where Cognee stores its 
 
 ### Why Neo4j?
 
-**Relationship queries** - "Find patterns related to this pattern" is one line of Cypher. In SQL, it's a nightmare of self-joins.
-
-**Flexible schema** - Patterns can have arbitrary metadata. No schema migration needed when we add new fields.
-
-**Graph algorithms** - PageRank, community detection, shortest path. Built-in.
-
-**Cognee uses it** - We're not building a knowledge graph from scratch. Cognee handles that. We just host it.
+Graph databases excel at relationship queries ("find patterns related to this pattern" is one line of Cypher), flexible schemas (no migrations for new fields), and built-in graph algorithms (PageRank, community detection). Most importantly, Cognee uses Neo4j for its knowledge graph - we just host the infrastructure via Neo4j Aura.
 
 ### Graph Structure
 
@@ -166,13 +154,7 @@ Redis is our speed layer. Anything that needs to be fast lives here.
 
 ### Why Redis?
 
-**Blazing fast** - Sub-millisecond reads. Perfect for hot data.
-
-**Data structures** - Not just key-value. Hashes, sets, sorted sets, streams. Use the right tool.
-
-**TTL built-in** - Keys expire automatically. No manual cleanup.
-
-**Atomic operations** - Increment counters, check-and-set, all atomic. Perfect for rate limiting.
+Redis gives us sub-millisecond reads (perfect for hot data), rich data structures (hashes, sets, sorted sets, streams), built-in TTL expiration, and atomic operations (essential for rate limiting). We use managed ElastiCache - see [ADR-004](02-architectural-decisions.md#adr-004-managed-databases) for why.
 
 ### What We Store
 

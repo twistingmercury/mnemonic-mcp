@@ -49,16 +49,16 @@ Code-based routing with keyword matching and explicit chaining rules. The LLM do
 
 **What success looks like:**
 
-- Context usage < 100KB per execution
+- Context usage < 100KB per execution (vs ~758KB with pre-loading)
 - 75%+ cost reduction vs pre-loading
 - 3-5 pattern queries per execution
 - No drop in output quality
 
-**Why this matters:**  
+**Why this matters:**
 This is literally the whole point of the project. Pre-loading patterns is expensive and doesn't scale. We need to query what we need, when we need it.
 
-**How we're doing it:**  
-Tool calling protocol. Agent calls a `search()` tool, we query Cognee's knowledge graph, return just the relevant patterns. Simple, efficient, scales forever.
+**How we're doing it:**
+Tool calling protocol. Agent calls a `search()` tool, we query Cognee's knowledge graph, return just the relevant patterns. See [ADR-006](02-architectural-decisions.md#adr-006-dynamic-pattern-querying) for the full rationale and cost analysis.
 
 ### 3. Team Collaboration
 
@@ -181,8 +181,8 @@ Everything runs in Kubernetes. We're using K8s native features (ConfigMaps, Secr
 **Managed Databases**  
 No self-hosted database management. Using cloud provider managed services (RDS, Neo4j Aura, ElastiCache). Team focuses on application, not database ops.
 
-**Cognee Integration**  
-Using existing Cognee Docker images with a gRPC wrapper. No modifications to Cognee itself. Support Cognee API evolution through versioning.
+**Cognee Integration**
+Using existing Cognee MCP server Docker images. Communication via standard MCP protocol. No modifications to Cognee itself. Support Cognee API evolution through versioning.
 
 **Protocol Standards**  
 REST for external APIs (OpenAPI spec). gRPC for internal services (protobuf). OpenTelemetry for observability. Standard HTTP/2.

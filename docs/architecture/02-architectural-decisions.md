@@ -436,9 +436,42 @@ flowchart LR
 
 **The numbers:**
 
-- Pre-loading: ~758KB context, $0.90 per execution
-- Dynamic: ~75KB context, $0.13 per execution
-- Savings: 78% reduction in cost
+| Scenario    | Context Size      | Cost/Execution    |
+| ----------- | ----------------- | ----------------- |
+| Pre-loading | ~758KB            | ~$0.90            |
+| Dynamic     | ~75KB             | ~$0.13            |
+| **Savings** | **90% reduction** | **85% reduction** |
+
+**Cost calculation breakdown:**
+
+Using [Claude Sonnet 4 pricing](https://platform.claude.com/docs/en/about-claude/pricing): $3/MTok input, $15/MTok output. Token estimate: 1 token ≈ 4 characters ([Anthropic FAQ](https://platform.claude.com/docs/en/about-claude/pricing#frequently-asked-questions)).
+
+_Pre-loading scenario (all patterns in context):_
+
+| Component                        | Size  | Tokens | Cost       |
+| -------------------------------- | ----- | ------ | ---------- |
+| Pattern library                  | 758KB | ~190K  | $0.57      |
+| System prompt + routing          | ~20KB | ~5K    | $0.015     |
+| Average output                   | -     | ~4K    | $0.06      |
+| **Base total**                   |       |        | **$0.65**  |
+| Retry/reasoning overhead (~1.4x) |       |        | +$0.26     |
+| **Estimated total**              |       |        | **~$0.90** |
+
+_Dynamic query scenario (patterns fetched on-demand):_
+
+| Component               | Size  | Tokens | Cost            |
+| ----------------------- | ----- | ------ | --------------- |
+| Retrieved patterns      | ~50KB | ~12K   | $0.036          |
+| System prompt + routing | ~20KB | ~5K    | $0.015          |
+| Average output          | -     | ~4K    | $0.06           |
+| Tool use overhead       | -     | ~350   | $0.001          |
+| **Estimated total**     |       |        | **~$0.11-0.13** |
+
+Notes:
+
+- Pre-loading incurs higher retry/reasoning overhead due to context overload and less focused responses
+- Dynamic querying adds minimal tool overhead (~346 tokens per [Anthropic tool pricing](https://platform.claude.com/docs/en/about-claude/pricing#tool-use-pricing))
+- Batch API reduces costs 50% for non-interactive workloads
 
 ### Alternatives Considered
 

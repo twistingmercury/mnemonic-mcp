@@ -6,27 +6,24 @@
 
 ## What We're Building
 
-ACE is a production-grade system for deterministic agent routing with smart pattern querying. Think of it as a much smarter, more predictable version of Claude Code that actually knows what it's doing.
+ACE is a system for deterministic agent routing with dynamic pattern querying. It replaces LLM-based routing interpretation with code-based routing logic.
 
 ### The Problem We're Solving
 
-Claude Code is great, but it has a frustrating limitation: it uses LLM interpretation for routing decisions. That means:
+Claude Code uses LLM interpretation for routing decisions, which results in:
 
-- Same prompt, different agent every time (non-deterministic)
-- No guaranteed workflow execution
-- Unpredictable behavior
-- Can't reliably automate anything
+- Non-deterministic routing (same prompt may route differently each time)
+- No guaranteed workflow execution order
+- Unpredictable behavior that prevents reliable automation
 
-We're fixing that with code-based routing (100% deterministic) plus a clever trick: instead of loading all our patterns into context (expensive!), we query them on-demand. That saves us 78% on costs and lets our pattern library grow without blowing up our context window.
+ACE addresses this with code-based routing (deterministic) and on-demand pattern querying. See [Requirements](01-requirements.md#2-context-efficiency) for the context reduction details.
 
-## Core Value Proposition
-
-**The whole point of this project:**
+## Core Goals
 
 - **Deterministic routing** - Same input always routes to the same agent
-- **Context efficiency** - Query patterns dynamically instead of pre-loading everything
-- **Team collaboration** - Share patterns across your team via git
-- **Independent scaling** - Scale different parts based on actual load
+- **Context efficiency** - Query patterns dynamically instead of pre-loading
+- **Team collaboration** - Share patterns across teams via git
+- **Independent scaling** - Scale components based on their workload
 
 ## Design Philosophy
 
@@ -140,8 +137,8 @@ Add new agents without infrastructure changes. Update patterns without deploymen
 **Reliability**  
 Deterministic routing = predictable behavior. Automatic retries at infrastructure layer. Circuit breakers prevent cascading failures. Graceful degradation when things break.
 
-**Cost Management**  
-Dynamic pattern querying reduces token usage by 78%. Independent scaling prevents over-provisioning. Managed services reduce ops overhead. Usage tracking for cost allocation.
+**Cost Management**
+Dynamic pattern querying dramatically reduces token usage. Independent scaling prevents over-provisioning. Managed services reduce ops overhead. Usage tracking for cost allocation. See [Cost Efficiency](#cost-efficiency) below for specific numbers.
 
 ## Document Structure
 
@@ -198,20 +195,14 @@ See [Architectural Decisions](02-architectural-decisions.md) for the phased impl
 
 ## System Characteristics at a Glance
 
+These are the key targets. For detailed analysis and scaling stages, see [Scalability](09-scalability.md).
+
 ### Performance Targets
 
 - API response time: < 100ms (excluding agent execution)
 - Agent execution: 10-30 seconds (Claude API bound)
 - Pattern query: < 500ms
 - Throughput: 100+ requests/second per API instance
-
-### Scalability Targets
-
-- API server: 3-10 replicas
-- Cognee service: 2-5 replicas
-- Support 10-1000 users per deployment
-- Handle 1000+ patterns efficiently
-- 50+ concurrent executions
 
 ### Availability Targets
 
@@ -221,9 +212,11 @@ See [Architectural Decisions](02-architectural-decisions.md) for the phased impl
 
 ### Cost Efficiency
 
-- Token usage: ~75KB context (vs 758KB pre-loading)
+- Token usage: ~75KB context (vs ~758KB pre-loading) - 78% reduction
 - Cost per execution: ~$0.13 (Sonnet 4)
 - Infrastructure: $500-2000/month depending on scale
+
+See [Requirements](01-requirements.md#2-context-efficiency) for cost analysis details.
 
 That's the big picture. Dive into individual docs for the details on specific areas.
 
