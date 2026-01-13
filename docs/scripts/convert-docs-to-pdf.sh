@@ -1,20 +1,4 @@
 #!/usr/bin/env bash
-#
-# convert-docs-to-pdf.sh
-#
-# Converts all markdown files in the architecture documentation directory to PDF.
-# Uses pandoc with mermaid-filter for diagram rendering and XeLaTeX for font support.
-#
-# Usage:
-#   ./convert-docs-to-pdf.sh
-#
-# Environment Variables:
-#   DOCS_DIR   - Directory containing markdown files (default: docs/architecture)
-#   OUTPUT_DIR - Directory for PDF output (default: docs/publish)
-#
-# Output:
-#   PDF files in docs/publish directory
-#
 
 set -e
 
