@@ -1,6 +1,7 @@
 # Memory MCP Server
 
-A Cognee deployment with separate MCP and REST API servers sharing common database backends.
+> The docker compose file is for a local Cognee deployment for development purposes. It doesn't represent how the
+> memory server would be deployed in K8s or in the cloud.
 
 - **Cognee MCP Server** - For Claude Code integration via MCP protocol (port 4000)
 - **Cognee REST API** - For HTTP/REST API access from any application (port 8000)
