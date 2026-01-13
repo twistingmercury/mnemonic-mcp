@@ -76,3 +76,5 @@ site/
 **/docs/**/*.pdf
 **/publish/
 **/*.err
+# Local documentation scripts
+docs/scripts/
