@@ -1,8 +1,8 @@
 # ACE (Agentic Coding Engine) MVP Implementation Plan
 
-**Version:** 1.0
-**Created:** January 8, 2026
-**Status:** Ready for Implementation
+**Version:** 1.0  
+**Created:** January 8, 2026  
+**Status:** DRAFT: under review  
 
 ## Executive Summary
 
@@ -15,9 +15,27 @@ This plan defines a minimal viable product for ACE that proves **deterministic a
 - Security deferred to future iterations (no Envoy/OPA, no auth)
 - No CI/CD pipeline - manual builds only
 
+## Table of Contents
+
+- [1. MVP Scope Definition](#1-mvp-scope-definition)
+- [2. Technical Stack Decisions](#2-technical-stack-decisions)
+- [3. Implementation Phases](#3-implementation-phases)
+- [4. Component Specifications](#4-component-specifications)
+- [5. Data Models](#5-data-models)
+- [6. Integration Points](#6-integration-points)
+- [7. Local Development Setup](#7-local-development-setup)
+- [8. Testing Strategy](#8-testing-strategy)
+- [9. Risks and Mitigations](#9-risks-and-mitigations)
+- [10. Agent Task Breakdown](#10-agent-task-breakdown)
+- [Appendix A: Key File Locations](#appendix-a-key-file-locations)
+- [Appendix B: API Contract](#appendix-b-api-contract)
+- [Appendix C: Glossary](#appendix-c-glossary)
+
 ---
 
 ## 1. MVP Scope Definition
+
+[↑ Table of Contents](#table-of-contents)
 
 ### IN Scope (Must Have for MVP)
 
@@ -32,6 +50,7 @@ This plan defines a minimal viable product for ACE that proves **deterministic a
 | **Basic Usage Logging**    | Log executions to file/stdout        | Debugging and validation                 |
 | **Health Endpoint**        | /health via heartbeat                | Operational visibility                   |
 | **CLI Client**             | Simple command-line interface        | Manual testing and validation            |
+| **PostgreSQL (ACE data)**  | Store execution logs and app data    | Avoid rework from file-based to database |
 
 ### OUT of Scope (Deferred)
 
@@ -40,7 +59,6 @@ This plan defines a minimal viable product for ACE that proves **deterministic a
 | Envoy/OPA sidecars           | Security deferred                      |
 | Authentication/Authorization | Security deferred                      |
 | Rate limiting                | Not needed locally                     |
-| PostgreSQL for ACE app data  | Use file-based storage initially       |
 | Usage billing/cost tracking  | Not needed for MVP                     |
 | Web UI                       | CLI sufficient                         |
 | Multi-agent routing          | Prove single agent first               |
@@ -72,6 +90,8 @@ ace execute --agent go-software-agent --prompt "Write a function to reverse a st
 
 ## 2. Technical Stack Decisions
 
+[↑ Table of Contents](#table-of-contents)
+
 ### API Server: Go with Gin
 
 - Existing agent definitions are Go-focused
@@ -89,14 +109,14 @@ ace execute --agent go-software-agent --prompt "Write a function to reverse a st
 
 **Docker Compose Stack**:
 
-| Service    | Image                        | Purpose         | Port       |
-| ---------- | ---------------------------- | --------------- | ---------- |
-| ace-api    | Custom Go image              | API server      | 3000       |
-| cognee-mcp | cognee/cognee-mcp:local-main | Pattern queries | 8000       |
-| postgres   | pgvector/pgvector:pg16       | Cognee data     | 5432       |
-| neo4j      | neo4j:5-community            | Knowledge graph | 7474, 7687 |
+| Service    | Image                        | Purpose                    | Port       |
+| ---------- | ---------------------------- | -------------------------- | ---------- |
+| ace-api    | Custom Go image              | API server                 | 3000       |
+| cognee-mcp | cognee/cognee-mcp:local-main | Pattern queries            | 8000       |
+| postgres   | pgvector/pgvector:pg16       | Cognee + ACE data          | 5432       |
+| neo4j      | neo4j:5-community            | Knowledge graph            | 7474, 7687 |
 
-**Note**: We reuse the existing Cognee stack from `memory-mcp-server/docker-compose.yaml`
+**Note**: We reuse the existing Cognee stack from `memory-mcp-server/docker-compose.yaml`. ACE uses the same PostgreSQL instance with a separate `ace` database for execution logs.
 
 ### Reusable Existing Assets
 
@@ -111,6 +131,8 @@ ace execute --agent go-software-agent --prompt "Write a function to reverse a st
 ---
 
 ## 3. Implementation Phases
+
+[↑ Table of Contents](#table-of-contents)
 
 ### Phase 1: Foundation (Week 1)
 
@@ -382,6 +404,8 @@ ace execute --agent go-software-agent --prompt "Write a function to reverse a st
 
 ## 4. Component Specifications
 
+[↑ Table of Contents](#table-of-contents)
+
 ### 4.1 API Server (`src/api/`)
 
 **Purpose**: REST API gateway for agent execution requests
@@ -489,18 +513,20 @@ ace version
 
 ## 5. Data Models
 
+[↑ Table of Contents](#table-of-contents)
+
 ### MVP Simplified Models
 
-For MVP, we minimize data persistence complexity:
+For MVP, we use PostgreSQL for execution logs to avoid rework later:
 
-| Model           | Storage     | Notes                     |
-| --------------- | ----------- | ------------------------- |
-| ExecutionLog    | File/stdout | JSON lines format         |
-| AgentDefinition | Filesystem  | Load from markdown files  |
-| RoutingRules    | YAML config | Static configuration      |
-| Patterns        | Cognee      | Already managed by Cognee |
+| Model           | Storage    | Notes                     |
+| --------------- | ---------- | ------------------------- |
+| ExecutionLog    | PostgreSQL | execution_logs table      |
+| AgentDefinition | Filesystem | Load from markdown files  |
+| RoutingRules    | YAML config| Static configuration      |
+| Patterns        | Cognee     | Already managed by Cognee |
 
-### ExecutionLog Schema (JSON Lines)
+### ExecutionLog Schema
 
 ```json
 {
@@ -543,12 +569,14 @@ allowed_tools: [...]
 | PostgreSQL users table    | Not needed (no auth)            |
 | PostgreSQL teams table    | Not needed (single user)        |
 | PostgreSQL api_keys table | Not needed (no auth)            |
-| PostgreSQL usage_records  | File-based logging              |
+| PostgreSQL usage_records  | PostgreSQL execution_logs table |
 | Redis cache               | Direct queries (optimize later) |
 
 ---
 
 ## 6. Integration Points
+
+[↑ Table of Contents](#table-of-contents)
 
 ### 6.1 ACE API <-> Cognee MCP
 
@@ -640,6 +668,8 @@ allowed_tools: [...]
 
 ## 7. Local Development Setup
 
+[↑ Table of Contents](#table-of-contents)
+
 Devops agent responsibility. Requirements:
 
 - Extend existing Cognee stack (`memory-mcp-server/docker-compose.yaml`)
@@ -652,6 +682,8 @@ Devops agent responsibility. Requirements:
 ---
 
 ## 8. Testing Strategy
+
+[↑ Table of Contents](#table-of-contents)
 
 ### 8.1 What Must Be Tested for MVP
 
@@ -698,6 +730,8 @@ Go e2e test agent responsibility. Must validate:
 
 ## 9. Risks and Mitigations
 
+[↑ Table of Contents](#table-of-contents)
+
 ### 9.1 Technical Risks
 
 | Risk                            | Probability | Impact | Mitigation                                                                     |
@@ -727,6 +761,8 @@ Go e2e test agent responsibility. Must validate:
 ---
 
 ## 10. Agent Task Breakdown
+
+[↑ Table of Contents](#table-of-contents)
 
 ### Recommended Agent Assignments
 
@@ -821,6 +857,8 @@ Create integration tests for ACE MVP:
 
 ## Appendix A: Key File Locations
 
+[↑ Table of Contents](#table-of-contents)
+
 | Purpose                         | Path                                    |
 | ------------------------------- | --------------------------------------- |
 | Architecture Docs               | `docs/architecture/`                    |
@@ -836,6 +874,8 @@ Create integration tests for ACE MVP:
 ---
 
 ## Appendix B: API Contract
+
+[↑ Table of Contents](#table-of-contents)
 
 API architect agent designs the OpenAPI YAML spec. Go software agent implements it.
 
@@ -888,6 +928,8 @@ Defined by `twistingmercury/heartbeat` package. No custom spec needed.
 ---
 
 ## Appendix C: Glossary
+
+[↑ Table of Contents](#table-of-contents)
 
 | Term                      | Definition                                                 |
 | ------------------------- | ---------------------------------------------------------- |
