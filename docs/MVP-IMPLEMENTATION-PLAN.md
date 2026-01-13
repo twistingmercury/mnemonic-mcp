@@ -80,7 +80,7 @@ ace execute --agent go-software-agent --prompt "Write a function to reverse a st
 
 ### Health Checks: twistingmercury/heartbeat
 
-- https://github.com/twistingmercury/heartbeat
+- [twistingmercury/heartbeat](https://github.com/twistingmercury/heartbeat)
 - Parallel dependency checking with timeouts
 - Kubernetes-ready (liveness/readiness probes)
 - Returns 503 when dependencies are unhealthy
@@ -120,7 +120,7 @@ ace execute --agent go-software-agent --prompt "Write a function to reverse a st
 
 1. **Go Project Structure**
 
-   ```
+   ```text
    src/
    ├── api/                      # API server (Go module)
    │   ├── cmd/
@@ -474,7 +474,7 @@ ace execute --agent go-software-agent --prompt "Write a function to reverse a st
 
 **Commands**:
 
-```
+```text
 ace execute [--agent <agent>] --prompt <prompt>
 ace version
 ```
@@ -560,7 +560,7 @@ allowed_tools: [...]
 
 **Request Flow**:
 
-```
+```text
 1. ace-api establishes SSE connection to Cognee MCP
 2. ace-api sends tool call: search(query="golang error handling", search_type="GRAPH_COMPLETION")
 3. Cognee processes query against knowledge graph
@@ -583,7 +583,7 @@ allowed_tools: [...]
 
 **Request Flow**:
 
-```
+```text
 1. ace-api assembles prompt:
    - System: Agent definition (from go-software-agent.md)
    - System: Retrieved patterns
@@ -622,7 +622,7 @@ allowed_tools: [...]
 
 ### 6.3 Docker Network Communication
 
-```
+```text
                     +------------------------------------------+
                     |           ace_network                    |
                     |                                          |
@@ -743,7 +743,7 @@ Go e2e test agent responsibility. Must validate:
 
 ### Suggested Order of Agent Involvement
 
-```
+```text
 Week 1:
 ├── go-architect-agent: Design project structure and API contract
 └── devops-agent: Create Docker Compose configuration
@@ -770,7 +770,7 @@ Week 8:
 
 **For go-architect-agent (Phase 1)**:
 
-```
+```text
 Design the API server and CLI project structure for ACE MVP.
 - API server at src/api/ using Gin framework
 - CLI client at src/cli/ using Cobra (separate Go module)
@@ -781,7 +781,7 @@ Design the API server and CLI project structure for ACE MVP.
 
 **For go-software-agent (Phases 2-6)**:
 
-```
+```text
 Implement ACE API server components:
 - Phase 2: HTTP server with Gin, configuration, logging (src/api/)
 - Phase 3: MCP client for Cognee SSE connection (src/api/)
@@ -799,7 +799,7 @@ Key files:
 
 **For devops-agent (Phases 1, 8)**:
 
-```
+```text
 Configure local Docker development environment:
 - Extend existing Cognee Docker Compose
 - Add ace-api service (build context: src/api/)
@@ -809,7 +809,7 @@ Configure local Docker development environment:
 
 **For go-e2e-test-agent (Phase 7)**:
 
-```
+```text
 Create integration tests for ACE MVP:
 - Test full execution flow
 - Test routing determinism
