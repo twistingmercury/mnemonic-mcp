@@ -1,316 +1,266 @@
-# How the System Fits Together
+# System Architecture
 
-**Document:** System Architecture  
-**Version:** 1.0  
-**Last Updated:** December 22, 2025
+[Back to Overview](00-overview.md) | [Back to Documentation Index](../README.md)
 
-Let's talk about how all the pieces work together. This is the "how" to complement the "why" from the ADRs.
+## Table of Contents
 
-## The Big Picture
+- [Architecture Overview](#architecture-overview)
+- [Component Breakdown](#component-breakdown)
+  - [ACE CLI](#ace-cli)
+  - [Mnemonic](#mnemonic)
+- [Data Flow](#data-flow)
+- [CLI-Centric Model](#cli-centric-model)
+- [Component Interactions](#component-interactions)
+- [Boundary Definitions](#boundary-definitions)
 
-Here's the full system architecture:
+## Architecture Overview
+
+ACE follows a distributed architecture with clear separation between client-side execution and server-side orchestration.
 
 ```mermaid
 graph TB
-    %% subgraph 
-Clients["Clients"]
-    %%     CLI[CLI]
-    %%     Web[Web UI]
-    %%     IDE[IDE Plugins]
-    %% end
-
-    subgraph K8s["Kubernetes Cluster"]
-        LB[Load Balancer]
-
-        subgraph APIPod["API Server Pod"]
-            Envoy[Envoy Sidecar<br/>TLS, Auth, Rate Limit]
-            OPA[OPA Sidecar<br/>Authorization]
-            API[API Server<br/>Business Logic]
-        end
-
-        subgraph CogneePod["Cognee Pod"]
-            CogneeApp["Cognee MCP Server"]
-        end
-
-        Auth[Auth Service]
-        Usage[Usage Tracker]
-        RateLimit[Rate Limit Service]
+    subgraph "User Workstation"
+        CLI[ACE CLI]
+        CC[Claude Code]
+        FS[Local Filesystem]
     end
 
-    subgraph Data["Data Layer"]
-        Redis[(Redis<br/>Cache)]
-        AppDB[(PostgreSQL<br/>ACE App Data)]
-        CogneeDB[(PostgreSQL<br/>Cognee Data)]
-        Neo4j[(Neo4j Aura<br/>Knowledge Graph)]
+    subgraph "Server Infrastructure"
+        MN[Mnemonic]
+        PG[(Postgres + PGVector)]
+        NEO[(Neo4j)]
     end
 
-    Clients -->|HTTPS| LB
-    LB --> Envoy
-    Envoy -->|ext_authz| Auth
-    Envoy -->|rate check| RateLimit
-    Envoy --> OPA
-    OPA --> API
-    API -->|MCP Protocol| CogneeApp
-    API -->|async| Usage
-
-    Auth --> Redis
-    Auth --> AppDB
-    RateLimit --> Redis
-    Usage --> AppDB
-    CogneeApp --> Neo4j
-    CogneeApp --> CogneeDB
-
-    %% style Clients fill:#E0E7FF
-    style K8s fill:#FEF3C7
-    style Data fill:#DBEAFE
+    CLI <-->|"REST"| MN
+    MN <--> PG
+    MN <--> NEO
+    CLI <--> CC
+    CC <--> FS
 ```
 
 ## Component Breakdown
 
-Let's walk through each piece and what it does.
+### ACE CLI
 
-### API Server Pod
+The CLI is the primary user interface and orchestrates local execution.
 
-This is where the main application logic lives. It's actually three containers running together:
+**Responsibilities:**
 
-#### Envoy Sidecar (Infrastructure)
+- Accept user prompts and commands
+- Request routing decisions from Mnemonic
+- Construct enriched prompts with patterns and context
+- Invoke Claude Code (Phase 1) or Anthropic API (Phase 2)
+- Display results to the user
 
-- Terminates TLS from the load balancer
-- Checks API keys via external auth service
-- Enforces rate limits (calls rate limit service)
-- Adds authentication headers for the app
-- Emits access logs and metrics
-- Handles circuit breaking and retries
+**Key Characteristics:**
 
-#### OPA Sidecar (Policy Engine)
+- Runs on user workstation
+- Stateless between invocations (state lives in Mnemonic)
+- Handles authentication to external services
+- Manages local execution environment
 
-- Evaluates authorization policies (written in Rego)
-- Checks if user's plan allows the requested agent
-- Verifies feature access
-- Injects plan metadata into headers
-- Updates policies without code deployment
+```mermaid
+graph TB
+    subgraph "ACE CLI Internal Structure"
+        INPUT[Input Handler]
+        AUTH[Auth Manager]
+        ROUTE[Routing Client]
+        PROMPT[Prompt Builder]
+        EXEC[Execution Engine]
+        OUTPUT[Output Handler]
+    end
 
-#### API Server (Application)
+    INPUT --> AUTH
+    AUTH --> ROUTE
+    ROUTE --> PROMPT
+    PROMPT --> EXEC
+    EXEC --> OUTPUT
+```
 
-- Handles the REST API endpoints
-- Routes requests to appropriate agents
-- Orchestrates agent execution
-- Calls Cognee for pattern queries
-- Records usage metrics
-- Returns responses to clients
+### Mnemonic
 
-The application code doesn't do auth at all - it trusts the headers Envoy injects. This keeps the app code clean and focused on business logic.
+Mnemonic is the backend server that provides routing decisions and pattern retrieval via REST API. For MVP, Mnemonic serves only ACE (not a general-purpose memory service).
 
-### Cognee Service Pod
+**Responsibilities:**
 
-Pattern search and knowledge graph queries happen here:
+- Receive routing requests from CLI instances
+- Apply deterministic routing logic to select the appropriate agent
+- Retrieve relevant patterns for context enrichment
+- Return routing decision and patterns to CLI
 
-#### Cognee MCP Server
+**Key Characteristics:**
 
-- Official Cognee Docker image (MCP server)
-- Provides pattern search via MCP protocol
-- Manages knowledge graph queries
-- Handles vector embeddings
-- Stores patterns in Neo4j
+- Lightweight service (no LLM calls)
+- Deterministic routing (code-based logic)
+- Stateless request handling
+- REST API interface
+- Full storage stack: Postgres + PGVector + Neo4j
 
-We're using the existing Cognee MCP server directly via its native protocol. This keeps things simple and leverages the standard MCP interface.
+```mermaid
+graph TB
+    subgraph "Mnemonic Internal Structure"
+        REST[REST API Handler]
+        VALID[Request Validator]
+        ROUTER[Routing Engine]
+        PATTERN[Pattern Retriever]
+        RESP[Response Builder]
+    end
 
-### Supporting Services
+    subgraph "Storage Layer"
+        PG[(Postgres)]
+        PGV[(PGVector)]
+        NEO[(Neo4j)]
+    end
 
-#### Auth Service
+    REST --> VALID
+    VALID --> ROUTER
+    ROUTER --> PATTERN
+    PATTERN --> RESP
+    PATTERN <--> PG
+    PATTERN <--> PGV
+    PATTERN <--> NEO
+```
 
-- Validates API keys against PostgreSQL
-- Returns user and team context
-- Caches frequently accessed keys in Redis
-- Issues JWT tokens for web UI
-- Handles API key lifecycle
+See [Communication Patterns](04-communication-patterns.md#rest-endpoints) for REST endpoint details.
 
-This is called by Envoy's ext_authz filter on every request. It's fast (< 50ms) because of Redis caching.
+**What Mnemonic Does NOT Do:**
 
-#### Usage Tracker
+- Make LLM API calls
+- Store user credentials
+- Execute tools or file operations
+- Maintain session state
 
-- Records agent executions
-- Tracks token usage
-- Calculates costs
-- Emits billing events
-- Updates counters
+## Data Flow
 
-This runs asynchronously - the API doesn't wait for it. If it's down, we queue events and process them later.
-
-#### Rate Limit Service
-
-- Implements token bucket algorithm
-- Tracks limits per user, team, and globally
-- Uses Redis for shared state
-- Returns allow/deny + remaining quota
-- Configurable limits per plan
-
-## Data Flow: Agent Execution
-
-Here's what happens when a user executes an agent:
+The following diagram shows the complete data flow for a typical request.
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant Envoy
-    participant Auth as Auth Service
-    participant OPA
-    participant API as API Server
-    participant Cognee
-    participant Claude as Claude API
-    participant Usage
+    participant U as User
+    participant CLI as ACE CLI
+    participant MN as Mnemonic
+    participant CC as Claude Code
+    participant FS as Filesystem
 
-    User->>Envoy: POST /execute agent=go, prompt="..."
-    Envoy->>Auth: Check API key
-    Auth->>Auth: Validate key (Redis cache)
-    Auth-->>Envoy: User context
-    Envoy->>OPA: Authorize request + context
-    OPA->>OPA: Check plan allows "go" agent
-    OPA-->>Envoy: Allowed + headers
-    Envoy->>API: Request + auth headers
+    U->>CLI: Submit prompt
 
-    API->>API: Route to go-software-agent
-    API->>Cognee: Search patterns (MCP)
-    Cognee->>Neo4j: Graph query
-    Neo4j-->>Cognee: Matching patterns
-    Cognee-->>API: Pattern results
+    Note over CLI: Parse and validate input
 
-    API->>Claude: Execute agent (prompt + patterns)
-    Note over Claude: Agent runs, may call<br/>more pattern queries
-    Claude-->>API: Response
+    CLI->>MN: GET /ace/route?prompt=...
 
-    API->>Usage: Record execution (async)
-    Usage->>AppDB: Insert usage record
+    Note over MN: Apply routing rules
+    Note over MN: Fetch patterns from storage
 
-    API-->>User: Agent response
+    MN-->>CLI: {agent, patterns, metadata}
+
+    Note over CLI: Construct enriched prompt
+
+    CLI->>CC: Invoke with enriched prompt
+
+    Note over CC: Process request
+
+    CC->>FS: Read/write files
+    FS-->>CC: File contents
+
+    CC-->>CLI: Execution results
+
+    Note over CLI: Format output
+
+    CLI-->>U: Display results
 ```
 
-### Key Points
+## CLI-Centric Model
 
-**Authentication happens at the edge** - By the time the request reaches our app, it's already been authenticated. The app trusts the headers.
+ACE follows a CLI-centric model where:
 
-**Pattern queries are on-demand** - Agent calls `search()` tool, we query Cognee, return just what's needed. This is the core efficiency gain.
-
-**Usage tracking is async** - We don't block the response waiting for usage to be recorded. Fire and forget.
-
-**Multiple pattern queries** - A single agent execution might query patterns 3-5 times. That's fine - each query is cheap and targeted.
-
-## Data Flow: Pattern Updates
-
-When someone updates patterns in git:
+1. **CLI is the orchestrator**: The CLI coordinates between user, Mnemonic, and execution engine
+2. **Mnemonic is advisory**: Mnemonic provides routing decisions but does not execute
+3. **Execution is local**: All LLM interactions and tool execution happen on the workstation
 
 ```mermaid
-sequenceDiagram
-    participant Dev as Developer
-    participant Git
-    participant CI as CI Pipeline
-    participant Cognee
-    participant Neo4j
+graph TB
+    subgraph "Control Flow"
+        USER((User))
+        CLI[ACE CLI<br/>Orchestrator]
+        MN[Mnemonic<br/>Advisory]
+        EXEC[Execution<br/>Local]
+    end
 
-    Dev->>Git: Commit pattern changes
-    Git->>CI: Webhook triggers build
-    CI->>CI: Validate pattern format
-    CI->>Cognee: POST /patterns/batch
-    Cognee->>Cognee: Generate embeddings
-    Cognee->>Neo4j: Update knowledge graph
-    Neo4j-->>Cognee: Success
-    Cognee-->>CI: Patterns updated
-    CI->>Dev: Notify (Slack)
+    USER -->|"Commands"| CLI
+    CLI -->|"REST: /ace/route"| MN
+    MN -->|"Agent + Patterns"| CLI
+    CLI -->|"Execute"| EXEC
+    EXEC -->|"Results"| CLI
+    CLI -->|"Output"| USER
 ```
 
-Patterns are version controlled in git. When you commit, CI validates and loads them into Cognee. Next query gets the updated patterns. Simple.
+**Benefits of CLI-Centric Model:**
 
-## Scaling Characteristics
+- No server-side LLM costs
+- User data stays local
+- Works offline after routing decision (with caching)
+- Leverages existing Claude Code setup
 
-Different components scale differently based on their resource profiles. For detailed scaling strategies, thresholds, and capacity planning, see [Scalability](09-scalability.md).
+## Component Interactions
 
-## Failure Modes
+### CLI to Mnemonic
 
-What breaks and how do we handle it?
+| Aspect | Detail |
+|--------|--------|
+| Protocol | REST (HTTP/HTTPS) |
+| Authentication | To be specified in design phase |
+| Request contains | Prompt summary, context hints, user preferences |
+| Response contains | Agent identifier, patterns, execution hints |
 
-### Component Failures
+See [Communication Patterns](04-communication-patterns.md#rest-endpoints) for REST endpoint details.
 
-#### API Server Pod Dies
+### CLI to Claude Code
 
-- Impact: That pod stops serving traffic
-- Detection: Kubernetes health checks fail
-- Recovery: K8s restarts pod, traffic routes to healthy pods
-- User impact: None (other pods handle requests)
-- Time to recover: 30 seconds
+| Aspect | Detail |
+|--------|--------|
+| Invocation method | To be specified in [Configuration](../design/configuration.md) |
+| Context passing | Enriched prompt with patterns |
+| Result capture | To be specified in [Configuration](../design/configuration.md) |
 
-#### Cognee Service Dies
+## Boundary Definitions
 
-- Impact: Pattern queries fail
-- Detection: gRPC health check fails
-- Recovery: K8s restarts pod
-- User impact: Agent executions fail with pattern query error
-- Time to recover: 60 seconds
-- Mitigation: Cache patterns temporarily, fall back to cached
+Clear boundaries separate concerns between components.
 
-#### Auth Service Dies
+```mermaid
+graph TB
+    subgraph "User Domain"
+        UD1[User prompts]
+        UD2[Local files]
+        UD3[Credentials]
+    end
 
-- Impact: New requests can't authenticate
-- Detection: ext_authz fails
-- Recovery: K8s restarts pod
-- User impact: 503 errors on new requests
-- Time to recover: 30 seconds
-- Mitigation: Short-lived cache in Envoy
+    subgraph "CLI Domain"
+        CD1[Input parsing]
+        CD2[Prompt construction]
+        CD3[Execution orchestration]
+        CD4[Output formatting]
+    end
 
-#### Redis Dies
+    subgraph "Mnemonic Domain"
+        MD1[Routing logic]
+        MD2[Pattern retrieval]
+        MD3[Request validation]
+        MD4[Pattern storage]
+    end
 
-- Impact: No caching, rate limiting breaks
-- Detection: Connection failures
-- Recovery: ElastiCache automatic failover
-- User impact: Slower auth, degraded rate limiting
-- Time to recover: < 60 seconds
+    UD1 --> CD1
+    UD3 --> CD3
+    CD1 --> MD3
+    MD1 --> CD2
+    MD2 --> CD2
+    CD3 --> UD2
+```
 
-#### App PostgreSQL Dies
+**Boundary Rules:**
 
-- Impact: Can't read user data, can't record usage
-- Detection: Connection failures
-- Recovery: RDS automatic failover to standby
-- User impact: 503 errors during failover
-- Time to recover: < 5 minutes (RDS SLA)
-- Mitigation: Read from replica if available
+- User credentials never leave the CLI
+- Routing logic lives only in Mnemonic
+- Pattern storage lives only in Mnemonic
+- File operations happen only on the workstation
 
-#### Cognee PostgreSQL Dies
-
-- Impact: Cognee pattern queries may fail
-- Detection: Connection failures
-- Recovery: RDS automatic failover to standby
-- User impact: Agent executions fail with pattern query error
-- Time to recover: < 5 minutes (RDS SLA)
-- Mitigation: Cognee manages its own data; failures isolated from ACE app
-
-#### Neo4j Dies
-
-- Impact: Pattern queries fail
-- Detection: Connection errors
-- Recovery: Neo4j Aura handles failover
-- User impact: Agent executions fail
-- Time to recover: Aura SLA dependent
-- Mitigation: Cache patterns with longer TTL
-
-### Cascading Failure Prevention
-
-We prevent small failures from cascading using circuit breakers, timeouts, rate limiting, and bulkheads. For implementation details, see [Communication Patterns](04-communication-patterns.md#circuit-breaker-pattern).
-
-## Security Boundaries
-
-The system is organized into five trust zones (Internet, DMZ, Application, Internal, Data) with different security requirements. For details on network security, TLS configuration, and zone policies, see [Security Architecture](06-security-architecture.md#network-security).
-
-## That's the Architecture
-
-Key takeaways:
-
-- **Sidecars handle infrastructure** - Envoy and OPA keep app code clean
-- **Clear service boundaries** - Each service has a specific job
-- **Independent scaling** - API and Cognee scale separately
-- **Resilient by design** - Circuit breakers, timeouts, automatic failover
-- **Zero-trust security** - Nothing is implicitly trusted
-
-Next doc covers why we chose REST external and gRPC internal.
-
----
-
-Copyright © 2025 Jeremy K. Johnson. All rights reserved.
+**Next:** [Communication Patterns](04-communication-patterns.md)

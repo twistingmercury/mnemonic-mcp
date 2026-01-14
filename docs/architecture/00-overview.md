@@ -1,225 +1,178 @@
-# ACE Architecture - The Big Picture
+# ACE Architecture Overview
 
-**Project:** ACE (Agentic Coding Engine)  
-**Version:** 1.0  
-**Last Updated:** December 22, 2025
+[Back to Documentation Index](../README.md)
 
-## What We're Building
+## Table of Contents
 
-ACE is a system for deterministic agent routing with dynamic pattern querying. It replaces LLM-based routing interpretation with code-based routing logic.
+- [Introduction](#introduction)
+- [Core Concept](#core-concept)
+- [System Model](#system-model)
+- [Phased Approach](#phased-approach)
+  - [Phase 1: Claude Code Integration](#phase-1-claude-code-integration)
+  - [Phase 2: Direct API Integration](#phase-2-direct-api-integration)
+- [Key Principles](#key-principles)
+- [Document Navigation](#document-navigation)
+- [Design Documents](#design-documents)
 
-### The Problem We're Solving
+## Introduction
 
-Claude Code uses LLM interpretation for routing decisions, which results in:
+ACE (Agent Coordination Engine) is an orchestration layer built on top of Claude Code. It provides deterministic routing, dynamic patterns from Mnemonic, and flexible execution strategies while preserving the capabilities of Claude Code.
 
-- Non-deterministic routing (same prompt may route differently each time)
-- No guaranteed workflow execution order
-- Unpredictable behavior that prevents reliable automation
+## Core Concept
 
-ACE addresses this with code-based routing (deterministic) and on-demand pattern querying. See [Requirements](01-requirements.md#2-context-efficiency) for the context reduction details.
+ACE is **not a replacement** for Claude Code. Instead, it serves as an orchestration layer that provides:
 
-## Core Goals
-
-- **Deterministic routing** - Same input always routes to the same agent
-- **Context efficiency** - Query patterns dynamically instead of pre-loading
-- **Team collaboration** - Share patterns across teams via git
-- **Independent scaling** - Scale components based on their workload
-
-## Design Philosophy
-
-We're following some key principles here:
-
-### 1. Infrastructure vs Application Code
-
-The infrastructure layer (Envoy, OPA) handles auth, rate limiting, and security. Our application code focuses purely on orchestration logic. No auth code in the app = cleaner, safer, easier to test.
-
-### 2. REST for External, gRPC for Internal
-
-External API uses REST because developers love it - easy debugging, familiar tools, works everywhere. Internal services use gRPC because performance matters when you're making lots of service-to-service calls.
-
-### 3. Managed Infrastructure
-
-We're using managed databases (RDS, Neo4j Aura) instead of running our own. The team should focus on building features, not babysitting PostgreSQL replicas.
-
-### 4. Independent Scalability
-
-Cognee (pattern search) is memory-heavy. The API server is CPU-bound. They scale differently, so we're deploying them as separate services from the start.
-
-### 5. Service Mesh Patterns
-
-Using Envoy sidecars for infrastructure concerns. We can adopt full Istio later if we need it, but starting simple with manual sidecar configs.
-
-## High-Level Architecture
+- **Deterministic routing** via code-based logic (not LLM-driven)
+- **Dynamic patterns** retrieved from Mnemonic's knowledge graph
+- **Local execution** through Claude Code (Phase 1) or direct Anthropic API calls (Phase 2)
 
 ```mermaid
 graph TB
-    %% subgraph 
-    Clients["Client Applications"]
-    %%     CLI["CLI Client"]
-    %%     IDE["IDE Plugins"]
-    %% end
-
-    subgraph K8s["Kubernetes Cluster"]
-        subgraph APIPod["API Server Pod"]
-            Envoy["Envoy Sidecar<br/>Auth, Rate Limit, TLS"]
-            OPA["OPA Sidecar<br/>Authorization"]
-            API["API Server<br/>Business Logic"]
-        end
-
-        subgraph CogneePod["Cognee Service Pod"]
-            CogneeAPI["Cognee MCP Server<br/>(Docker Image)"]
-        end
-
-        Redis["Redis<br/>Rate Limits, Cache"]
-        AuthSvc["Auth Service<br/>API Key Validation"]
+    subgraph "User Workstation"
+        CLI[ACE CLI]
+        CC[Claude Code]
     end
 
-    subgraph ManagedServices["Managed Services"]
-        AppDB["RDS PostgreSQL<br/>ACE App Data"]
-        CogneeDB["RDS PostgreSQL<br/>Cognee Data"]
-        Neo4j["Neo4j Aura<br/>Knowledge Graph"]
+    subgraph "Server Infrastructure"
+        MN[Mnemonic Server]
+        PG[(Postgres + PGVector)]
+        NEO[(Neo4j)]
     end
 
-    Clients -->|REST/HTTPS| Envoy
-    Envoy --> OPA
-    OPA --> API
-    Envoy -->|Rate Check| Redis
-    Envoy -->|Auth Check| AuthSvc
-    AuthSvc --> AppDB
-    API -->|MCP Protocol| CogneeAPI
-    CogneeAPI --> CogneeDB
-    CogneeAPI --> Neo4j
-
-    %% style Clients fill:#E0E7FF
-    style K8s fill:#FEF3C7
-    style ManagedServices fill:#DBEAFE
+    CLI -->|"1. REST: Route + Patterns"| MN
+    MN <--> PG
+    MN <--> NEO
+    MN -->|"2. Agent + Patterns"| CLI
+    CLI -->|"3. Execute with context"| CC
+    CC -->|"4. Results"| CLI
 ```
 
-## Key Architectural Decisions
+## Repository Structure
 
-Here's what we decided and why:
+ACE consists of two separate repositories:
 
-| Decision                   | Rationale                                | Where to Read More                                             |
-| -------------------------- | ---------------------------------------- | -------------------------------------------------------------- |
-| REST for external API      | Developer experience, tooling, debugging | [04-communication-patterns.md](04-communication-patterns.md)   |
-| gRPC for internal comms    | Performance, type safety, streaming      | [04-communication-patterns.md](04-communication-patterns.md)   |
-| Cognee as separate service | Independent scaling, resource isolation  | [03-system-architecture.md](03-system-architecture.md)         |
-| Managed databases          | No ops overhead, built-in HA             | [05-data-architecture.md](05-data-architecture.md)             |
-| Envoy + OPA sidecars       | Externalize infrastructure concerns      | [06-security-architecture.md](06-security-architecture.md)     |
-| Service mesh patterns      | Uniform observability, zero-trust        | [08-deployment-architecture.md](08-deployment-architecture.md) |
+| Repository | Purpose |
+|------------|---------|
+| **mnemonic** | Backend server providing routing and pattern retrieval via REST API |
+| **ace** | CLI client that orchestrates routing decisions and Claude Code execution |
 
-## What This Gets Us
+Separate repositories allow independent release cycles—Mnemonic can be updated without rebuilding the CLI.
 
-### For Development
+## System Model
 
-**Parallel Work Streams**  
-Clear service boundaries mean teams can work independently. Well-defined contracts (protobuf) let you mock dependencies. Nobody's blocked waiting for someone else.
+The ACE architecture follows a CLI-centric model where:
 
-**Better Testing**  
-Business logic is testable without spinning up infrastructure. Infrastructure is testable without touching application code. Contract testing at service boundaries keeps everything honest.
+1. **ACE CLI** runs on the user's workstation and serves as the primary interface
+2. **Mnemonic** provides centralized routing logic and pattern retrieval via REST API
+3. **Claude Code** (or Anthropic API) handles actual LLM interactions and tool execution
 
-### For Operations
+This separation keeps routing deterministic and server-side while execution remains local.
 
-**Independent Deployment**  
-Update auth policies without redeploying the app. Scale Cognee independently. Run database migrations without blocking releases. Canary deploy per service.
+## Phased Approach
 
-**Great Observability**  
-Uniform telemetry across services via OpenTelemetry. Request tracing across boundaries. Centralized logging and metrics. Clear failure domains.
+### Phase 1: Claude Code Integration
 
-**Security by Default**  
-Zero-trust architecture - nothing is implicitly trusted. Centralized auth/authz policies. Defense in depth. Built-in audit trail.
+The initial implementation leverages Claude Code as the execution engine.
 
-### For Product
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI as ACE CLI
+    participant MN as Mnemonic
+    participant CC as Claude Code
 
-**Feature Velocity**  
-Add new agents without infrastructure changes. Update patterns without deployment. New rate limit tier? Config change. Fast experimentation.
+    User->>CLI: Submit prompt
+    CLI->>MN: GET /ace/route
+    MN-->>CLI: Return agent + patterns
+    CLI->>CC: Invoke with enriched prompt
+    CC-->>CLI: Return results
+    CLI-->>User: Display output
+```
 
-**Reliability**  
-Deterministic routing = predictable behavior. Automatic retries at infrastructure layer. Circuit breakers prevent cascading failures. Graceful degradation when things break.
+**Characteristics:**
 
-**Cost Management**
-Dynamic pattern querying dramatically reduces token usage. Independent scaling prevents over-provisioning. Managed services reduce ops overhead. Usage tracking for cost allocation. See [Cost Efficiency](#cost-efficiency) below for specific numbers.
+- Claude Code installation required on workstation
+- Routing rules centralized in Mnemonic
+- Files written locally via Claude Code's native capabilities
+- Benefits from Claude Code's existing tool ecosystem
 
-## Document Structure
+### Phase 2: Direct API Integration
 
-The architecture is documented across 10 focused docs:
+Future implementation removes Claude Code dependency by calling Anthropic API directly.
 
-1. **[Requirements](01-requirements.md)** - What we're solving and why
-2. **[Architectural Decisions](02-architectural-decisions.md)** - Major decisions with justification (ADR format)
-3. **[System Architecture](03-system-architecture.md)** - How components fit together
-4. **[Communication Patterns](04-communication-patterns.md)** - Why REST external, gRPC internal
-5. **[Data Architecture](05-data-architecture.md)** - Database strategy and why managed services
-6. **[Security Architecture](06-security-architecture.md)** - Auth, authz, zero-trust approach
-7. **[Observability Architecture](07-observability-architecture.md)** - Monitoring, logging, tracing
-8. **[Deployment Architecture](08-deployment-architecture.md)** - Kubernetes, service mesh, GitOps
-9. **[Scalability](09-scalability.md)** - How we scale and when
-10. **[Trade-offs](10-trade-offs.md)** - Alternatives we considered and why we chose what we did
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI as ACE CLI
+    participant MN as Mnemonic
+    participant ANT as Anthropic API
 
-## Reading Guide
+    User->>CLI: Submit prompt
+    CLI->>MN: GET /ace/route
+    MN-->>CLI: Return agent + patterns
+    CLI->>ANT: Direct API call
+    ANT-->>CLI: Return response
+    CLI->>CLI: Execute tools locally
+    CLI-->>User: Display output
+```
 
-**If you're implementing this:**
+**Characteristics:**
 
-1. Start with Requirements (01)
-2. Read System Architecture (03)
-3. Check Communication Patterns (04)
-4. Review deployment strategy (08)
+- Only Anthropic account required (no Claude Code)
+- ACE CLI handles tool execution locally
+- Greater control over API interactions
+- Reduced external dependencies
 
-**If you're doing security review:**
+## Key Principles
 
-1. Security Architecture (06)
-2. Data Architecture (05)
-3. Observability (07)
+1. **Orchestration, not replacement**: ACE enhances Claude Code rather than replacing it
+2. **Deterministic routing**: Routing decisions are code-based, predictable, and auditable
+3. **Centralized patterns**: Team knowledge shared through a common memory service
+4. **Local execution**: All file operations and tool execution happen on the user's machine
+5. **Phased evolution**: Architecture supports gradual transition from Claude Code to direct API
 
-**If you're a stakeholder wanting the overview:**
+## Document Navigation
 
-1. This document (00)
-2. Requirements (01)
-3. Trade-offs (10)
+| Document | Description |
+|----------|-------------|
+| [01-requirements.md](01-requirements.md) | Problem statement and success criteria |
+| [02-architectural-decisions.md](02-architectural-decisions.md) | Key architectural decision records |
+| [03-system-architecture.md](03-system-architecture.md) | Component breakdown and data flow |
+| [04-communication-patterns.md](04-communication-patterns.md) | Protocol and integration patterns |
+| [05-deployment-architecture.md](05-deployment-architecture.md) | Deployment topology and operations |
+| [project-structure.md](project-structure.md) | Repository layout and organization |
+| [mnemonic-integration-concept.md](mnemonic-integration-concept.md) | ACE + Mnemonic integration details |
 
-**If you're planning operations:**
+## Design Documents
 
-1. Deployment Architecture (08)
-2. Scalability (09)
-3. Observability Architecture (07)
+Architecture documents describe **what** the system does and **why** decisions were made. Design documents (in `docs/design/`) contain **how** - the detailed specifications produced during implementation.
 
-## What's Next
+### Architecture vs Design
 
-After architecture approval, we'll:
+| Aspect | Architecture Docs | Design Docs |
+|--------|-------------------|-------------|
+| Focus | Concepts, decisions, trade-offs | Implementation details |
+| Audience | All stakeholders | Implementers |
+| Timing | Before implementation | During implementation |
+| Location | `docs/architecture/` | `docs/design/` |
 
-1. **Phase 1:** Define contracts (protobuf, API schemas, DB schemas)
-2. **Phase 2:** Implement core services (parallel development streams)
-3. **Phase 3:** Add infrastructure services (sidecars, observability)
-4. **Phase 4:** Integration and production readiness
+### Planned Design Documents
 
-See [Architectural Decisions](02-architectural-decisions.md) for the phased implementation approach and how teams can work in parallel.
+The following design documents will be created by specialized agents during implementation:
 
-## System Characteristics at a Glance
+| Document | Description | Responsible Agent |
+|----------|-------------|-------------------|
+| [data-models.md](../design/data-models.md) | Entity schemas and relationships | go-architect-agent |
+| [api-specification.md](../design/api-specification.md) | OpenAPI spec for Mnemonic REST API | api-architect-agent |
+| [routing-engine.md](../design/routing-engine.md) | Routing algorithm details | go-architect-agent |
+| [configuration.md](../design/configuration.md) | CLI configuration reference | go-architect-agent |
 
-These are the key targets. For detailed analysis and scaling stages, see [Scalability](09-scalability.md).
+### Cross-References
 
-### Performance Targets
+Design documents should reference back to these architecture documents for context. When implementing a feature:
 
-- API response time: < 100ms (excluding agent execution)
-- Agent execution: 10-30 seconds (Claude API bound)
-- Pattern query: < 500ms
-- Throughput: 100+ requests/second per API instance
+1. Review the relevant architecture document for context and constraints
+2. Create or update the design document with implementation details
+3. Link back to architecture docs to explain why decisions were made
 
-### Availability Targets
-
-- Uptime: 99.9% (3 nines)
-- Recovery time: < 5 minutes
-- Data durability: 99.999999999% (managed DB SLA)
-
-### Cost Efficiency
-
-- Token usage: ~75KB context (vs ~758KB pre-loading) - 78% reduction
-- Cost per execution: ~$0.13 (Sonnet 4)
-- Infrastructure: $500-2000/month depending on scale
-
-See [Requirements](01-requirements.md#2-context-efficiency) for cost analysis details.
-
-That's the big picture. Dive into individual docs for the details on specific areas.
-
----
-
-Copyright © 2025 Jeremy K. Johnson. All rights reserved.
+**Next:** [Requirements](01-requirements.md)

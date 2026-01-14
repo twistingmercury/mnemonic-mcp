@@ -1,643 +1,362 @@
-# Major Architectural Decisions
+# Architectural Decisions
 
-**Document:** Architectural Decision Records (ADRs)  
-**Version:** 1.0  
-**Last Updated:** December 22, 2025
+[Back to Overview](00-overview.md) | [Back to Documentation Index](../README.md)
 
-This doc captures the big architectural decisions we made, why we made them, what we considered, and what we're accepting as trade-offs.
+## Table of Contents
 
-## ADR-001: API-First Architecture
+- [Decision Record Format](#decision-record-format)
+- [ADR-001: Orchestrator Model](#adr-001-orchestrator-model)
+- [ADR-002: Routing Location](#adr-002-routing-location)
+- [ADR-003: Claude Code Integration Strategy](#adr-003-claude-code-integration-strategy)
+- [ADR-004: Unified Backend with REST API](#adr-004-unified-backend-with-rest-api)
+- [ADR-005: Separate Repositories](#adr-005-separate-repositories)
+- [ADR-006: Phased Evolution Path](#adr-006-phased-evolution-path)
+- [Decision Summary](#decision-summary)
 
-**Status:** Accepted  
-**Date:** December 2024
+## Decision Record Format
+
+Each architectural decision follows this structure:
+
+- **Context**: The situation and forces at play
+- **Decision**: What we decided to do
+- **Consequences**: The results of the decision, both positive and negative
+
+## ADR-001: Orchestrator Model
 
 ### Context
 
-We could build this as just a CLI tool, as an API with clients, or as some hybrid approach. Each has different implications for how users interact with the system and how we evolve it.
+We needed to decide whether ACE should:
+
+1. Replace Claude Code entirely with a custom implementation
+2. Wrap Claude Code with additional functionality
+3. Orchestrate Claude Code as an execution engine
+
+Teams already use Claude Code effectively. The challenge is coordination and shared knowledge, not the underlying LLM capabilities.
 
 ### Decision
 
-We're building an API server with the CLI as a client, not a standalone CLI binary.
+**ACE is an orchestration layer on top of Claude Code, not a replacement.**
 
-**The architecture:**
+ACE provides:
 
-```mermaid
-flowchart LR
-    User --> CLI[CLI Client] --> API[REST API] --> Backend[Backend Services]
-```
-
-### Rationale
-
-**Why API-first wins:**
-
-1. **Multiple client types** - We can add a web UI, IDE plugins, or integrations without changing the backend. CLI is just the first client.
-
-2. **Team collaboration** - Centralized execution means shared pattern library, usage tracking, and consistent behavior across the team. Everyone sees the same thing.
-
-3. **Better observability** - Server-side execution gives us metrics, logs, and traces. We can see what's actually happening in production.
-
-4. **Portfolio value** - Demonstrates production architecture skills. Shows thinking about scale, operations, and team dynamics. Makes for better blog content.
-
-5. **Future monetization** - Usage tracking and billing are built-in from day one. Can't do that with a standalone CLI.
-
-**What we're giving up:**
-
-- More infrastructure to manage (API server, databases, deployment)
-- Network dependency (can't work offline)
-- Longer time to MVP (8 weeks instead of 2)
-- Operational overhead
-
-### Alternatives Considered
-
-**Option A: CLI-Only**  
-Just ship a binary, no server infrastructure.
-
-Pros: Simple, fast to build, works offline  
-Cons: No team coordination, no centralized tracking, hard to add web UI later
-
-**Option C: Hybrid (CLI + Optional Server)**  
-CLI works standalone OR connects to server.
-
-Pros: Flexibility, gradual migration  
-Cons: Two codepaths to maintain, confusing UX, testing nightmare
+- Deterministic routing logic (code-based, not LLM-driven)
+- Dynamic patterns from Mnemonic (the unified backend)
+- Local execution via Claude Code (Phase 1) or direct Anthropic API (Phase 2)
 
 ### Consequences
 
 **Positive:**
 
-- Clean separation between client and backend
-- Easy to add new clients
-- Production-grade architecture from day one
-- Natural scaling path
+- Preserves existing Claude Code workflows and capabilities
+- Teams can adopt ACE incrementally
+- Reduces implementation complexity significantly
+- Benefits from Claude Code's tool ecosystem and updates
 
 **Negative:**
 
-- Need to deploy and operate infrastructure
-- Local development more complex
-- Network latency in critical path
+- Depends on Claude Code for Phase 1 (external dependency)
+- Limited control over Claude Code's internal behavior
+- Must design for eventual Phase 2 transition
 
-**Neutral:**
-
-- Demonstrates real-world architecture patterns
-- More moving parts but clearer boundaries
-
----
-
-## ADR-002: REST External, gRPC Internal
-
-**Status:** Accepted  
-**Date:** December 2024
+## ADR-002: Routing Location
 
 ### Context
 
-We need to decide on communication protocols. Do we use the same protocol everywhere, or different protocols for different use cases?
+Routing logic could live in:
+
+1. **Client-side (CLI)**: Each workstation has its own routing rules
+2. **Server-side (API)**: Centralized routing service
+3. **Hybrid**: Basic routing client-side, complex routing server-side
+
+Key considerations:
+
+- Team collaboration requires shared routing rules
+- Routing updates should not require client deployments
+- Routing decisions should be auditable
 
 ### Decision
 
-REST/HTTP for external API, gRPC for internal service-to-service communication.
+**Routing logic lives server-side in Mnemonic.**
 
-**The split:**
+The CLI sends requests to Mnemonic, which determines the appropriate route and returns enriched context. The CLI then invokes Claude Code locally.
 
 ```mermaid
-flowchart LR
-    subgraph External
-        Client --> REST[REST API] --> BL[Business Logic]
+graph LR
+    CLI[ACE CLI] -->|"REST"| MN[Mnemonic]
+    MN -->|"Routing Logic"| MN
+    MN -->|"Route + Context"| CLI
+    CLI -->|"Execute"| CC[Claude Code]
+```
+
+### Consequences
+
+**Positive:**
+
+- Centralized routing enables team-wide consistency
+- Routing updates deploy once, affect all users immediately
+- Routing decisions can be logged and analyzed centrally
+- No client updates needed for routing changes
+
+**Negative:**
+
+- Requires network connectivity to Mnemonic
+- Mnemonic becomes a dependency for all operations
+- Must handle Mnemonic unavailability gracefully
+
+## ADR-003: Claude Code Integration Strategy
+
+### Context
+
+Claude Code can be invoked in several ways:
+
+1. **Direct CLI invocation**: ACE CLI spawns Claude Code as a subprocess
+2. **API integration**: ACE CLI calls Claude Code's API (if available)
+3. **Wrapper script**: ACE provides a script that wraps Claude Code commands
+
+The integration must:
+
+- Pass enriched context (routing + patterns) to Claude Code
+- Capture and return results to the user
+- Work with Claude Code's existing interface
+
+### Decision
+
+**ACE CLI invokes Claude Code directly as the execution engine.**
+
+The CLI:
+
+1. Receives routing decision and patterns from Mnemonic
+2. Constructs an enriched prompt with context
+3. Invokes Claude Code with the enriched prompt
+4. Returns results to the user
+
+```mermaid
+graph TB
+    subgraph "ACE CLI Process"
+        A[Receive User Input]
+        B[Call Mnemonic]
+        C[Construct Enriched Prompt]
+        D[Invoke Claude Code]
+        E[Return Results]
     end
-    subgraph Internal
-        A[Service A] -->|gRPC| B[Service B]
-    end
+
+    A --> B --> C --> D --> E
 ```
-
-### Rationale
-
-**Why REST externally:**
-
-1. **Developer experience** - Everyone knows REST. Curl works. Postman works. Browser works. Zero friction for API users.
-
-2. **Debugging** - Easy to inspect requests. Browser dev tools work. No special tooling needed.
-
-3. **Documentation** - OpenAPI spec gives us automatic documentation. Interactive API explorer out of the box.
-
-**Why gRPC internally:**
-
-1. **Performance** - Binary protocol is 2-5x faster than JSON. Matters when you're making lots of internal calls.
-
-2. **Type safety** - Protobuf definitions give us compile-time type checking. Catch bugs before runtime.
-
-3. **Streaming** - Built-in support for streaming responses. Useful for long-running agent executions.
-
-4. **Better for high-frequency calls** - API -> Cognee might happen 5-10 times per request. gRPC shines here.
-
-### Alternatives Considered
-
-**Option A: REST Everywhere**  
-All communication via HTTP/JSON.
-
-Pros: Simple, single protocol, familiar  
-Cons: Performance overhead for internal calls, larger payloads, no streaming
-
-**Option B: gRPC Everywhere**  
-All communication via gRPC.
-
-Pros: Consistent, fast, type safe  
-Cons: Terrible external developer experience, browser limitations, harder debugging
-
-**Option D: GraphQL**  
-GraphQL for external API.
-
-Pros: Flexible queries, strong typing  
-Cons: Overkill for our simple API, caching complexity, N+1 query problems
 
 ### Consequences
 
 **Positive:**
 
-- Right protocol for each use case
-- External API is approachable
-- Internal services are fast
-- Can support streaming when needed
+- Leverages Claude Code's full capabilities
+- Minimal wrapper complexity
+- Users see familiar Claude Code behavior
+- File operations handled natively by Claude Code
 
 **Negative:**
 
-- Two protocols to maintain
-- Translation layer needed at boundaries
-- Team needs to know both protocols
+- Claude Code must be installed and configured
+- Limited control over Claude Code's internal processing
+- Must handle Claude Code version differences
 
-**Neutral:**
-
-- Industry-standard pattern (Google, Netflix, etc. do this)
-- More complex but justified by benefits
-
----
-
-## ADR-003: Cognee as Separate Service
-
-**Status:** Accepted  
-**Date:** December 2024
+## ADR-004: Unified Backend with REST API
 
 ### Context
 
-Cognee handles our pattern search and knowledge graph queries. Should we embed it in the API server, run it as a separate service, or use an external SaaS?
+We needed to decide how to structure the backend services and what protocol to use for CLI-to-server communication.
+
+Options considered:
+
+1. **Separate services**: ACE API for routing + separate Shared Memory Service for patterns
+2. **Unified backend**: Single service (Mnemonic) handling both routing and patterns
+3. **Protocol options**: REST, gRPC, or MCP for external API
+
+Key considerations:
+
+- Simplicity of deployment and operations
+- Developer experience for CLI integration
+- Debugging and tooling support
+- Future extensibility
 
 ### Decision
 
-Deploy Cognee as a separate service in its own pod.
+**Mnemonic is the unified backend providing both routing and pattern retrieval via REST API.**
 
-**The architecture:**
+For MVP, Mnemonic serves only ACE (not a general-purpose memory service). This keeps the scope focused while the architecture matures.
 
 ```mermaid
-flowchart TB
-    subgraph APIPod[API Server Pod]
-        Envoy[Envoy Sidecar]
-        OPA[OPA Sidecar]
-        APIServer[API Server Container]
+graph TB
+    CLI[ACE CLI] -->|"REST"| MN[Mnemonic]
+
+    subgraph "Mnemonic"
+        ROUTE[Routing Engine]
+        PATTERN[Pattern Service]
+        STORAGE[Storage Layer]
     end
-    subgraph CogneePod[Cognee Service Pod]
-        CogneeMCP[Cognee MCP Server Container]
+
+    subgraph "Storage"
+        PG[(Postgres)]
+        PGV[(PGVector)]
+        NEO[(Neo4j)]
     end
-    APIPod -->|MCP Protocol| CogneePod
+
+    MN --> ROUTE
+    MN --> PATTERN
+    PATTERN --> STORAGE
+    STORAGE --> PG
+    STORAGE --> PGV
+    STORAGE --> NEO
 ```
 
-### Rationale
-
-**Why separate service:**
-
-1. **Independent lifecycle** - Update Cognee without restarting the API server. Deploy new Cognee versions independently.
-
-2. **Resource isolation** - Cognee is memory-intensive (4-8GB). API server is CPU-bound (2-4GB). They have completely different resource profiles.
-
-3. **Independent scaling** - Scale API (3-10 pods) and Cognee (2-5 pods) based on their actual workload. API scales with request volume, Cognee scales with pattern query load.
-
-4. **Use existing MCP server** - Cognee ships as an MCP server Docker image. We communicate via standard MCP protocol.
-
-5. **Clear service boundaries** - Each service has a single responsibility. Makes troubleshooting and monitoring easier.
-
-### Alternatives Considered
-
-**Option A: Embedded in API:**  
-Import Cognee as a library.
-
-Pros: Simple deployment, no network hop  
-Cons: Coupled scaling, resource contention, harder to update
-
-**Option B: Same Pod, Different Containers:**  
-API and Cognee containers in one pod.
-
-Pros: Localhost communication, simpler networking  
-Cons: Can't scale independently, different resource profiles clash, pod becomes large
-
-**Option D: External SaaS (Cognee Cloud):**  
-Use hosted Cognee.
-
-Pros: Zero management overhead  
-Cons: Data sovereignty issues, network latency, vendor lock-in, cost at scale
+See [Communication Patterns](04-communication-patterns.md#rest-endpoints) for REST endpoint details.
 
 ### Consequences
 
 **Positive:**
 
-- Clean separation of concerns
-- Can use official Cognee MCP server
-- Independent scaling from day one
-- Independent updates and deployments
-- Standard MCP protocol communication
-- Clear resource allocation per service
+- Single backend simplifies deployment and operations
+- REST is universally understood with excellent tooling
+- Easy to debug with curl, Postman, browser dev tools
+- No protocol translation between services
+- MVP scope keeps complexity manageable
 
 **Negative:**
 
-- Service discovery needed (Kubernetes DNS)
-- Network latency between services (minimal, within cluster)
-- Slightly more complex deployment manifests
+- REST less efficient than gRPC for internal communication
+- Single service means single point of failure
+- MVP scope limits immediate reusability for other tools
 
-**Neutral:**
-
-- Standard Kubernetes pattern (separate services = separate pods)
-- Production-ready architecture from the start
-
----
-
-## ADR-004: Managed Databases
-
-**Status:** Accepted  
-**Date:** December 2024
+## ADR-005: Separate Repositories
 
 ### Context
 
-We need PostgreSQL, Neo4j, and Redis. Should we self-host them in Kubernetes or use managed services?
+We needed to decide how to organize the codebase for ACE CLI and Mnemonic backend.
+
+Options considered:
+
+1. **Monorepo**: Single repository containing both CLI and Mnemonic
+2. **Separate repos**: Distinct repositories for CLI and backend
+
+Key considerations:
+
+- Release cycle independence
+- Team autonomy
+- CI/CD complexity
+- Code sharing patterns
 
 ### Decision
 
-Use managed database services: RDS PostgreSQL, Neo4j Aura, ElastiCache Redis.
+**ACE consists of two separate repositories: mnemonic and ace.**
 
-### Rationale
-
-**Why managed services:**
-
-1. **No ops overhead** - No backups to manage. No replicas to configure. No failover to worry about. Just use it.
-
-2. **Built-in HA** - Multi-AZ by default. Automatic failover. We get 99.95% SLA without lifting a finger.
-
-3. **Professional support** - Database breaks at 2 AM? That's their problem, not ours.
-
-4. **Team focuses on application** - We're building an agent orchestrator, not a database company. Use our time on value-add work.
-
-5. **Cost-effective at our scale** - Until we hit 100K+ users, managed services are cheaper than hiring database experts.
-
-**What we're giving up:**
-
-- Some vendor lock-in (mitigated by using standard protocols)
-- Less control over tuning
-- Higher cost at very large scale
-
-### Alternatives Considered
-
-**Option A: Self-Hosted in Kubernetes**  
-StatefulSets for PostgreSQL, Neo4j, Redis.
-
-Pros: Full control, cost savings at very large scale  
-Cons: Operations overhead, need database expertise, higher risk of data loss
-
-**Option C: Hybrid**  
-PostgreSQL managed, Neo4j self-hosted.
-
-Pros: Balanced approach  
-Cons: Inconsistent operations, still need some database expertise
-
-### Consequences
-
-**Positive:**
-
-- Reliable from day one
-- Automatic backups and disaster recovery
-- Can start small and grow
-- Professional-grade infrastructure
-
-**Negative:**
-
-- Higher cost than self-hosting (at scale)
-- Some vendor-specific features
-
-**Neutral:**
-
-- Standard protocols minimize lock-in
-- Can migrate to self-hosted later if economics change
-
----
-
-## ADR-005: Envoy + OPA for Auth/Authz
-
-**Status:** Accepted  
-**Date:** December 2024
-
-### Context
-
-Every API request needs authentication and authorization. Where should that logic live?
-
-### Decision
-
-Handle authentication and authorization at the infrastructure layer using Envoy sidecars and OPA policy engines.
-
-**The flow:**
+| Repository | Purpose |
+|------------|---------|
+| **mnemonic** | Backend server providing routing and pattern retrieval via REST API |
+| **ace** | CLI client that orchestrates routing decisions and Claude Code execution |
 
 ```mermaid
-flowchart LR
-    Request --> Envoy -->|ext_authz| Auth[Auth Service] --> OPA[OPA Policy] --> App[Application]
+graph TB
+    subgraph "mnemonic repository"
+        MN_API[REST API]
+        MN_ROUTE[Routing Engine]
+        MN_PATTERN[Pattern Service]
+    end
+
+    subgraph "ace repository"
+        ACE_CLI[CLI]
+        ACE_CLIENT[Mnemonic Client]
+        ACE_EXEC[Execution Engine]
+    end
+
+    ACE_CLI --> ACE_CLIENT
+    ACE_CLIENT -->|"REST"| MN_API
 ```
-
-### Rationale
-
-**Why infrastructure layer:**
-
-1. **Zero auth code in application** - Business logic stays pure. No auth concerns bleeding into the app.
-
-2. **Language agnostic** - Same pattern works for Go, Python, Node, whatever. Makes it easy to add services.
-
-3. **Centralized policy** - Update authorization rules without deploying code. Policy as configuration.
-
-4. **Easier security audits** - All auth logic in one place. Clear boundaries.
-
-5. **Service mesh compatible** - When we adopt Istio, this pattern just works.
-
-**How it works:**
-
-Envoy intercepts every request and calls an external auth service. That service validates the API key and returns user context. Then OPA evaluates policies to decide if the request is allowed. Only then does the request reach our application.
-
-The application trusts the headers Envoy injects. It doesn't do any auth itself.
-
-### Alternatives Considered
-
-**Option A: Application Middleware**  
-Auth code in the application.
-
-Pros: Simple, full control, familiar pattern  
-Cons: Auth code in every service, security bugs in application layer, language-specific
-
-**Option B: API Gateway Only**  
-Single gateway handles all auth.
-
-Pros: Centralized, simple  
-Cons: Single point of failure, no service-to-service auth, not zero-trust
 
 ### Consequences
 
 **Positive:**
 
-- Application code is simpler and safer
-- Uniform auth across all services
-- Update auth logic without code deployment
-- Built-in audit trail
+- Independent release cycles (update Mnemonic without rebuilding CLI)
+- Clear ownership boundaries
+- Separate CI/CD pipelines
+- Teams can work independently
+- Flexible deployment (centralized Mnemonic, distributed CLI)
 
 **Negative:**
 
-- More infrastructure to manage
-- Learning curve (Envoy, OPA)
-- Debugging across boundaries
+- Cross-repo changes require coordination
+- No shared code without publishing packages
+- More repositories to manage
 
-**Neutral:**
-
-- Production-standard pattern
-- Demonstrates modern security practices
-
----
-
-## ADR-006: Dynamic Pattern Querying
-
-**Status:** Accepted  
-**Date:** December 2024
+## ADR-006: Phased Evolution Path
 
 ### Context
 
-Agents need access to patterns (examples, templates, guidelines). Should we pre-load all patterns into context or query them dynamically?
+The architecture must support:
+
+- **Phase 1**: Claude Code as the execution engine (MVP)
+- **Phase 2**: Direct Anthropic API calls (future)
+
+This transition should be:
+
+- Transparent to users
+- Achievable without architectural rewrites
+- Optional (teams can stay on Phase 1 if preferred)
 
 ### Decision
 
-Query patterns dynamically using Claude's tool calling feature.
+**Design for Phase 2 from the start, implement Phase 1 first.**
 
-**The approach:**
+The CLI abstracts the execution layer:
+
+- Phase 1: Execution layer calls Claude Code
+- Phase 2: Execution layer calls Anthropic API directly
 
 ```mermaid
-flowchart LR
-    Agent[Agent needs pattern] --> Search[Calls search tool] --> Cognee[Query Cognee] --> Return[Return relevant patterns]
+graph TB
+    subgraph "ACE CLI"
+        UI[User Interface]
+        RT[Routing Client]
+        EX[Execution Layer]
+    end
+
+    subgraph "Phase 1"
+        CC[Claude Code]
+    end
+
+    subgraph "Phase 2"
+        ANT[Anthropic API]
+        TOOLS[Local Tool Executor]
+    end
+
+    UI --> RT --> EX
+    EX -.->|"Phase 1"| CC
+    EX -.->|"Phase 2"| ANT
+    EX -.->|"Phase 2"| TOOLS
 ```
 
-### Rationale
-
-**Why dynamic querying:**
-
-1. **This IS the project** - Solving context bloat is literally the point. Pre-loading defeats the purpose.
-
-2. **78% cost reduction** - $0.13 per execution vs $0.90. That's massive at scale.
-
-3. **Scales forever** - Pattern library can grow to 10,000+ patterns without impacting context size.
-
-4. **Always fresh** - Update a pattern, next query gets the new version. No cache invalidation needed.
-
-5. **Better context utilization** - Use context for actual work instead of patterns.
-
-**The numbers:**
-
-| Scenario    | Context Size      | Cost/Execution    |
-| ----------- | ----------------- | ----------------- |
-| Pre-loading | ~758KB            | ~$0.90            |
-| Dynamic     | ~75KB             | ~$0.13            |
-| **Savings** | **90% reduction** | **85% reduction** |
-
-**Cost calculation breakdown:**
-
-Using [Claude Sonnet 4 pricing](https://platform.claude.com/docs/en/about-claude/pricing): $3/MTok input, $15/MTok output. Token estimate: 1 token ≈ 4 characters ([Anthropic FAQ](https://platform.claude.com/docs/en/about-claude/pricing#frequently-asked-questions)).
-
-_Pre-loading scenario (all patterns in context):_
-
-| Component                        | Size  | Tokens | Cost       |
-| -------------------------------- | ----- | ------ | ---------- |
-| Pattern library                  | 758KB | ~190K  | $0.57      |
-| System prompt + routing          | ~20KB | ~5K    | $0.015     |
-| Average output                   | -     | ~4K    | $0.06      |
-| **Base total**                   |       |        | **$0.65**  |
-| Retry/reasoning overhead (~1.4x) |       |        | +$0.26     |
-| **Estimated total**              |       |        | **~$0.90** |
-
-_Dynamic query scenario (patterns fetched on-demand):_
-
-| Component               | Size  | Tokens | Cost            |
-| ----------------------- | ----- | ------ | --------------- |
-| Retrieved patterns      | ~50KB | ~12K   | $0.036          |
-| System prompt + routing | ~20KB | ~5K    | $0.015          |
-| Average output          | -     | ~4K    | $0.06           |
-| Tool use overhead       | -     | ~350   | $0.001          |
-| **Estimated total**     |       |        | **~$0.11-0.13** |
-
-Notes:
-
-- Pre-loading incurs higher retry/reasoning overhead due to context overload and less focused responses
-- Dynamic querying adds minimal tool overhead (~346 tokens per [Anthropic tool pricing](https://platform.claude.com/docs/en/about-claude/pricing#tool-use-pricing))
-- Batch API reduces costs 50% for non-interactive workloads
-
-### Alternatives Considered
-
-**Option A: Pre-load Everything**  
-Load all patterns into context.
-
-Pros: Simple, single API call, all patterns available  
-Cons: Massive context (defeats project purpose), expensive, doesn't scale
-
-**Option C: Pattern Embeddings**  
-Include embeddings, let Claude query semantically.
-
-Pros: Semantic access  
-Cons: Claude doesn't process embeddings directly, still loads everything
-
-**Option D: Pre-load Summaries, Expand on Demand**  
-Two-phase approach.
-
-Pros: Refinement possible  
-Cons: Still significant overhead, complexity without benefit
-
 ### Consequences
 
 **Positive:**
 
-- Achieves core project goal
-- Massive cost savings
-- Unlimited pattern library growth
-- Demonstrates advanced Claude usage
+- Clear evolution path reduces future rework
+- Phase 1 delivers value quickly
+- Phase 2 removes Claude Code dependency
+- Teams can choose their preferred execution model
 
 **Negative:**
 
-- Multiple API calls add latency
-- Tool calling complexity
-- Requires Cognee service
+- Phase 2 requires implementing tool execution locally
+- Must maintain two execution paths (at least during transition)
+- Phase 2 complexity is deferred, not eliminated
 
-**Neutral:**
+## Decision Summary
 
-- Latency is acceptable (pattern query < 500ms)
-- Complexity is justified by savings
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| ADR-001 | Orchestrator model | Leverage existing Claude Code capabilities |
+| ADR-002 | Server-side routing | Enable team collaboration and central management |
+| ADR-003 | Direct CLI invocation | Minimize wrapper complexity |
+| ADR-004 | Unified backend with REST | Simplicity, excellent tooling, easy debugging |
+| ADR-005 | Separate repositories | Independent releases, clear boundaries |
+| ADR-006 | Phased evolution | Deliver value early, design for future |
 
----
-
-## ADR-007: Phased Development
-
-**Status:** Accepted  
-**Date:** December 2024
-
-### Context
-
-How should we structure the implementation to enable parallel work and incremental delivery?
-
-### Decision
-
-Four-phase approach with clear contracts defined upfront.
-
-**Phase 1 (Weeks 1-2):** Foundation  
-Define all contracts: protobuf schemas, API specs, database schemas.
-
-**Phase 2 (Weeks 3-4):** Core Services  
-Implement API server, Cognee wrapper, CLI in parallel.
-
-**Phase 3 (Weeks 5-6):** Infrastructure  
-Add Envoy sidecars, OPA policies, observability.
-
-**Phase 4 (Weeks 7-8):** Integration  
-Wire everything together, end-to-end testing.
-
-### Rationale
-
-**Why phased:**
-
-1. **Parallel development** - Different teams can work independently once contracts are defined.
-
-2. **Incremental value** - Each phase delivers something usable.
-
-3. **Reduced integration risk** - Clear contracts prevent "big bang" integration nightmares.
-
-4. **Flexible timeline** - Can pause after any phase if needed.
-
-**Contract-first approach:**
-
-Spending 2 weeks on contracts might seem slow, but it unlocks 3 teams working in parallel for the next 4 weeks. That's 12 team-weeks of work in 4 calendar weeks. Math works out.
-
-### Consequences
-
-**Positive:**
-
-- Enables parallel work
-- Clear milestones
-- Lower integration risk
-- Incremental delivery
-
-**Negative:**
-
-- Requires upfront design
-- Contract changes are expensive
-- More coordination needed
-
-**Neutral:**
-
-- Standard for distributed systems
-- Well-understood pattern
-
----
-
-## Key Principles Applied
-
-Looking across all these decisions, some patterns emerge:
-
-### 1. Separation of Concerns
-
-Infrastructure handles infrastructure things. Application handles business logic. Never the twain shall meet.
-
-Examples:
-
-- Envoy/OPA for auth, not application middleware
-- Managed databases, not StatefulSets
-- MCP protocol for Cognee, not custom wrapper
-
-### 2. Right Tool for the Job
-
-Use the best tool for each specific use case, even if it means more tools overall.
-
-Examples:
-
-- REST for external (developer experience)
-- gRPC for internal (performance)
-- Managed DBs at this scale (operations)
-
-### 3. Start Simple, Evolve Complexity
-
-Begin with the simplest thing that could work. Add complexity when justified by data.
-
-Examples:
-
-- Cognee in same pod, separate later
-- Manual Envoy configs, Istio later
-- Single region, multi-region at scale
-
-### 4. Production Patterns from Day One
-
-Build like it's going to production, because it is.
-
-Examples:
-
-- API-first architecture
-- Zero-trust security
-- Observability built-in
-- Managed infrastructure
-
-### 5. Portfolio Value Matters
-
-Architecture decisions demonstrate skills and thinking.
-
-Examples:
-
-- Service mesh patterns
-- Policy as code
-- Contract-first development
-- Clear trade-off analysis
-
----
-
-That's the major architectural decisions and why we made them. Next doc covers how these decisions shape the system architecture.
-
----
-
-Copyright © 2025 Jeremy K. Johnson. All rights reserved.
+**Next:** [System Architecture](03-system-architecture.md)

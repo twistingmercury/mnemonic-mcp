@@ -1,229 +1,97 @@
-# What We're Building and Why
+# ACE Requirements
 
-**Document:** Requirements  
-**Version:** 1.0  
-**Last Updated:** December 22, 2025
+[Back to Overview](00-overview.md) | [Back to Documentation Index](../README.md)
 
-## The Problem
+## Table of Contents
 
-Let's talk about what's broken and what we're fixing.
+- [Problem Statement](#problem-statement)
+- [Goals](#goals)
+- [Non-Goals](#non-goals)
+- [Success Criteria](#success-criteria)
+- [Constraints](#constraints)
+- [Assumptions](#assumptions)
 
-### What's Wrong with Current Agent Systems
+## Problem Statement
 
-**Non-Deterministic Routing**  
-Claude Code uses an LLM to interpret delegation rules. That sounds smart until you realize: same prompt, different routing, every single time. You can't build reliable automation on top of that. It's like having a GPS that takes you different routes home every day - technically it works, but you can't predict when you'll arrive.
+Teams using Claude Code face several challenges when working at scale:
 
-**Context Bloat**  
-To give agents proper guidance, we currently pre-load ALL patterns into context. That's ~758KB of text. Every. Single. Execution. At $0.90 per run, that adds up fast. Plus you're eating up context that could be used for actual work.
+1. **Inconsistent routing**: Without centralized logic, each team member makes ad-hoc decisions about which agent or approach to use for a given task
+2. **Knowledge silos**: Patterns, prompts, and best practices remain isolated on individual workstations
+3. **No shared memory**: Teams cannot leverage collective learnings or maintain organizational knowledge
+4. **Manual orchestration**: Complex workflows require manual coordination between multiple Claude Code sessions
 
-**No Team Collaboration**  
-Everyone maintains their own pattern library. Someone figures out the perfect way to structure a BATS test? Too bad, that knowledge stays siloed. No sharing, no improvements, no team learning.
+ACE addresses these challenges by providing an orchestration layer that centralizes routing decisions and enables shared access to patterns and knowledge.
 
-**Can't Scale Different Parts Differently**  
-Everything's coupled together. Pattern search is memory-intensive, but it scales with the same settings as your request handling which is CPU-bound. You end up over-provisioning everything.
+## Goals
 
-## What We're Building
+### Primary Goals
 
-Here's what ACE fixes:
+- **Centralized routing**: Provide deterministic, auditable routing logic that ensures consistent task handling across the team
+- **Shared patterns**: Enable teams to store, retrieve, and evolve reusable patterns through a common service
+- **Claude Code integration**: Leverage existing Claude Code capabilities without requiring users to change their workflow significantly
+- **Team collaboration**: Allow routing rules and patterns to be managed centrally while execution remains local
 
-### 1. Deterministic Routing
+### Secondary Goals
 
-**Requirement:** Same prompt must ALWAYS route to the same agent(s).
+- **Gradual adoption**: Support incremental adoption where teams can start with basic routing and add complexity over time
+- **Future flexibility**: Design for eventual transition to direct Anthropic API integration (Phase 2)
+- **Minimal infrastructure**: Keep server-side components lightweight and easy to deploy
 
-**What success looks like:**
+## Non-Goals
 
-- 100% consistency across runs
-- Fully verifiable through logging
-- No LLM interpretation in routing path
-- Predictable workflow chaining
+The following are explicitly out of scope:
 
-**Why this matters:**  
-Users need to trust the system. Automated workflows need reliability. Debugging is impossible when behavior changes randomly. Costs need to be predictable.
+- **Replacing Claude Code**: ACE orchestrates Claude Code; it does not replace its functionality
+- **Running LLM inference on server**: All LLM interactions happen locally via Claude Code or direct API calls from the CLI
+- **Managing user credentials**: ACE does not store or manage Anthropic API keys
+- **File synchronization**: ACE does not sync files between workstations; file operations are strictly local
+- **Real-time collaboration**: ACE does not provide real-time collaborative editing or presence features
 
-**How we're doing it:**  
-Code-based routing with keyword matching and explicit chaining rules. The LLM doesn't decide where things go - our code does.
+## Success Criteria
 
-### 2. Context Efficiency
+### Phase 1 (MVP)
 
-**Requirement:** Agents query patterns dynamically instead of pre-loading everything.
+| Criterion | Measure |
+|-----------|---------|
+| Routing functionality | CLI successfully routes requests through Mnemonic to appropriate handlers |
+| Pattern retrieval | Patterns stored in Mnemonic are accessible to all team members |
+| Claude Code execution | Local Claude Code invocation works seamlessly with enriched context |
+| Team adoption | Multiple team members can use the same centralized routing configuration |
 
-**What success looks like:**
+### Phase 2 (Future)
 
-- Context usage < 100KB per execution (vs ~758KB with pre-loading)
-- 75%+ cost reduction vs pre-loading
-- 3-5 pattern queries per execution
-- No drop in output quality
+| Criterion | Measure |
+|-----------|---------|
+| Direct API integration | CLI can call Anthropic API directly without Claude Code |
+| Local tool execution | CLI handles tool calls and file operations natively |
+| Feature parity | All Phase 1 capabilities work without Claude Code dependency |
 
-**Why this matters:**
-This is literally the whole point of the project. Pre-loading patterns is expensive and doesn't scale. We need to query what we need, when we need it.
+### Quality Attributes
 
-**How we're doing it:**
-Tool calling protocol. Agent calls a `search()` tool, we query Cognee's knowledge graph, return just the relevant patterns. See [ADR-006](02-architectural-decisions.md#adr-006-dynamic-pattern-querying) for the full rationale and cost analysis.
+- **Reliability**: Routing decisions are deterministic and reproducible
+- **Performance**: API overhead does not significantly impact response times
+- **Maintainability**: Routing rules can be updated without client-side changes
+- **Observability**: Routing decisions and pattern usage are logged for analysis
 
-### 3. Team Collaboration
-
-**Requirement:** Multiple developers share the same pattern library with version control.
-
-**What success looks like:**
-
-- Patterns stored in git
-- Updates propagate to whole team
-- Pattern improvements reviewable via PR
-- Consistent access across everyone
-
-**Why this matters:**  
-Knowledge compounds. Your team gets smarter together instead of separately. Best practices spread naturally.
-
-**How we're doing it:**  
-Patterns in git, loaded into shared Cognee instance. Update a pattern, commit, everyone gets it. Simple.
-
-### 4. Independent Scalability
-
-**Requirement:** Different components scale based on their actual workload.
-
-**What success looks like:**
-
-- API server scales for request load
-- Cognee scales for pattern query load
-- Database resources allocated separately
-- No forced coupling
-
-**Why this matters:**  
-API requests and pattern searches have completely different resource profiles. API is CPU-bound and bursty. Cognee is memory-bound and steady. They shouldn't scale together.
-
-**How we're doing it:**  
-Separate services with separate scaling configs. Start in the same pod (simple), move apart when needed (flexible).
-
-## What We're NOT Building (Initially)
-
-Let's be clear about scope:
-
-**Not building:**
-
-- Web UI (just API + CLI for MVP)
-- Advanced caching strategies (simple caching is fine)
-- Multi-region deployment (single region to start)
-- Custom agent uploads (use git for now)
-- Billing automation (track usage, bill manually)
-
-**Will build later:**
-
-- Web UI (v0.5+)
-- Advanced caching (when we see actual patterns)
-- Multi-region (when we have 10K+ users)
-- Custom uploads (v0.6+)
-- Billing automation (v0.7+)
-
-## Success Metrics
-
-How do we know if this works?
-
-### Technical Metrics
-
-- **Routing accuracy:** 100% deterministic (it better be!)
-- **Context efficiency:** < 100KB per execution
-- **Cost reduction:** > 75% vs pre-loading
-- **Availability:** > 99.9% uptime
-- **Performance:** < 100ms API response time
-
-### Business Metrics
-
-- **Team adoption:** 10+ teams using shared patterns
-- **Pattern growth:** 1000+ patterns in library
-- **Execution volume:** 100K+ requests/month
-- **Cost per execution:** < $0.15 average
-
-### User Experience Metrics
-
-- **Consistency:** Zero reports of routing variation
-- **Reliability:** < 0.1% error rate
-- **Speed:** 90% of executions < 20 seconds
-- **Satisfaction:** Positive feedback on predictability
-
-## Critical Requirements
-
-These are non-negotiable:
-
-**Must have (P0):**
-
-- Deterministic routing (code-based, not LLM)
-- Dynamic pattern querying (tool calling)
-- Basic authentication (API keys)
-- Agent execution with chaining
-- Usage logging
-- Health checks
-
-**Should have (P1):**
-
-- Advanced authorization (OPA policies)
-- Rate limiting per plan
-- Cost tracking and metrics
-- Managed database integration
-- Kubernetes deployment
-- OpenTelemetry observability
-
-**Nice to have (P2):**
-
-- Web UI for management
-- Advanced caching strategies
-- Multi-region deployment
-- Custom agent uploading
-- Pattern versioning
-- Billing automation
-
-## Constraints We're Working With
+## Constraints
 
 ### Technical Constraints
 
-**Kubernetes Deployment**  
-Everything runs in Kubernetes. We're using K8s native features (ConfigMaps, Secrets, Services). Service mesh compatible but not required initially.
+- **Claude Code dependency (Phase 1)**: Initial implementation requires Claude Code installation on user workstations
+- **Network connectivity**: CLI must reach Mnemonic for routing decisions
 
-**Managed Databases**  
-No self-hosted database management. Using cloud provider managed services (RDS, Neo4j Aura, ElastiCache). Team focuses on application, not database ops.
+### Organizational Constraints
 
-**Cognee Integration**
-Using existing Cognee MCP server Docker images. Communication via standard MCP protocol. No modifications to Cognee itself. Support Cognee API evolution through versioning.
+- **Existing workflows**: Must integrate with how teams currently use Claude Code
+- **Security requirements**: Patterns and routing rules may contain sensitive information
+- **Operational capacity**: Server infrastructure should be minimal and easy to maintain
 
-**Protocol Standards**  
-REST for external APIs (OpenAPI spec). gRPC for internal services (protobuf). OpenTelemetry for observability. Standard HTTP/2.
+## Assumptions
 
-### Operational Constraints
+1. **Claude Code availability**: Team members have Claude Code installed and configured (Phase 1)
+2. **Network access**: Workstations can reach the Mnemonic endpoint
+3. **Anthropic accounts**: Users have valid Anthropic API access (via Claude Code or direct API key)
+4. **Pattern quality**: Teams will maintain and curate patterns stored in Mnemonic
+5. **Routing rule governance**: Someone owns the responsibility for maintaining routing logic
 
-**Development Workflow**  
-Support local development with Docker Compose. Production environment should closely match local. Enable parallel development across teams.
-
-**Cost Management**  
-Optimize for cloud cost efficiency. Pay-as-you-grow model. Right-size resources. Use spot instances where appropriate.
-
-### Business Constraints
-
-**Time to Market**  
-Phased rollout. MVP in 8 weeks. Production-ready in 16 weeks. Incremental value delivery. This is for portfolio/job search, not a hard deadline.
-
-**Monetization Support**  
-Usage-based billing ready from day one. Multiple plan tiers. Cost tracking per team. Billing integration hooks (even if we don't bill immediately).
-
-**Portfolio Showcase**  
-Architecture demonstrates production thinking. Shows cloud-native patterns. Exhibits scalability design. Provides blog-worthy technical depth.
-
-## Open Questions
-
-Things we'll figure out during implementation:
-
-**Cognee multi-tenancy?**  
-Should we run one Cognee instance for all teams or separate instances? Impact on resource isolation vs efficiency. We'll decide before production.
-
-**Pattern cache TTL?**  
-How long do we cache patterns? Impact on freshness vs performance. We'll tune based on actual usage patterns.
-
-**Custom agent uploads?**  
-If we allow custom agents, how do we validate them? Security implications? Probably post-MVP based on demand.
-
-**Multi-region strategy?**  
-If we go multi-region, how do we handle data consistency? What's the latency/consistency trade-off? Cross that bridge at 10K+ users.
-
-That's what we're building and why. Next up: how we're building it.
-
----
-
-Copyright © 2025 Jeremy K. Johnson. All rights reserved.
+**Next:** [Architectural Decisions](02-architectural-decisions.md)
