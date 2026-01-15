@@ -1,0 +1,672 @@
+# Pattern Enrichment
+
+[Back to Architecture Overview](../architecture/00-overview.md)
+
+## Overview
+
+Pattern enrichment transforms raw pattern content into searchable, interconnected knowledge. When a pattern is created or updated, Mnemonic automatically enriches it to enable:
+
+1. **Semantic search** - Find patterns by meaning, not just keywords
+2. **Relationship discovery** - Connect related patterns and agents via knowledge graph
+
+This design is inspired by Cognee's cognify pipeline (chunk, classify, extract, integrate, summarize) but adapted for Mnemonic's simpler use case: patterns are already curated documents, not raw data requiring extensive preprocessing.
+
+## Enrichment Model
+
+Patterns include enrichment status fields to track processing state:
+
+```yaml
+Pattern:
+  type: object
+  properties:
+    # ... existing fields (id, name, description, content, tags, etc.)
+
+    # Enrichment status fields
+    enrichment_status:
+      type: string
+      enum: [pending, enriched, failed]
+      description: Current state of pattern enrichment
+    enrichment_error:
+      type: string
+      description: Error message if enrichment_status is "failed"
+    enriched_at:
+      type: string
+      format: date-time
+      description: Timestamp of last successful enrichment
+```
+
+## Automatic Enrichment Flow
+
+Enrichment is triggered automatically when a pattern is created or updated. The API responds immediately while enrichment processes asynchronously in the background.
+
+```mermaid
+sequenceDiagram
+    participant Client as Client (ACE CLI)
+    participant API as Mnemonic API
+    participant PG as Postgres
+    participant Worker as Background Worker
+    participant OpenAI as OpenAI API
+    participant PGV as PGVector
+    participant Neo4j as Neo4j
+
+    Client->>API: POST /ace/patterns
+    API->>PG: Save pattern (status: "pending")
+    API->>PG: Queue enrichment job
+    API-->>Client: 202 Accepted
+
+    Note over Worker,PG: Asynchronous processing
+
+    Worker->>PG: Pick up job from queue
+    Worker->>OpenAI: Generate embedding (embeddings endpoint)
+    OpenAI-->>Worker: Embedding vector
+    Worker->>PGV: Store embedding
+    Worker->>OpenAI: Extract entities (LLM chat completion)
+    OpenAI-->>Worker: Extracted entities
+    Worker->>Neo4j: Create relationships
+    Worker->>PG: Update status to "enriched"
+
+    alt OpenAI call fails
+        Worker->>PG: Update status to "failed"
+        Note over Worker,PG: Store enrichment_error message
+    end
+```
+
+Key characteristics:
+
+- **Automatic**: Users do not invoke enrichment separately; it triggers on create/update
+- **Non-blocking**: API returns 202 Accepted immediately; enrichment happens asynchronously
+- **Status tracking**: Pattern's `enrichment_status` field reflects current state
+- **Idempotent**: Re-enrichment on update replaces previous enrichment data
+
+**Why 202 Accepted instead of 201 Created?** The pattern resource is accepted for processing but not immediately usable. Patterns with `enrichment_status: 'pending'` are excluded from search results until enrichment completes. HTTP 202 accurately signals that the request was accepted but processing is not yet complete.
+
+## Enrichment Pipeline
+
+### Write-time Enrichment
+
+When a pattern is created or updated via `POST/PUT /ace/patterns`:
+
+```mermaid
+flowchart TD
+    A[Pattern Create/Update] --> B
+
+    B["1. Validate & Store Metadata (Postgres)<br/>- Name, description, tags, agent_associations<br/>- enrichment_status: 'pending'"]
+    B --> C
+
+    C["2. Generate Embedding (PGVector)<br/>- Embed pattern content using configured model<br/>- Store vector for similarity search"]
+    C --> D
+
+    D["3. Extract Entities (LLM)<br/>- Identify concepts, technologies, practices<br/>- Extract structured metadata"]
+    D --> E
+
+    E["4. Create Relationships (Neo4j)<br/>- Pattern -[RELATES_TO]-> Pattern<br/>- Pattern -[RELEVANT_FOR]-> Agent<br/>- Entity -[MENTIONED_IN]-> Pattern"]
+    E --> F
+
+    F["5. Update Status<br/>- enrichment_status: 'enriched'<br/>- enriched_at: now()"]
+```
+
+#### Step 1: Validate and Store Metadata
+
+Store pattern metadata in Postgres:
+
+- `id` (UUID, generated)
+- `name`, `description`, `content`
+- `tags` (array)
+- `agent_associations` (JSON with agent_name + relevance)
+- `enrichment_status` (initially "pending")
+- `enrichment_error` (null initially)
+- `enriched_at` (null initially)
+- `created_at`, `updated_at`
+
+#### Step 2: Generate Embedding
+
+Generate a vector embedding from the pattern content:
+
+```go
+// Pseudocode
+embedding := embeddingModel.Embed(pattern.Content)
+pgvector.Store(pattern.ID, embedding)
+```
+
+The embedding captures semantic meaning, enabling similarity search.
+
+#### Step 3: Extract Entities
+
+Use an LLM to extract structured information from the pattern content:
+
+```json
+{
+  "concepts": ["error handling", "retry logic", "exponential backoff"],
+  "technologies": ["Go", "context package"],
+  "practices": ["defensive programming", "graceful degradation"]
+}
+```
+
+This LLM call adds 1-5 seconds of processing time per pattern, which is why enrichment runs asynchronously.
+
+#### Step 4: Create Relationships
+
+Store relationships in Neo4j:
+
+```cypher
+// Pattern to agent relationship
+MERGE (p:Pattern {id: $patternId})
+MERGE (a:Agent {name: $agentName})
+MERGE (p)-[:RELEVANT_FOR {relevance: $relevance}]->(a)
+
+// Pattern to concept relationship
+MERGE (p:Pattern {id: $patternId})
+MERGE (c:Concept {name: $conceptName})
+MERGE (c)-[:MENTIONED_IN]->(p)
+
+// Pattern to pattern relationship (based on shared entities)
+MATCH (p1:Pattern)-[:MENTIONS]->(e:Entity)<-[:MENTIONS]-(p2:Pattern)
+WHERE p1.id <> p2.id
+MERGE (p1)-[:RELATES_TO]->(p2)
+```
+
+#### Step 5: Update Status
+
+On successful completion:
+
+```sql
+UPDATE patterns
+SET enrichment_status = 'enriched',
+    enriched_at = NOW(),
+    enrichment_error = NULL
+WHERE id = $patternId;
+```
+
+On failure:
+
+```sql
+UPDATE patterns
+SET enrichment_status = 'failed',
+    enrichment_error = $errorMessage
+WHERE id = $patternId;
+```
+
+### Query-time Processing
+
+When patterns are retrieved via `POST /ace/route`:
+
+```mermaid
+flowchart TD
+    A["Route Request<br/>prompt: 'Write a Go function with error handling'"] --> B
+
+    B["1. Embed Query<br/>- Generate embedding from prompt"]
+    B --> C
+
+    C["2. Vector Similarity Search (PGVector)<br/>- Find patterns with similar embeddings<br/>- Filter by agent association<br/>- Apply relevance threshold<br/>- Only include enrichment_status = 'enriched'"]
+    C --> D
+
+    D["3. Graph Traversal (Neo4j)<br/>- Expand to related patterns<br/>- Boost patterns with strong graph connections"]
+    D --> E
+
+    E["4. Rank and Return<br/>- Combine similarity + graph scores<br/>- Return top N patterns"]
+```
+
+Note: Query-time search only considers patterns with `enrichment_status = 'enriched'`. Patterns still pending or failed enrichment are excluded from search results.
+
+#### Relevance Scoring
+
+```text
+relevance = (0.7 * vector_similarity) + (0.3 * graph_score)
+```
+
+Where `graph_score` considers:
+
+- Direct agent association relevance
+- Number of hops from matched patterns
+- Shared entity count
+
+## Enrichment Worker Deployment
+
+### In-Process Background Worker
+
+The enrichment worker runs as a background goroutine within the same Mnemonic process:
+
+```mermaid
+flowchart LR
+    subgraph mnemonic["Mnemonic Process"]
+        A[HTTP Handler] --> B[Job Queue]
+        B --> C[Background Worker<br/>goroutine]
+        C --> D[Embedding Service]
+        C --> E[Entity Extraction Service]
+    end
+
+    F[(Postgres<br/>+ PGVector)] <--> A
+    F <--> C
+    G[(Neo4j)] <--> C
+    H[OpenAI API] <--> D
+    H <--> E
+```
+
+**Why in-process?**
+
+- **Low volume expected**: Pattern creates/updates are infrequent (not hundreds per day)
+- **Simpler deployment**: Single container, no external message broker
+- **Postgres-backed queue**: Job queue persists in Postgres for reliability
+- **Easy to migrate**: Can extract to separate service later if needed
+
+### Job Queue Design
+
+Use a Postgres-backed job queue (no external message broker required):
+
+```sql
+CREATE TABLE enrichment_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    pattern_id UUID NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',  -- pending, processing, completed, failed
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    last_error TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    scheduled_for TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    started_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX idx_enrichment_jobs_pending ON enrichment_jobs (scheduled_for)
+    WHERE status = 'pending';
+```
+
+Worker polling:
+
+```sql
+-- Claim next available job (with row-level locking)
+UPDATE enrichment_jobs
+SET status = 'processing',
+    started_at = NOW(),
+    attempts = attempts + 1
+WHERE id = (
+    SELECT id FROM enrichment_jobs
+    WHERE status = 'pending'
+      AND scheduled_for <= NOW()
+      AND attempts < max_attempts
+    ORDER BY scheduled_for
+    FOR UPDATE SKIP LOCKED
+    LIMIT 1
+)
+RETURNING *;
+```
+
+### Scaling and Concurrency
+
+When running multiple Mnemonic instances (pods), all instances can safely process enrichment jobs concurrently without duplicate processing. This is achieved through Postgres row-level locking.
+
+#### How Multi-Pod Job Claiming Works
+
+```mermaid
+sequenceDiagram
+    participant Pod1 as Mnemonic Pod 1
+    participant Pod2 as Mnemonic Pod 2
+    participant PG as Postgres
+
+    Note over Pod1,Pod2: Both pods poll for jobs simultaneously
+
+    Pod1->>PG: SELECT ... FOR UPDATE SKIP LOCKED
+    Pod2->>PG: SELECT ... FOR UPDATE SKIP LOCKED
+
+    Note over PG: Postgres locks row for Pod 1
+    PG-->>Pod1: Returns Job A (locked)
+
+    Note over PG: Pod 2 skips locked row, gets next
+    PG-->>Pod2: Returns Job B (locked)
+
+    Pod1->>PG: UPDATE job A status = 'processing'
+    Pod2->>PG: UPDATE job B status = 'processing'
+
+    Note over Pod1,Pod2: Each pod processes different jobs
+```
+
+#### The FOR UPDATE SKIP LOCKED Guarantee
+
+The key SQL construct that prevents duplicate processing:
+
+```sql
+SELECT id FROM enrichment_jobs
+WHERE status = 'pending'
+  AND scheduled_for <= NOW()
+  AND attempts < max_attempts
+ORDER BY scheduled_for
+FOR UPDATE SKIP LOCKED  -- Critical: skips rows locked by other transactions
+LIMIT 1
+```
+
+**What `FOR UPDATE SKIP LOCKED` does:**
+
+| Behavior      | Description                                                              |
+| ------------- | ------------------------------------------------------------------------ |
+| `FOR UPDATE`  | Locks the selected row for the duration of the transaction               |
+| `SKIP LOCKED` | If another transaction holds a lock on a row, skip it instead of waiting |
+
+This means:
+
+- **No duplicate processing**: Two pods cannot claim the same job
+- **No blocking**: Pods don't wait on each other; they grab different jobs
+- **No external coordination**: No distributed locks, Redis, or Zookeeper needed
+- **Automatic failover**: If a pod crashes mid-processing, the job remains in "processing" state and can be reclaimed after timeout
+
+#### Job Timeout and Recovery
+
+To handle crashed workers, implement a job timeout mechanism:
+
+```sql
+-- Reclaim stale jobs (stuck in "processing" for too long)
+UPDATE enrichment_jobs
+SET status = 'pending',
+    scheduled_for = NOW() + INTERVAL '30 seconds'
+WHERE status = 'processing'
+  AND started_at < NOW() - INTERVAL '5 minutes'
+  AND attempts < max_attempts;
+```
+
+Run this query periodically (e.g., every minute) to recover jobs from crashed workers.
+
+#### Horizontal Scaling Behavior
+
+| Pods   | Behavior                                       |
+| ------ | ---------------------------------------------- |
+| 1 pod  | Single worker processes all jobs sequentially  |
+| 2 pods | Jobs distributed automatically; ~2x throughput |
+| N pods | Jobs distributed across N pods; ~Nx throughput |
+
+**Note**: Throughput scales linearly until limited by:
+
+- OpenAI API rate limits (shared across all pods)
+- Postgres connection pool exhaustion
+- Neo4j write capacity
+
+### Future Scaling: Dedicated Enrichment Processor
+
+For larger deployments or separation of concerns, the enrichment worker can be extracted to a dedicated service:
+
+```mermaid
+flowchart TB
+    subgraph api["Mnemonic API (Multiple Pods)"]
+        A1[API Pod 1]
+        A2[API Pod 2]
+        A3[API Pod N]
+    end
+
+    subgraph worker["Enrichment Processor (Separate Service)"]
+        W1[Worker Pod 1]
+        W2[Worker Pod 2]
+    end
+
+    PG[(Postgres<br/>Job Queue)]
+    OpenAI[OpenAI API]
+    Neo4j[(Neo4j)]
+
+    A1 --> PG
+    A2 --> PG
+    A3 --> PG
+
+    W1 <--> PG
+    W2 <--> PG
+    W1 <--> OpenAI
+    W2 <--> OpenAI
+    W1 <--> Neo4j
+    W2 <--> Neo4j
+```
+
+**Why consider a dedicated enrichment processor?**
+
+| Benefit                    | Description                                                             |
+| -------------------------- | ----------------------------------------------------------------------- |
+| **Separation of concerns** | API handles requests; processor handles background work                 |
+| **Independent scaling**    | Scale API pods for request volume; scale workers for enrichment backlog |
+| **Resource isolation**     | LLM calls don't compete with API request handling                       |
+| **Deployment flexibility** | Update enrichment logic without redeploying API                         |
+| **Cost optimization**      | Run workers on cheaper/burstable instances                              |
+
+**When to migrate to dedicated processor:**
+
+- Enrichment backlog consistently grows (processing can't keep up)
+- API latency affected by enrichment worker resource usage
+- Need to scale enrichment independently from API
+- Want to deploy enrichment changes without API downtime
+
+**Migration path:**
+
+1. Extract worker code to separate Go binary (same codebase, different main)
+2. Deploy as separate container/service
+3. Remove in-process worker from API pods
+4. Scale worker pods based on queue depth
+5. Consider Redis or SQS if Postgres queue becomes bottleneck
+
+## External Service Dependencies
+
+Pattern enrichment requires external API calls for embedding generation and entity extraction.
+
+### OpenAI API (Embeddings)
+
+Embedding generation requires the OpenAI API:
+
+| Requirement        | Details                                                   |
+| ------------------ | --------------------------------------------------------- |
+| **Service**        | OpenAI API                                                |
+| **Endpoint**       | `https://api.openai.com/v1/embeddings`                    |
+| **Model**          | `text-embedding-3-small`                                  |
+| **Dimensions**     | 1536 (must match PGVector column configuration)           |
+| **Authentication** | API key required                                          |
+| **Cost**           | ~$0.0001 per pattern (~$0.00002 per 1K tokens)            |
+| **Rate limits**    | 3,000 RPM / 1,000,000 TPM (tier 1), higher for paid tiers |
+
+**Why OpenAI?**
+
+- Industry-standard embedding quality
+- Simple API integration
+- Predictable costs at scale
+- No infrastructure to maintain
+
+Additional embedding providers (Azure OpenAI, self-hosted models) can be added post-MVP if needed.
+
+### OpenAI API (Entity Extraction)
+
+Entity extraction uses the OpenAI API:
+
+| Requirement        | Details                                               |
+| ------------------ | ----------------------------------------------------- |
+| **Service**        | OpenAI API                                            |
+| **Endpoint**       | `https://api.openai.com/v1/chat/completions`          |
+| **Model**          | `gpt-4o-mini`                                         |
+| **Authentication** | API key required (same key used for embeddings)       |
+| **Cost**           | ~$0.01-0.05 per pattern                               |
+| **Rate limits**    | 500 RPM / 200,000 TPM (tier 1), higher for paid tiers |
+
+Additional LLM providers (Anthropic, Azure OpenAI) can be added post-MVP if needed.
+
+## Configuration Requirements
+
+### Required Environment Variables
+
+```bash
+# Required for embedding generation and entity extraction
+OPENAI_API_KEY=sk-...
+```
+
+### Application Configuration
+
+```yaml
+openai:
+  api_key_env: OPENAI_API_KEY
+
+  # Embedding configuration
+  embedding_model: text-embedding-3-small
+  embedding_dimensions: 1536 # Must match PGVector column size
+
+  # Entity extraction configuration
+  extraction_model: gpt-4o-mini
+
+  # Rate limiting (recommended)
+  max_requests_per_minute: 500
+  retry_attempts: 3
+  retry_delay_ms: 1000
+
+# Enrichment worker configuration
+enrichment:
+  worker_count: 1 # Number of concurrent workers (goroutines)
+  poll_interval_seconds: 5 # How often to check for new jobs
+  max_attempts: 3 # Retry attempts before marking as failed
+  retry_delay_seconds: 30 # Delay between retry attempts
+
+# Neo4j configuration (required)
+neo4j:
+  uri: bolt://localhost:7687
+  username: neo4j
+  password_env: NEO4J_PASSWORD
+  database: neo4j
+```
+
+Changing the embedding model requires re-embedding all existing patterns - the dimensions must match across all stored vectors. Additional embedding providers can be supported post-MVP if needed.
+
+## Cost and Latency
+
+### Per-Pattern Processing
+
+| Operation             | Time      | Cost            |
+| --------------------- | --------- | --------------- |
+| Embedding generation  | 100-200ms | ~$0.0001        |
+| Entity extraction     | 1-5s      | ~$0.01-0.05     |
+| Neo4j writes          | 50-100ms  | N/A             |
+| **Total per pattern** | **1-5s**  | **~$0.01-0.05** |
+
+The 1-5 second processing time per pattern reinforces why enrichment runs asynchronously. Users should not wait for this during API calls.
+
+### Projected Monthly Costs
+
+| Patterns/month | Embedding Cost | LLM Cost | Total    |
+| -------------- | -------------- | -------- | -------- |
+| 100            | $0.01          | $1-5     | $1-5     |
+| 1,000          | $0.10          | $10-50   | $10-50   |
+| 10,000         | $1.00          | $100-500 | $100-500 |
+
+Query embeddings also incur costs (~$0.0001 per query). For high-volume query scenarios, consider caching strategies.
+
+### Rate Limit Considerations
+
+OpenAI enforces rate limits that affect burst processing:
+
+- **Tier 1 (default)**: 3,000 requests/minute, 1M tokens/minute
+- **Tier 2+**: Higher limits available with usage history
+
+For bulk pattern imports, implement:
+
+- Request queuing with backoff
+- Batch processing with delays
+- Rate limit monitoring and alerting
+
+## Deployment Requirements
+
+### Infrastructure Checklist
+
+Before deploying pattern enrichment, verify:
+
+- [ ] OpenAI API key provisioned and tested
+- [ ] API key stored securely (secrets manager, not in code)
+- [ ] Environment variables configured in deployment
+- [ ] Rate limits appropriate for expected load
+- [ ] Cost monitoring/alerting configured
+- [ ] Network egress to `api.openai.com` allowed
+- [ ] PGVector dimensions match configured embedding dimensions (1536)
+- [ ] Enrichment job table created in Postgres
+- [ ] Neo4j instance provisioned and accessible
+- [ ] Neo4j credentials configured
+
+### Failure Modes
+
+| Failure                 | Impact                                 | Mitigation                        |
+| ----------------------- | -------------------------------------- | --------------------------------- |
+| Invalid/missing API key | All enrichment jobs fail               | Startup validation, health checks |
+| Rate limit exceeded     | Temporary failures, 429 responses      | Exponential backoff, queuing      |
+| OpenAI outage           | Embedding/extraction unavailable       | Circuit breaker, queue for retry  |
+| Neo4j unavailable       | Relationship storage fails             | Circuit breaker, queue for retry  |
+| Dimension mismatch      | Vectors unusable for similarity search | Validate config at startup        |
+| Network blocked         | Cannot reach external APIs             | Verify egress rules               |
+| Worker crash            | Jobs stuck in "processing"             | Job timeout, automatic requeuing  |
+
+### Health Check Endpoint
+
+The pattern service should expose a health check that validates enrichment capability:
+
+```go
+// Health check should verify:
+// 1. OpenAI API key is configured
+// 2. OpenAI API is reachable (optional: test calls)
+// 3. PGVector is available with correct dimensions
+// 4. Neo4j is available and accessible
+// 5. Enrichment worker is running
+// 6. Job queue is accessible
+```
+
+## Internal Dependencies
+
+### PGVector Configuration
+
+```sql
+-- Recommended index for ~1000 patterns
+CREATE INDEX ON patterns
+USING ivfflat (embedding vector_cosine_ops)
+WITH (lists = 100);
+
+-- For larger collections (10K+), consider HNSW
+CREATE INDEX ON patterns
+USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+```
+
+The vector column must be configured for the same dimensions as the embedding model:
+
+```sql
+-- Must match embedding.dimensions in config (default: 1536)
+ALTER TABLE patterns ADD COLUMN embedding vector(1536);
+
+-- Enrichment status fields
+ALTER TABLE patterns ADD COLUMN enrichment_status VARCHAR(20) DEFAULT 'pending';
+ALTER TABLE patterns ADD COLUMN enrichment_error TEXT;
+ALTER TABLE patterns ADD COLUMN enriched_at TIMESTAMP WITH TIME ZONE;
+```
+
+### Neo4j Schema
+
+```cypher
+// Create constraints for pattern nodes
+CREATE CONSTRAINT pattern_id IF NOT EXISTS
+FOR (p:Pattern) REQUIRE p.id IS UNIQUE;
+
+// Create constraints for agent nodes
+CREATE CONSTRAINT agent_name IF NOT EXISTS
+FOR (a:Agent) REQUIRE a.name IS UNIQUE;
+
+// Create constraints for concept nodes
+CREATE CONSTRAINT concept_name IF NOT EXISTS
+FOR (c:Concept) REQUIRE c.name IS UNIQUE;
+
+// Create indexes for common queries
+CREATE INDEX pattern_name IF NOT EXISTS
+FOR (p:Pattern) ON (p.name);
+```
+
+### Entity Extraction Prompt
+
+```text
+Extract key concepts from this pattern document.
+
+Return JSON with:
+- concepts: General programming concepts
+- technologies: Languages, frameworks, tools
+- practices: Best practices, patterns, methodologies
+
+Pattern content:
+{content}
+```
+
+## References
+
+- [Architecture Overview](../architecture/00-overview.md)
+- [System Architecture](../architecture/03-system-architecture.md) - Storage stack details
+- [API Specification](api-specification.md) - Pattern endpoints
+- [Mnemonic OpenAPI Spec](/api/openapi/mnemonic-v1.yaml) - Full API definition
