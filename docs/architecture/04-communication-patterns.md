@@ -1,6 +1,6 @@
 # Communication Patterns
 
-[Back to Overview](00-overview.md) | [Back to Documentation Index](../README.md)
+[Back to Overview](00-overview.md) | [Back to Project README](../../README.md)
 
 ## Table of Contents
 
@@ -40,7 +40,7 @@ Mnemonic exposes the following REST endpoints for ACE:
 
 | Endpoint             | Method | Purpose                               |
 | -------------------- | ------ | ------------------------------------- |
-| `/ace/route`         | GET    | Deterministic routing based on prompt |
+| `/ace/route`         | POST   | Deterministic routing based on prompt |
 | `/ace/patterns`      | GET    | Pattern retrieval for agent + context |
 | `/ace/agents`        | GET    | List available agents                 |
 | `/ace/agents/{name}` | GET    | Get agent details                     |
@@ -52,7 +52,7 @@ sequenceDiagram
     participant CLI as ACE CLI
     participant MN as Mnemonic
 
-    CLI->>MN: GET /ace/route?prompt=...
+    CLI->>MN: POST /ace/route
     Note right of MN: Validate request
     Note right of MN: Apply routing rules
     Note right of MN: Fetch patterns from storage
@@ -71,13 +71,13 @@ sequenceDiagram
 - Includes context hints for better routing
 - Authenticated per team/user
 
-**Query Parameters for `/ace/route`:**
+**Request Body for `/ace/route`:**
 
-| Parameter | Purpose                                 |
+| Field     | Purpose                                 |
 | --------- | --------------------------------------- |
 | `prompt`  | Prompt summary for routing decision     |
 | `context` | Domain, task type, preferences          |
-| `user`    | User/team identifier for access control |
+| `options` | Optional routing configuration          |
 
 ### Response Structure
 
@@ -142,7 +142,7 @@ sequenceDiagram
 
 **Invocation Characteristics:**
 
-To be specified in [Configuration](../design/configuration.md).
+To be specified in design phase.
 
 | Aspect           | Detail                        |
 | ---------------- | ----------------------------- |

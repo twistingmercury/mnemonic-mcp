@@ -1,6 +1,6 @@
 # Pattern Enrichment
 
-[Back to Architecture Overview](../architecture/00-overview.md)
+[Back to Architecture Overview](../architecture/00-overview.md) | [Back to System Architecture](../architecture/03-system-architecture.md)
 
 ## Overview
 

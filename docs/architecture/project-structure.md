@@ -76,7 +76,7 @@ sequenceDiagram
     participant CC as Claude Code
 
     User->>CLI: Submit prompt
-    CLI->>MN: GET /ace/route?prompt=...
+    CLI->>MN: POST /ace/route
     MN-->>CLI: {agent, patterns}
     CLI->>CC: Invoke with enriched prompt
     CC-->>CLI: Results

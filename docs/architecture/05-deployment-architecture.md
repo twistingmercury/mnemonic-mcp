@@ -1,6 +1,6 @@
 # Deployment Architecture
 
-[Back to Overview](00-overview.md) | [Back to Documentation Index](../README.md)
+[Back to Overview](00-overview.md) | [Back to Project README](../../README.md)
 
 ## Table of Contents
 
@@ -104,7 +104,7 @@ graph TB
 
 **Distribution:**
 
-To be specified in [Configuration](../design/configuration.md).
+To be specified in design phase.
 
 | Aspect        | Detail                            |
 | ------------- | --------------------------------- |

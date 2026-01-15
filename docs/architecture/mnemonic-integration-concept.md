@@ -1,5 +1,7 @@
 # ACE + Mnemonic Integration Concept
 
+[Back to Overview](00-overview.md)
+
 ## Unified Architecture: Mnemonic as the Backend
 
 In this model, Mnemonic serves as the single backend service with ACE-specific endpoints.
@@ -17,7 +19,7 @@ sequenceDiagram
     User->>CLI: "Write a Go function to sum numbers"
 
     Note over CLI,MN: Step 1: Get routing decision
-    CLI->>MN: GET /ace/route?prompt="Write a Go function..."
+    CLI->>MN: POST /ace/route
     MN->>MN: Evaluate routing rules (code-based)
     MN-->>CLI: { agent: "go-software-agent", confidence: 1.0 }
 
@@ -48,7 +50,7 @@ sequenceDiagram
     User->>CLI: "Write a Go function to sum numbers"
 
     Note over CLI,MN: Step 1: Get routing decision
-    CLI->>MN: GET /ace/route?prompt="Write a Go function..."
+    CLI->>MN: POST /ace/route
     MN-->>CLI: { agent: "go-software-agent" }
 
     Note over CLI,MN: Step 2: Get relevant patterns
@@ -71,7 +73,7 @@ sequenceDiagram
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /ace/route` | Determine which agent handles a prompt |
+| `POST /ace/route` | Determine which agent handles a prompt |
 | `GET /ace/patterns` | Retrieve patterns for a specific agent + context |
 | `GET /ace/agents` | List available agents and their capabilities |
 | `PUT /ace/rules` | Update routing rules (admin) |

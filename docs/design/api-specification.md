@@ -1,6 +1,6 @@
 # Mnemonic REST API Design
 
-[Back to Architecture Overview](../architecture/00-overview.md) | [Back to Documentation Index](../README.md)
+[Back to Architecture Overview](../architecture/00-overview.md) | [Back to Project README](../../README.md)
 
 ## Table of Contents
 
@@ -115,10 +115,10 @@ Authentication is handled by Envoy proxy (outside Mnemonic scope per architectur
 
 | Operation                          | Required Role          |
 | ---------------------------------- | ---------------------- |
-| `GET /ace/route`                   | Any authenticated user |
+| `POST /ace/route`                  | Any authenticated user |
 | `GET /ace/patterns`                | Any authenticated user |
 | `GET /ace/agents`                  | Any authenticated user |
-| Admin operations (POST/PUT/DELETE) | `admin` role           |
+| Admin operations (PUT/DELETE)      | `admin` role           |
 
 **Why headers instead of token validation**:
 

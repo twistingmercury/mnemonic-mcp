@@ -1,6 +1,6 @@
 # System Architecture
 
-[Back to Overview](00-overview.md) | [Back to Documentation Index](../README.md)
+[Back to Overview](00-overview.md) | [Back to Project README](../../README.md)
 
 ## Table of Contents
 
@@ -146,7 +146,7 @@ sequenceDiagram
 
     Note over CLI: Parse and validate input
 
-    CLI->>MN: GET /ace/route?prompt=...
+    CLI->>MN: POST /ace/route
 
     Note over MN: Apply routing rules
     Note over MN: Fetch patterns from storage
@@ -187,7 +187,7 @@ graph TB
     end
 
     USER -->|"Commands"| CLI
-    CLI -->|"REST: /ace/route"| MN
+    CLI -->|"POST /ace/route"| MN
     MN -->|"Agent + Patterns"| CLI
     CLI -->|"Execute"| EXEC
     EXEC -->|"Results"| CLI
@@ -218,9 +218,9 @@ See [Communication Patterns](04-communication-patterns.md#rest-endpoints) for RE
 
 | Aspect | Detail |
 |--------|--------|
-| Invocation method | To be specified in [Configuration](../design/configuration.md) |
+| Invocation method | To be specified in design phase |
 | Context passing | Enriched prompt with patterns |
-| Result capture | To be specified in [Configuration](../design/configuration.md) |
+| Result capture | To be specified in design phase |
 
 ## Boundary Definitions
 

@@ -1,6 +1,6 @@
 # Architectural Decisions
 
-[Back to Overview](00-overview.md) | [Back to Documentation Index](../README.md)
+[Back to Overview](00-overview.md) | [Back to Project README](../../README.md)
 
 ## Table of Contents
 

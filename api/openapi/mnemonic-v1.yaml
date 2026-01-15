@@ -24,10 +24,10 @@ info:
 
     | Operation | Required Role |
     |-----------|---------------|
-    | `GET /ace/route` | Any authenticated user |
+    | `POST /ace/route` | Any authenticated user |
     | `GET /ace/patterns` | Any authenticated user |
     | `GET /ace/agents` | Any authenticated user |
-    | Admin operations (POST/PUT/DELETE) | `admin` role |
+    | Admin operations (PUT/DELETE) | `admin` role |
 
     ## Error Handling
 

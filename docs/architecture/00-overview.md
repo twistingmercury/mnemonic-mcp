@@ -1,6 +1,6 @@
 # ACE Architecture Overview
 
-[Back to Documentation Index](../README.md)
+[Back to Project README](../../README.md)
 
 ## Table of Contents
 
@@ -82,7 +82,7 @@ sequenceDiagram
     participant CC as Claude Code
 
     User->>CLI: Submit prompt
-    CLI->>MN: GET /ace/route
+    CLI->>MN: POST /ace/route
     MN-->>CLI: Return agent + patterns
     CLI->>CC: Invoke with enriched prompt
     CC-->>CLI: Return results
@@ -108,7 +108,7 @@ sequenceDiagram
     participant ANT as Anthropic API
 
     User->>CLI: Submit prompt
-    CLI->>MN: GET /ace/route
+    CLI->>MN: POST /ace/route
     MN-->>CLI: Return agent + patterns
     CLI->>ANT: Direct API call
     ANT-->>CLI: Return response
@@ -156,16 +156,24 @@ Architecture documents describe **what** the system does and **why** decisions w
 | Timing | Before implementation | During implementation |
 | Location | `docs/architecture/` | `docs/design/` |
 
+### Available Design Documents
+
+The following design documents provide implementation details:
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| [api-specification.md](../design/api-specification.md) | OpenAPI spec for Mnemonic REST API | Complete |
+| [pattern-processing.md](../design/pattern-processing.md) | Pattern enrichment and search pipeline | Complete |
+
 ### Planned Design Documents
 
-The following design documents will be created by specialized agents during implementation:
+The following design documents will be created during implementation:
 
-| Document | Description | Responsible Agent |
-|----------|-------------|-------------------|
-| [data-models.md](../design/data-models.md) | Entity schemas and relationships | go-architect-agent |
-| [api-specification.md](../design/api-specification.md) | OpenAPI spec for Mnemonic REST API | api-architect-agent |
-| [routing-engine.md](../design/routing-engine.md) | Routing algorithm details | go-architect-agent |
-| [configuration.md](../design/configuration.md) | CLI configuration reference | go-architect-agent |
+| Document | Description |
+|----------|-------------|
+| data-models.md | Entity schemas and relationships |
+| routing-engine.md | Routing algorithm details |
+| configuration.md | CLI configuration reference |
 
 ### Cross-References
 
