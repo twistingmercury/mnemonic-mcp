@@ -10,9 +10,9 @@ ACE is currently in the design phase. Once implemented, users will interact thro
 
 ## How it works
 
-ACE follows a CLI-centric architecture with two separate repositories:
+ACE is a monorepo containing two binaries built from a single Go module:
 
-| Repository   | Purpose                                                             |
+| Binary       | Purpose                                                             |
 | ------------ | ------------------------------------------------------------------- |
 | **mnemonic** | Backend server providing routing and pattern retrieval via REST API |
 | **ace**      | CLI client that orchestrates routing decisions and execution        |

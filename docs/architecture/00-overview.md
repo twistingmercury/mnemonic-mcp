@@ -49,14 +49,14 @@ graph TB
 
 ## Repository Structure
 
-ACE consists of two separate repositories:
+ACE is a monorepo containing two binaries built from a single Go module:
 
-| Repository   | Purpose                                                                  |
-| ------------ | ------------------------------------------------------------------------ |
-| **mnemonic** | Backend server providing routing and pattern retrieval via REST API      |
-| **ace**      | CLI client that orchestrates routing decisions and Claude Code execution |
+| Binary       | Purpose                                                             |
+| ------------ | ------------------------------------------------------------------- |
+| **mnemonic** | Backend server providing routing and pattern retrieval via REST API |
+| **ace**      | CLI client that orchestrates routing decisions and execution        |
 
-Separate repositories allow independent release cycles—Mnemonic can be updated without rebuilding the CLI.
+The monorepo structure enables atomic commits across CLI and server, shared tooling (linting, testing infrastructure), and simpler dependency management. GitHub Actions path filters enable independent CI/CD pipelines for each binary.
 
 ## System Model
 
