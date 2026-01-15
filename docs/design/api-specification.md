@@ -17,6 +17,8 @@
 
 ## Overview
 
+[↑ Table of Contents](#table-of-contents)
+
 Mnemonic is the backend server for ACE, providing routing decisions and pattern retrieval via REST API. For MVP, Mnemonic serves only ACE (see [ADR-004](../architecture/02-architectural-decisions.md#adr-004-unified-backend-with-rest-api)).
 
 The API follows REST principles with:
@@ -27,6 +29,8 @@ The API follows REST principles with:
 - Cursor-based pagination for list endpoints
 
 ## API Specification
+
+[↑ Table of Contents](#table-of-contents)
 
 The complete API specification is defined in OpenAPI 3.1 format:
 
@@ -49,6 +53,8 @@ Use this OpenAPI spec to:
 - Configure API gateways
 
 ## Design Decisions
+
+[↑ Table of Contents](#table-of-contents)
 
 ### POST vs GET for Routing
 
@@ -101,6 +107,8 @@ Cursors are opaque base64-encoded strings that expire after 24 hours.
 
 ## Authentication Contract
 
+[↑ Table of Contents](#table-of-contents)
+
 Authentication is handled by Envoy proxy (outside Mnemonic scope per architecture). Mnemonic expects pre-validated identity information in request headers.
 
 **Headers from Envoy**:
@@ -129,6 +137,8 @@ Authentication is handled by Envoy proxy (outside Mnemonic scope per architectur
 
 ## Error Handling Philosophy
 
+[↑ Table of Contents](#table-of-contents)
+
 Errors follow [RFC 7807 Problem Details](https://tools.ietf.org/html/rfc7807) format with content type `application/problem+json`.
 
 **Why RFC 7807**:
@@ -149,6 +159,8 @@ Errors follow [RFC 7807 Problem Details](https://tools.ietf.org/html/rfc7807) fo
 See the OpenAPI spec for complete error schemas and example responses.
 
 ## References
+
+[↑ Table of Contents](#table-of-contents)
 
 - [OpenAPI Specification](../../api/openapi/mnemonic-v1.yaml) - Source of truth for API details
 - [Architecture Overview](../architecture/00-overview.md)

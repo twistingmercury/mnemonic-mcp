@@ -87,22 +87,49 @@ Key characteristics:
 When a pattern is created or updated via `POST/PUT /ace/patterns`:
 
 ```mermaid
-flowchart TD
-    A[Pattern Create/Update] --> B
+stateDiagram-v2
+    [*] --> ValidateAndStore: Pattern Create/Update
 
-    B["1. Validate & Store Metadata (Postgres)<br/>- Name, description, tags, agent_associations<br/>- enrichment_status: 'pending'"]
-    B --> C
+    state "1. Validate & Store Metadata" as ValidateAndStore
+    note right of ValidateAndStore
+        Postgres: Name, description,
+        tags, agent_associations
+        enrichment_status: 'pending'
+    end note
 
-    C["2. Generate Embedding (PGVector)<br/>- Embed pattern content using configured model<br/>- Store vector for similarity search"]
-    C --> D
+    ValidateAndStore --> GenerateEmbedding
 
-    D["3. Extract Entities (LLM)<br/>- Identify concepts, technologies, practices<br/>- Extract structured metadata"]
-    D --> E
+    state "2. Generate Embedding" as GenerateEmbedding
+    note right of GenerateEmbedding
+        PGVector: Embed content
+        Store vector for similarity search
+    end note
 
-    E["4. Create Relationships (Neo4j)<br/>- Pattern -[RELATES_TO]-> Pattern<br/>- Pattern -[RELEVANT_FOR]-> Agent<br/>- Entity -[MENTIONED_IN]-> Pattern"]
-    E --> F
+    GenerateEmbedding --> ExtractEntities
 
-    F["5. Update Status<br/>- enrichment_status: 'enriched'<br/>- enriched_at: now()"]
+    state "3. Extract Entities" as ExtractEntities
+    note right of ExtractEntities
+        LLM: Identify concepts,
+        technologies, practices
+    end note
+
+    ExtractEntities --> CreateRelationships
+
+    state "4. Create Relationships" as CreateRelationships
+    note right of CreateRelationships
+        Neo4j: RELATES_TO, RELEVANT_FOR,
+        MENTIONED_IN relationships
+    end note
+
+    CreateRelationships --> UpdateStatus
+
+    state "5. Update Status" as UpdateStatus
+    note right of UpdateStatus
+        enrichment_status: 'enriched'
+        enriched_at: now()
+    end note
+
+    UpdateStatus --> [*]
 ```
 
 #### Step 1: Validate and Store Metadata
@@ -191,19 +218,40 @@ WHERE id = $patternId;
 When patterns are retrieved via `POST /ace/route`:
 
 ```mermaid
-flowchart TD
-    A["Route Request<br/>prompt: 'Write a Go function with error handling'"] --> B
+stateDiagram-v2
+    [*] --> EmbedQuery: Route Request
 
-    B["1. Embed Query<br/>- Generate embedding from prompt"]
-    B --> C
+    state "1. Embed Query" as EmbedQuery
+    note right of EmbedQuery
+        Generate embedding from prompt
+    end note
 
-    C["2. Vector Similarity Search (PGVector)<br/>- Find patterns with similar embeddings<br/>- Filter by agent association<br/>- Apply relevance threshold<br/>- Only include enrichment_status = 'enriched'"]
-    C --> D
+    EmbedQuery --> VectorSearch
 
-    D["3. Graph Traversal (Neo4j)<br/>- Expand to related patterns<br/>- Boost patterns with strong graph connections"]
-    D --> E
+    state "2. Vector Similarity Search" as VectorSearch
+    note right of VectorSearch
+        PGVector: Find similar patterns
+        Filter by agent, threshold
+        Only enriched patterns
+    end note
 
-    E["4. Rank and Return<br/>- Combine similarity + graph scores<br/>- Return top N patterns"]
+    VectorSearch --> GraphTraversal
+
+    state "3. Graph Traversal" as GraphTraversal
+    note right of GraphTraversal
+        Neo4j: Expand to related patterns
+        Boost strong graph connections
+    end note
+
+    GraphTraversal --> RankAndReturn
+
+    state "4. Rank and Return" as RankAndReturn
+    note right of RankAndReturn
+        Combine similarity + graph scores
+        Return top N patterns
+    end note
+
+    RankAndReturn --> [*]
 ```
 
 Note: Query-time search only considers patterns with `enrichment_status = 'enriched'`. Patterns still pending or failed enrichment are excluded from search results.
