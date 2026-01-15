@@ -1,31 +1,38 @@
-# ACE (Agentic Coding Engine)
+# ACE (Agent Coordination Engine)
 
 > **Maturity Level**: Emerging - Architecture defined, MVP implementation planned
 
-ACE is a system for deterministic agent routing with dynamic pattern querying, designed to replace LLM-based routing interpretation with predictable, code-based routing logic.
+ACE is an orchestration layer that provides deterministic agent routing and dynamic pattern retrieval for Claude Code. It replaces LLM-based routing with predictable, code-based logic.
 
 ## Usage
 
-ACE is currently in the design and planning phase. Once implemented, users will interact with the system through:
-
-- A CLI client for executing agent tasks
-- A REST API for programmatic integration
+ACE is currently in the design phase. Once implemented, users will interact through the ACE CLI, which orchestrates routing decisions and Claude Code execution.
 
 ## How it works
 
-ACE addresses key limitations in current agent systems:
+ACE follows a CLI-centric architecture with two separate repositories:
 
-- **Deterministic routing** - Same input always routes to the same agent, enabling reliable automation and predictable workflows
-- **Dynamic pattern querying** - Agents query relevant patterns on-demand via Cognee, reducing context size by approximately 78% compared to pre-loading all patterns
-- **Team collaboration** - Shared pattern libraries stored in git, accessible across teams
-- **Independent scaling** - API server and pattern search scale separately based on their workload profiles
+| Repository   | Purpose                                                             |
+| ------------ | ------------------------------------------------------------------- |
+| **mnemonic** | Backend server providing routing and pattern retrieval via REST API |
+| **ace**      | CLI client that orchestrates routing decisions and execution        |
 
-The system uses the Model Context Protocol (MCP) for communication with Cognee and Claude's tool calling feature for dynamic pattern retrieval.
+The system provides:
+
+- **Deterministic routing** - Code-based logic ensures the same input always routes to the same agent
+- **Dynamic patterns** - Patterns retrieved from Mnemonic's knowledge graph (Postgres + PGVector + Neo4j)
+- **Local execution** - All LLM interactions and file operations happen on the user's workstation
+
+### Phased Approach
+
+- **Phase 1**: Claude Code integration - CLI invokes Claude Code for execution
+- **Phase 2**: Direct API integration - CLI calls Anthropic API directly, removing Claude Code dependency
 
 ## Key Considerations
 
 - This project is in early development; architecture is defined but implementation has not started
 - The MVP focuses on local deployment with a single agent type (go-software-agent)
+- Mnemonic serves only ACE for MVP (not a general-purpose memory service)
 - Production features such as authentication, rate limiting, and multi-region deployment are planned for later phases
 
 ## Development Considerations
@@ -48,9 +55,14 @@ This project uses git tag-based semantic versioning. No releases have been publi
 
 ## Documentation
 
-Detailed documentation is available in the `docs/` directory:
+### Architecture
 
-- [Architecture Overview](docs/architecture/00-overview.md) - High-level system design and goals
+- [Architecture Overview](docs/architecture/00-overview.md) - System model, phased approach, key principles
 - [Requirements](docs/architecture/01-requirements.md) - Problem statement and success criteria
 - [Architectural Decisions](docs/architecture/02-architectural-decisions.md) - Major decisions with rationale
-- [MVP Implementation Plan](docs/MVP-IMPLEMENTATION-PLAN.md) - Phased approach for initial development
+- [System Architecture](docs/architecture/03-system-architecture.md) - Component breakdown and data flow
+
+### Design
+
+- [API Specification](docs/design/api-specification.md) - OpenAPI spec for Mnemonic REST API
+- [Pattern Processing](docs/design/pattern-processing.md) - Pattern enrichment and search pipeline
