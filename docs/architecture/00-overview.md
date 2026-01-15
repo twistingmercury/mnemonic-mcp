@@ -51,10 +51,10 @@ graph TB
 
 ACE consists of two separate repositories:
 
-| Repository | Purpose |
-|------------|---------|
-| **mnemonic** | Backend server providing routing and pattern retrieval via REST API |
-| **ace** | CLI client that orchestrates routing decisions and Claude Code execution |
+| Repository   | Purpose                                                                  |
+| ------------ | ------------------------------------------------------------------------ |
+| **mnemonic** | Backend server providing routing and pattern retrieval via REST API      |
+| **ace**      | CLI client that orchestrates routing decisions and Claude Code execution |
 
 Separate repositories allow independent release cycles—Mnemonic can be updated without rebuilding the CLI.
 
@@ -133,15 +133,15 @@ sequenceDiagram
 
 ## Document Navigation
 
-| Document | Description |
-|----------|-------------|
-| [01-requirements.md](01-requirements.md) | Problem statement and success criteria |
-| [02-architectural-decisions.md](02-architectural-decisions.md) | Key architectural decision records |
-| [03-system-architecture.md](03-system-architecture.md) | Component breakdown and data flow |
-| [04-communication-patterns.md](04-communication-patterns.md) | Protocol and integration patterns |
-| [05-deployment-architecture.md](05-deployment-architecture.md) | Deployment topology and operations |
-| [project-structure.md](project-structure.md) | Repository layout and organization |
-| [mnemonic-integration-concept.md](mnemonic-integration-concept.md) | ACE + Mnemonic integration details |
+| Document                                                           | Description                            |
+| ------------------------------------------------------------------ | -------------------------------------- |
+| [01-requirements.md](01-requirements.md)                           | Problem statement and success criteria |
+| [02-architectural-decisions.md](02-architectural-decisions.md)     | Key architectural decision records     |
+| [03-system-architecture.md](03-system-architecture.md)             | Component breakdown and data flow      |
+| [04-communication-patterns.md](04-communication-patterns.md)       | Protocol and integration patterns      |
+| [05-deployment-architecture.md](05-deployment-architecture.md)     | Deployment topology and operations     |
+| [project-structure.md](project-structure.md)                       | Repository layout and organization     |
+| [mnemonic-integration-concept.md](mnemonic-integration-concept.md) | ACE + Mnemonic integration details     |
 
 ## Design Documents
 
@@ -149,31 +149,31 @@ Architecture documents describe **what** the system does and **why** decisions w
 
 ### Architecture vs Design
 
-| Aspect | Architecture Docs | Design Docs |
-|--------|-------------------|-------------|
-| Focus | Concepts, decisions, trade-offs | Implementation details |
-| Audience | All stakeholders | Implementers |
-| Timing | Before implementation | During implementation |
-| Location | `docs/architecture/` | `docs/design/` |
+| Aspect   | Architecture Docs               | Design Docs            |
+| -------- | ------------------------------- | ---------------------- |
+| Focus    | Concepts, decisions, trade-offs | Implementation details |
+| Audience | All stakeholders                | Implementers           |
+| Timing   | Before implementation           | During implementation  |
+| Location | `docs/architecture/`            | `docs/design/`         |
 
 ### Available Design Documents
 
 The following design documents provide implementation details:
 
-| Document | Description | Status |
-|----------|-------------|--------|
-| [api-specification.md](../design/api-specification.md) | OpenAPI spec for Mnemonic REST API | Complete |
+| Document                                                 | Description                            | Status   |
+| -------------------------------------------------------- | -------------------------------------- | -------- |
+| [api-specification.md](../design/api-specification.md)   | OpenAPI spec for Mnemonic REST API     | Complete |
 | [pattern-processing.md](../design/pattern-processing.md) | Pattern enrichment and search pipeline | Complete |
 
 ### Planned Design Documents
 
 The following design documents will be created during implementation:
 
-| Document | Description |
-|----------|-------------|
-| data-models.md | Entity schemas and relationships |
-| routing-engine.md | Routing algorithm details |
-| configuration.md | CLI configuration reference |
+| Document          | Description                      |
+| ----------------- | -------------------------------- |
+| data-models.md    | Entity schemas and relationships |
+| routing-engine.md | Routing algorithm details        |
+| configuration.md  | CLI configuration reference      |
 
 ### Cross-References
 
