@@ -48,7 +48,7 @@ graph TB
         subgraph "src/mnemonic"
             MN_API[REST API]
             MN_ROUTE[Routing Engine]
-            MN_PATTERN[Pattern Service]
+            MN_PATTERN[Pattern Enrichment Service]
             MN_STORAGE[Storage Layer]
         end
 
@@ -115,7 +115,7 @@ sequenceDiagram
     participant CC as Claude Code
 
     User->>CLI: Submit prompt
-    CLI->>MN: POST /ace/route
+    CLI->>MN: POST /v1/ace/route
     MN-->>CLI: {agent, patterns}
     CLI->>CC: Invoke with enriched prompt
     CC-->>CLI: Results

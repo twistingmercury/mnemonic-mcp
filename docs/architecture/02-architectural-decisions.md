@@ -9,7 +9,7 @@
 - [ADR-002: Routing Location](#adr-002-routing-location)
 - [ADR-003: Claude Code Integration Strategy](#adr-003-claude-code-integration-strategy)
 - [ADR-004: Unified Backend with REST API](#adr-004-unified-backend-with-rest-api)
-- [ADR-005: Separate Repositories](#adr-005-separate-repositories)
+- [ADR-005: Monorepo Structure](#adr-005-monorepo-structure)
 - [ADR-006: Phased Evolution Path](#adr-006-phased-evolution-path)
 - [Decision Summary](#decision-summary)
 
@@ -189,7 +189,7 @@ graph TB
 
     subgraph "Mnemonic"
         ROUTE[Routing Engine]
-        PATTERN[Pattern Service]
+        PATTERN[Pattern Enrichment Service]
         STORAGE[Storage Layer]
     end
 
@@ -225,7 +225,7 @@ See [Communication Patterns](04-communication-patterns.md#rest-endpoints) for RE
 - Single service means single point of failure
 - MVP scope limits immediate reusability for other tools
 
-## ADR-005: Separate Repositories
+## ADR-005: Monorepo Structure
 
 ### Context
 
@@ -238,53 +238,62 @@ Options considered:
 
 Key considerations:
 
-- Release cycle independence
-- Team autonomy
-- CI/CD complexity
-- Code sharing patterns
+- Atomic changes across CLI and server
+- Shared tooling and infrastructure
+- Dependency management simplicity
+- CI/CD flexibility
 
 ### Decision
 
-**ACE consists of two separate repositories: mnemonic and ace.**
+**ACE is a monorepo containing two binaries built from a single Go module.**
 
-| Repository | Purpose |
-|------------|---------|
-| **mnemonic** | Backend server providing routing and pattern retrieval via REST API |
-| **ace** | CLI client that orchestrates routing decisions and Claude Code execution |
+| Directory | Purpose |
+|-----------|---------|
+| **src/ace/** | CLI client that orchestrates routing decisions and Claude Code execution |
+| **src/mnemonic/** | Backend server providing routing and pattern retrieval via REST API |
 
 ```mermaid
 graph TB
-    subgraph "mnemonic repository"
-        MN_API[REST API]
-        MN_ROUTE[Routing Engine]
-        MN_PATTERN[Pattern Service]
-    end
+    subgraph "ace monorepo"
+        subgraph "src/ace/"
+            ACE_CLI[CLI]
+            ACE_CLIENT[Mnemonic Client]
+            ACE_EXEC[Execution Engine]
+        end
 
-    subgraph "ace repository"
-        ACE_CLI[CLI]
-        ACE_CLIENT[Mnemonic Client]
-        ACE_EXEC[Execution Engine]
+        subgraph "src/mnemonic/"
+            MN_API[REST API]
+            MN_ROUTE[Routing Engine]
+            MN_PATTERN[Pattern Enrichment Service]
+        end
+
+        SHARED[Shared Go Module]
     end
 
     ACE_CLI --> ACE_CLIENT
     ACE_CLIENT -->|"REST"| MN_API
+    ACE_CLI --> SHARED
+    MN_API --> SHARED
 ```
+
+GitHub Actions path filters enable independent CI/CD pipelines while maintaining the benefits of a unified codebase.
 
 ### Consequences
 
 **Positive:**
 
-- Independent release cycles (update Mnemonic without rebuilding CLI)
-- Clear ownership boundaries
-- Separate CI/CD pipelines
-- Teams can work independently
-- Flexible deployment (centralized Mnemonic, distributed CLI)
+- Atomic commits across CLI and server ensure consistency
+- Shared tooling (linting, testing infrastructure, build scripts)
+- Simpler dependency management with single Go module
+- Single versioning story for coordinated releases
+- Path-filtered CI/CD allows independent builds when needed
+- Easier refactoring when interfaces change
 
 **Negative:**
 
-- Cross-repo changes require coordination
-- No shared code without publishing packages
-- More repositories to manage
+- Repository size grows with both components
+- CI/CD requires path filtering configuration
+- All contributors have access to entire codebase
 
 ## ADR-006: Phased Evolution Path
 
@@ -356,7 +365,7 @@ graph TB
 | ADR-002 | Server-side routing | Enable team collaboration and central management |
 | ADR-003 | Direct CLI invocation | Minimize wrapper complexity |
 | ADR-004 | Unified backend with REST | Simplicity, excellent tooling, easy debugging |
-| ADR-005 | Separate repositories | Independent releases, clear boundaries |
+| ADR-005 | Monorepo structure | Atomic changes, shared tooling, simpler dependencies |
 | ADR-006 | Phased evolution | Deliver value early, design for future |
 
 **Next:** [System Architecture](03-system-architecture.md)

@@ -102,7 +102,7 @@ graph TB
         REST[REST API Handler]
         VALID[Request Validator]
         ROUTER[Routing Engine]
-        PATTERN[Pattern Retriever]
+        PATTERN[Pattern Enrichment Service]
         RESP[Response Builder]
     end
 
@@ -146,7 +146,7 @@ sequenceDiagram
 
     Note over CLI: Parse and validate input
 
-    CLI->>MN: POST /ace/route
+    CLI->>MN: POST /v1/ace/route
 
     Note over MN: Apply routing rules
     Note over MN: Fetch patterns from storage
@@ -187,7 +187,7 @@ graph TB
     end
 
     USER -->|"Commands"| CLI
-    CLI -->|"POST /ace/route"| MN
+    CLI -->|"POST /v1/ace/route"| MN
     MN -->|"Agent + Patterns"| CLI
     CLI -->|"Execute"| EXEC
     EXEC -->|"Results"| CLI
@@ -209,8 +209,10 @@ graph TB
 |--------|--------|
 | Protocol | REST (HTTP/HTTPS) |
 | Authentication | To be specified in design phase |
-| Request contains | Prompt summary, context hints, user preferences |
+| Request contains | Full prompt, context hints, user preferences |
 | Response contains | Agent identifier, patterns, execution hints |
+
+**Note:** Full prompts are sent to Mnemonic for routing but are not persisted. Mnemonic is organization-controlled infrastructure and requires the full prompt for accurate routing via keyword matching, regex, and semantic similarity.
 
 See [Communication Patterns](04-communication-patterns.md#rest-endpoints) for REST endpoint details.
 

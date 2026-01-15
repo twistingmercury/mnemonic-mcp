@@ -104,13 +104,13 @@ graph TB
 
 **Distribution:**
 
-To be specified in design phase.
+Post-MVP: Distribution mechanism to be designed after initial release.
 
-| Aspect        | Detail                            |
-| ------------- | --------------------------------- |
-| Method        | To be specified in design phase   |
-| Updates       | To be specified in design phase   |
-| Configuration | To be specified in design phase   |
+| Aspect        | Detail                                           |
+| ------------- | ------------------------------------------------ |
+| Method        | Post-MVP: To be designed after initial release   |
+| Updates       | Post-MVP: To be designed after initial release   |
+| Configuration | Post-MVP: To be designed after initial release   |
 
 ### Mnemonic
 
@@ -207,19 +207,19 @@ Key metrics to monitor:
 
 ### Logging
 
-| Component | Log Focus                                   |
-| --------- | ------------------------------------------- |
-| Mnemonic  | Routing decisions, pattern queries, errors  |
-| CLI       | To be specified in design phase             |
+| Component | Log Focus                                          |
+| --------- | -------------------------------------------------- |
+| Mnemonic  | Routing decisions, pattern queries, errors         |
+| CLI       | Post-MVP: Logging configuration to be designed     |
 
 ### Backup and Recovery
 
-| Component         | Strategy                          |
-| ----------------- | --------------------------------- |
-| Routing rules     | To be specified in design phase   |
-| Postgres data     | To be specified in design phase   |
-| Neo4j data        | To be specified in design phase   |
-| CLI configuration | To be specified in design phase   |
+| Component         | Strategy                                          |
+| ----------------- | ------------------------------------------------- |
+| Routing rules     | Post-MVP: Backup procedures to be designed        |
+| Postgres data     | Post-MVP: Backup procedures to be designed        |
+| Neo4j data        | Post-MVP: Backup procedures to be designed        |
+| CLI configuration | Post-MVP: Backup procedures to be designed        |
 
 ### Updates and Maintenance
 
@@ -251,11 +251,11 @@ graph LR
     end
 ```
 
-| Component | Scaling Approach                        |
-| --------- | --------------------------------------- |
-| Mnemonic  | Add instances behind load balancer      |
-| Postgres  | Read replicas, connection pooling       |
-| Neo4j     | To be specified in design phase         |
+| Component | Scaling Approach                               |
+| --------- | ---------------------------------------------- |
+| Mnemonic  | Add instances behind load balancer             |
+| Postgres  | Read replicas, connection pooling              |
+| Neo4j     | Post-MVP: Scaling approach to be designed      |
 
 ### Performance Considerations
 

@@ -49,7 +49,7 @@ Key characteristics:
 - **Configurable**: Rules are stored in the database and managed via REST API
 - **Fast**: Routing decisions must be made quickly (target: <50ms)
 
-The routing engine implements the logic described in the [OpenAPI specification](/api/openapi/mnemonic-v1.yaml) for the `POST /ace/route` endpoint.
+The routing engine implements the logic described in the [OpenAPI specification](/api/openapi/mnemonic-v1.yaml) for the `POST /v1/ace/route` endpoint.
 
 ## Design Principles
 
@@ -209,7 +209,7 @@ classDiagram
 | `AgentName`       | string      | Identifier of the selected agent                                    |
 | `Confidence`      | float64     | Routing confidence (0.0-1.0, where 1.0 = deterministic match)       |
 | `Method`          | MatchMethod | Which type of matching triggered the route                          |
-| `MatchedKeywords` | []string    | Keywords that triggered the route (only for keyword_match)          |
+| `MatchedKeywords` | []string    | Keywords that triggered the route (only for MatchMethodKeyword)     |
 | `Reasoning`       | string      | Human-readable explanation of why this agent was selected           |
 
 ### Supporting Types

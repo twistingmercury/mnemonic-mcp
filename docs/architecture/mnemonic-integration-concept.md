@@ -19,12 +19,12 @@ sequenceDiagram
     User->>CLI: "Write a Go function to sum numbers"
 
     Note over CLI,MN: Step 1: Get routing decision
-    CLI->>MN: POST /ace/route
+    CLI->>MN: POST /v1/ace/route
     MN->>MN: Evaluate routing rules (code-based)
     MN-->>CLI: { agent: "go-software-agent", confidence: 1.0 }
 
     Note over CLI,MN: Step 2: Get relevant patterns
-    CLI->>MN: GET /ace/patterns?agent="go-software-agent"&context="sum function"
+    CLI->>MN: GET /v1/ace/patterns?agent="go-software-agent"&context="sum function"
     MN->>MN: Query knowledge graph
     MN-->>CLI: { patterns: [...], system_prompt: "..." }
 
@@ -50,11 +50,11 @@ sequenceDiagram
     User->>CLI: "Write a Go function to sum numbers"
 
     Note over CLI,MN: Step 1: Get routing decision
-    CLI->>MN: POST /ace/route
+    CLI->>MN: POST /v1/ace/route
     MN-->>CLI: { agent: "go-software-agent" }
 
     Note over CLI,MN: Step 2: Get relevant patterns
-    CLI->>MN: GET /ace/patterns?agent="go-software-agent"&context="sum function"
+    CLI->>MN: GET /v1/ace/patterns?agent="go-software-agent"&context="sum function"
     MN-->>CLI: { patterns: [...], system_prompt: "..." }
 
     Note over CLI,ANT: Step 3: Direct API call
@@ -73,18 +73,10 @@ sequenceDiagram
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /ace/route` | Determine which agent handles a prompt |
-| `GET /ace/patterns` | Retrieve patterns for a specific agent + context |
-| `GET /ace/agents` | List available agents and their capabilities |
-| `PUT /ace/rules` | Update routing rules (admin) |
-
-### General Memory Endpoints (for other tools)
-
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /memory/store` | Store knowledge/patterns |
-| `GET /memory/search` | Semantic search across knowledge |
-| `GET /memory/graph` | Query knowledge graph relationships |
+| `POST /v1/ace/route` | Determine which agent handles a prompt |
+| `GET /v1/ace/patterns` | Retrieve patterns for a specific agent + context |
+| `GET /v1/ace/agents` | List available agents and their capabilities |
+| `PUT /v1/ace/routing-rules/{id}` | Update routing rules (admin) |
 
 ## What Lives Where
 
@@ -102,6 +94,5 @@ sequenceDiagram
 
 1. **Single backend**: Only Mnemonic to deploy/manage
 2. **ACE CLI is lightweight**: Just orchestration, no server logic
-3. **Mnemonic is reusable**: Other tools can use memory endpoints
-4. **Clean separation**: Knowledge storage (Mnemonic) vs orchestration (CLI)
-5. **Routing as data**: Rules stored alongside patterns, version controlled
+3. **Clean separation**: Knowledge storage (Mnemonic) vs orchestration (CLI)
+4. **Routing as data**: Rules stored alongside patterns, version controlled

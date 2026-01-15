@@ -802,7 +802,7 @@ sequenceDiagram
     participant NEO as Neo4j
 
     Note over Client,NEO: Agent Write Path
-    Client->>API: POST /ace/agents
+    Client->>API: POST /v1/ace/agents
     API->>SVC: CreateAgent(agent)
     SVC->>PG: INSERT INTO agents
     SVC->>NEO: MERGE (a:Agent {name: $name})
@@ -810,7 +810,7 @@ sequenceDiagram
     API-->>Client: 201 Created
 
     Note over Client,NEO: Pattern Write Path (async enrichment)
-    Client->>API: POST /ace/patterns
+    Client->>API: POST /v1/ace/patterns
     API->>SVC: CreatePattern(pattern)
     SVC->>PG: INSERT INTO patterns (status: pending)
     SVC->>PG: INSERT INTO enrichment_jobs
@@ -819,7 +819,7 @@ sequenceDiagram
     API-->>Client: 202 Accepted
 
     Note over Client,NEO: Routing Rule Write Path
-    Client->>API: POST /ace/routing-rules
+    Client->>API: POST /v1/ace/routing-rules
     API->>SVC: CreateRoutingRule(rule)
     SVC->>PG: Verify agent_name exists
     SVC->>PG: INSERT INTO routing_rules
@@ -836,12 +836,12 @@ sequenceDiagram
     participant Client as ACE CLI
     participant API as REST API
     participant ROUTE as Routing Engine
-    participant PATTERN as Pattern Retriever
+    participant PATTERN as Pattern Enrichment Service
     participant PG as Postgres
     participant PGV as PGVector
     participant NEO as Neo4j
 
-    Client->>API: POST /ace/route {prompt, context}
+    Client->>API: POST /v1/ace/route {prompt, context}
     API->>ROUTE: Route(prompt, context)
 
     Note over ROUTE,PG: Step 1: Find matching rule

@@ -49,7 +49,7 @@ sequenceDiagram
     participant PGV as PGVector
     participant Neo4j as Neo4j
 
-    Client->>API: POST /ace/patterns
+    Client->>API: POST /v1/ace/patterns
     API->>PG: Save pattern (status: "pending")
     API->>PG: Queue enrichment job
     API-->>Client: 202 Accepted
@@ -84,7 +84,7 @@ Key characteristics:
 
 ### Write-time Enrichment
 
-When a pattern is created or updated via `POST/PUT /ace/patterns`:
+When a pattern is created or updated via `POST/PUT /v1/ace/patterns`:
 
 ```mermaid
 stateDiagram-v2
@@ -215,7 +215,7 @@ WHERE id = $patternId;
 
 ### Query-time Processing
 
-When patterns are retrieved via `POST /ace/route`:
+When patterns are retrieved via `POST /v1/ace/route`:
 
 ```mermaid
 stateDiagram-v2

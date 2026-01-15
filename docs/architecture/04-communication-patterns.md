@@ -40,10 +40,12 @@ Mnemonic exposes the following REST endpoints for ACE:
 
 | Endpoint             | Method | Purpose                               |
 | -------------------- | ------ | ------------------------------------- |
-| `/ace/route`         | POST   | Deterministic routing based on prompt |
-| `/ace/patterns`      | GET    | Pattern retrieval for agent + context |
-| `/ace/agents`        | GET    | List available agents                 |
-| `/ace/agents/{name}` | GET    | Get agent details                     |
+| `/v1/ace/route`         | POST   | Deterministic routing based on prompt |
+| `/v1/ace/patterns`      | GET    | Pattern retrieval for agent + context |
+| `/v1/ace/agents`        | GET    | List available agents                 |
+| `/v1/ace/agents/{name}` | GET    | Get agent details                     |
+
+> **Note:** This table shows primary endpoints. See the [API Specification](../design/api-specification.md) for the complete endpoint reference including patterns and routing-rules CRUD operations.
 
 ### Request Flow
 
@@ -52,11 +54,11 @@ sequenceDiagram
     participant CLI as ACE CLI
     participant MN as Mnemonic
 
-    CLI->>MN: POST /ace/route
+    CLI->>MN: POST /v1/ace/route
     Note right of MN: Validate request
     Note right of MN: Apply routing rules
     Note right of MN: Fetch patterns from storage
-    MN-->>CLI: {agent, patterns, metadata}
+    MN-->>CLI: {agent_name, patterns, metadata}
 
     alt Error Case
         MN-->>CLI: HTTP Error Response
@@ -67,15 +69,15 @@ sequenceDiagram
 **Request Characteristics:**
 
 - Synchronous request-response
-- Contains prompt summary (not full prompt for privacy)
+- Contains full prompt for accurate routing decisions
 - Includes context hints for better routing
 - Authenticated per team/user
 
-**Request Body for `/ace/route`:**
+**Request Body for `/v1/ace/route`:**
 
 | Field     | Purpose                                 |
 | --------- | --------------------------------------- |
-| `prompt`  | Prompt summary for routing decision     |
+| `prompt`  | Full prompt for routing decision        |
 | `context` | Domain, task type, preferences          |
 | `options` | Optional routing configuration          |
 
@@ -87,7 +89,7 @@ The response provides everything the CLI needs for local execution.
 
 | Field      | Purpose                                   |
 | ---------- | ----------------------------------------- |
-| `agent`    | Which agent to invoke                     |
+| `agent_name` | Which agent to invoke                     |
 | `patterns` | Retrieved patterns for context enrichment |
 | `hints`    | Suggested parameters for Claude Code      |
 | `metadata` | Routing rationale for logging/debugging   |
@@ -117,7 +119,7 @@ The CLI must handle Mnemonic errors gracefully.
 | 401           | Unauthorized | Prompt for re-authentication             |
 | 404           | Not Found    | Agent or pattern not found               |
 | 500           | Server Error | Retry with backoff, then fail gracefully |
-| Network Error | Unreachable  | To be specified in design phase          |
+| Network Error | Unreachable  | Post-MVP: Fallback behavior to be designed |
 
 ## CLI to Claude Code Communication
 
@@ -142,14 +144,12 @@ sequenceDiagram
 
 **Invocation Characteristics:**
 
-To be specified in design phase.
-
-| Aspect           | Detail                        |
-| ---------------- | ----------------------------- |
-| Method           | Subprocess spawn              |
-| Prompt passing   | To be specified in design     |
-| Output capture   | To be specified in design     |
-| Timeout handling | To be specified in design     |
+| Aspect           | Detail                                    |
+| ---------------- | ----------------------------------------- |
+| Method           | Subprocess spawn                          |
+| Prompt passing   | Post-MVP: Details to be designed          |
+| Output capture   | Post-MVP: Details to be designed          |
+| Timeout handling | Post-MVP: Details to be designed          |
 
 **Context Enrichment:**
 
@@ -212,10 +212,10 @@ graph TB
 
 When components are unavailable:
 
-| Scenario             | Fallback                        |
-| -------------------- | ------------------------------- |
-| Mnemonic unreachable | To be specified in design phase |
-| Claude Code fails    | Display error, suggest retry    |
+| Scenario             | Fallback                                     |
+| -------------------- | -------------------------------------------- |
+| Mnemonic unreachable | Post-MVP: Fallback behavior to be designed   |
+| Claude Code fails    | Display error, suggest retry                 |
 
 ## Security Considerations
 
@@ -231,23 +231,25 @@ When components are unavailable:
 ```mermaid
 graph TB
     subgraph "Data Classification"
-        PROMPT[User Prompts<br/>Sensitive]
-        SUMMARY[Prompt Summary<br/>Minimal]
+        PROMPT[User Prompts<br/>Sent for routing]
         PATTERNS[Patterns<br/>Team-shared]
         ROUTES[Routes<br/>Configuration]
+        CREDS[Credentials<br/>CLI only]
     end
 
-    PROMPT -->|"Stays in CLI"| CLI[ACE CLI]
-    SUMMARY -->|"Sent to Mnemonic"| MN[Mnemonic]
+    PROMPT -->|"Sent for routing<br/>(not persisted)"| MN[Mnemonic]
     PATTERNS -->|"Stored in Mnemonic"| MN
     ROUTES -->|"Managed in Mnemonic"| MN
+    CREDS -->|"Stays local"| CLI[ACE CLI]
 ```
 
 **Key Principles:**
 
-- Full prompts stay local (CLI only)
-- Only summaries sent to Mnemonic for routing
+- Full prompts sent to Mnemonic for routing (not persisted)
+- Mnemonic is organization-controlled infrastructure (not a third-party service)
+- Routing accuracy requires full prompt for keyword matching, regex, and semantic similarity
 - Patterns are team-shared (access controlled)
 - Credentials never leave CLI
+- Actual LLM calls go directly from CLI to Anthropic API (not through Mnemonic)
 
 **Next:** [Deployment Architecture](05-deployment-architecture.md)

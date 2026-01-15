@@ -611,6 +611,35 @@ components:
           readOnly: true
           examples:
             - '2024-01-10T08:00:00Z'
+        enrichment_status:
+          type: string
+          description: Status of background enrichment processing. Patterns must be 'enriched' for semantic search.
+          enum:
+            - pending
+            - enriched
+            - failed
+          readOnly: true
+          examples:
+            - enriched
+        enrichment_error:
+          type:
+            - string
+            - 'null'
+          description: Error message if enrichment failed. Only present when enrichment_status is 'failed'.
+          readOnly: true
+          examples:
+            - 'embedding generation failed: context deadline exceeded'
+            - null
+        enriched_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: Timestamp of last successful enrichment. Null if pattern has never been enriched.
+          readOnly: true
+          examples:
+            - '2024-01-10T08:05:00Z'
+            - null
 
     PatternCreate:
       type: object
@@ -780,7 +809,7 @@ components:
           description: Minimum relevance score for patterns (0-1)
           minimum: 0
           maximum: 1
-          default: 0.5
+          default: 0.7
 
     RouteRequest:
       type: object
@@ -826,15 +855,15 @@ components:
           type: string
           description: Routing method used
           enum:
-            - keyword_match
-            - regex_match
-            - pattern_match
-            - default
+            - MatchMethodKeyword
+            - MatchMethodRegex
+            - MatchMethodPattern
+            - MatchMethodDefault
           examples:
-            - keyword_match
+            - MatchMethodKeyword
         matched_keywords:
           type: array
-          description: Keywords that triggered the route (for keyword_match)
+          description: Keywords that triggered the route (for MatchMethodKeyword)
           items:
             type: string
           examples:
@@ -1420,7 +1449,7 @@ paths:
                     routing:
                       agent_name: go-software-agent
                       confidence: 1.0
-                      method: keyword_match
+                      method: MatchMethodKeyword
                       matched_keywords:
                         - go
                         - function
@@ -1823,8 +1852,11 @@ paths:
                 - agent_name: go-software-agent
                   relevance: 0.9
       responses:
-        '201':
-          description: Pattern created successfully
+        '202':
+          description: |
+            Pattern accepted for processing. The pattern is created immediately but background
+            enrichment (embedding generation, entity extraction) is asynchronous. Check
+            enrichment_status field for processing state.
           headers:
             Location:
               $ref: '#/components/headers/Location'
@@ -1834,6 +1866,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Pattern'
+              example:
+                id: 550e8400-e29b-41d4-a716-446655440005
+                name: go-concurrency
+                description: Patterns for safe concurrency in Go
+                content: '# Go Concurrency Patterns\n\n## Goroutines\n\n...'
+                tags:
+                  - go
+                  - concurrency
+                agent_associations:
+                  - agent_name: go-software-agent
+                    relevance: 0.9
+                enrichment_status: pending
+                enrichment_error: null
+                enriched_at: null
+                created_at: '2024-01-16T14:00:00Z'
+                updated_at: '2024-01-16T14:00:00Z'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':

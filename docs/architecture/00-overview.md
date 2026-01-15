@@ -82,7 +82,7 @@ sequenceDiagram
     participant CC as Claude Code
 
     User->>CLI: Submit prompt
-    CLI->>MN: POST /ace/route
+    CLI->>MN: POST /v1/ace/route
     MN-->>CLI: Return agent + patterns
     CLI->>CC: Invoke with enriched prompt
     CC-->>CLI: Return results
@@ -108,7 +108,7 @@ sequenceDiagram
     participant ANT as Anthropic API
 
     User->>CLI: Submit prompt
-    CLI->>MN: POST /ace/route
+    CLI->>MN: POST /v1/ace/route
     MN-->>CLI: Return agent + patterns
     CLI->>ANT: Direct API call
     ANT-->>CLI: Return response
@@ -164,16 +164,9 @@ The following design documents provide implementation details:
 | -------------------------------------------------------- | -------------------------------------- | -------- |
 | [api-specification.md](../design/api-specification.md)   | OpenAPI spec for Mnemonic REST API     | Complete |
 | [pattern-processing.md](../design/pattern-processing.md) | Pattern enrichment and search pipeline | Complete |
-
-### Planned Design Documents
-
-The following design documents will be created during implementation:
-
-| Document          | Description                      |
-| ----------------- | -------------------------------- |
-| data-models.md    | Entity schemas and relationships |
-| routing-engine.md | Routing algorithm details        |
-| configuration.md  | CLI configuration reference      |
+| [data-models.md](../design/data-models.md)             | Entity schemas and relationships       | Complete |
+| [routing-engine.md](../design/routing-engine.md)       | Routing algorithm details              | Complete |
+| [configuration.md](../design/configuration.md)         | CLI configuration reference            | Complete |
 
 ### Cross-References
 

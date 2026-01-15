@@ -134,6 +134,7 @@ auth:
   api_key: ""
 
   # OAuth2 configuration (alternative to API key)
+  # NOTE: Post-MVP feature - OAuth2 authentication will be available in a later phase
   oauth2:
     enabled: false
     client_id: ""
@@ -238,10 +239,10 @@ ace --config /path/to/config.yaml
 | `server.retry_attempts` | int | `3` | `ACE_SERVER_RETRY_ATTEMPTS` | - | Max retry attempts |
 | `server.retry_delay` | duration | `1s` | `ACE_SERVER_RETRY_DELAY` | - | Delay between retries |
 | `auth.api_key` | string | `""` | `ACE_AUTH_API_KEY` | - | API key for authentication |
-| `auth.oauth2.enabled` | bool | `false` | `ACE_AUTH_OAUTH2_ENABLED` | - | Enable OAuth2 |
-| `auth.oauth2.client_id` | string | `""` | `ACE_AUTH_OAUTH2_CLIENT_ID` | - | OAuth2 client ID |
-| `auth.oauth2.client_secret` | string | `""` | `ACE_AUTH_OAUTH2_CLIENT_SECRET` | - | OAuth2 client secret |
-| `auth.oauth2.token_url` | string | `""` | `ACE_AUTH_OAUTH2_TOKEN_URL` | - | OAuth2 token endpoint |
+| `auth.oauth2.enabled` | bool | `false` | `ACE_AUTH_OAUTH2_ENABLED` | - | Enable OAuth2 (Post-MVP) |
+| `auth.oauth2.client_id` | string | `""` | `ACE_AUTH_OAUTH2_CLIENT_ID` | - | OAuth2 client ID (Post-MVP) |
+| `auth.oauth2.client_secret` | string | `""` | `ACE_AUTH_OAUTH2_CLIENT_SECRET` | - | OAuth2 client secret (Post-MVP) |
+| `auth.oauth2.token_url` | string | `""` | `ACE_AUTH_OAUTH2_TOKEN_URL` | - | OAuth2 token endpoint (Post-MVP) |
 | `routing.fallback_agent` | string | `general-agent` | `ACE_ROUTING_FALLBACK_AGENT` | `--fallback-agent` | Fallback agent name |
 | `routing.include_patterns` | bool | `true` | `ACE_ROUTING_INCLUDE_PATTERNS` | `--no-patterns` | Include patterns |
 | `routing.max_patterns` | int | `5` | `ACE_ROUTING_MAX_PATTERNS` | `--max-patterns` | Max patterns to retrieve |
@@ -318,6 +319,7 @@ openai:
   retry_delay: 1s
 
 # Rate limiting
+# NOTE: Post-MVP feature - Server-side rate limiting will be available in a later phase
 rate_limit:
   enabled: true
   requests_per_second: 100
@@ -375,6 +377,7 @@ observability:
     enabled: true
     path: /health
 
+  # NOTE: Post-MVP feature - Distributed tracing will be available in a later phase
   tracing:
     enabled: false
     endpoint: ""
@@ -434,10 +437,10 @@ export MNEMONIC_LOGGING_LEVEL="debug"
 | `openai.embedding_model` | string | `text-embedding-3-small` | `MNEMONIC_OPENAI_EMBEDDING_MODEL` | Embedding model |
 | `openai.embedding_dimensions` | int | `1536` | `MNEMONIC_OPENAI_EMBEDDING_DIMENSIONS` | Embedding dimensions |
 | `openai.extraction_model` | string | `gpt-4o-mini` | `MNEMONIC_OPENAI_EXTRACTION_MODEL` | Entity extraction model |
-| `rate_limit.enabled` | bool | `true` | `MNEMONIC_RATE_LIMIT_ENABLED` | Enable rate limiting |
-| `rate_limit.requests_per_second` | int | `100` | `MNEMONIC_RATE_LIMIT_REQUESTS_PER_SECOND` | Global RPS limit |
-| `rate_limit.burst_size` | int | `200` | `MNEMONIC_RATE_LIMIT_BURST_SIZE` | Burst size |
-| `rate_limit.per_user.requests_per_minute` | int | `60` | `MNEMONIC_RATE_LIMIT_PER_USER_REQUESTS_PER_MINUTE` | Per-user RPM |
+| `rate_limit.enabled` | bool | `true` | `MNEMONIC_RATE_LIMIT_ENABLED` | Enable rate limiting (Post-MVP) |
+| `rate_limit.requests_per_second` | int | `100` | `MNEMONIC_RATE_LIMIT_REQUESTS_PER_SECOND` | Global RPS limit (Post-MVP) |
+| `rate_limit.burst_size` | int | `200` | `MNEMONIC_RATE_LIMIT_BURST_SIZE` | Burst size (Post-MVP) |
+| `rate_limit.per_user.requests_per_minute` | int | `60` | `MNEMONIC_RATE_LIMIT_PER_USER_REQUESTS_PER_MINUTE` | Per-user RPM (Post-MVP) |
 | `routing.cache.refresh_ttl` | duration | `5m` | `MNEMONIC_ROUTING_CACHE_REFRESH_TTL` | Cache refresh interval |
 | `routing.default_agent` | string | `general-agent` | `MNEMONIC_ROUTING_DEFAULT_AGENT` | Default fallback agent |
 | `enrichment.worker_count` | int | `2` | `MNEMONIC_ENRICHMENT_WORKER_COUNT` | Concurrent workers |
@@ -448,7 +451,7 @@ export MNEMONIC_LOGGING_LEVEL="debug"
 | `observability.metrics.enabled` | bool | `true` | `MNEMONIC_OBSERVABILITY_METRICS_ENABLED` | Enable metrics |
 | `observability.metrics.path` | string | `/metrics` | `MNEMONIC_OBSERVABILITY_METRICS_PATH` | Metrics endpoint path |
 | `observability.health.enabled` | bool | `true` | `MNEMONIC_OBSERVABILITY_HEALTH_ENABLED` | Enable health check |
-| `observability.tracing.enabled` | bool | `false` | `MNEMONIC_OBSERVABILITY_TRACING_ENABLED` | Enable distributed tracing |
+| `observability.tracing.enabled` | bool | `false` | `MNEMONIC_OBSERVABILITY_TRACING_ENABLED` | Enable distributed tracing (Post-MVP) |
 
 ## Environment Variable Naming Conventions
 
