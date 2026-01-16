@@ -936,7 +936,7 @@ Every routing decision includes a human-readable reasoning string based on the m
 | Match Type | Reasoning Format                                     |
 | ---------- | ---------------------------------------------------- |
 | keyword    | `"Matched keywords: go, function"`                   |
-| regex      | `"Matched regex pattern: \b(go|golang)\b"`           |
+| regex      | `"Matched regex pattern: \b(go\|golang)\b"`           |
 | pattern    | `"Semantic match with confidence 87%"`               |
 | default    | `"No specific rules matched; using default agent"`   |
 
