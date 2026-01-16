@@ -170,12 +170,12 @@ classDiagram
 
 **MatchResult fields:**
 
-| Field             | Type       | Description                                                           |
-| ----------------- | ---------- | --------------------------------------------------------------------- |
-| `Matched`         | bool       | Whether the rule matched the prompt                                   |
-| `Confidence`      | float64    | Score from 0.0 to 1.0 indicating match strength                       |
-| `MatchedKeywords` | []string   | Keywords that triggered a keyword match (empty for other match types) |
-| `Details`         | string     | Additional match information for logging                              |
+| Field             | Type     | Description                                                           |
+| ----------------- | -------- | --------------------------------------------------------------------- |
+| `Matched`         | bool     | Whether the rule matched the prompt                                   |
+| `Confidence`      | float64  | Score from 0.0 to 1.0 indicating match strength                       |
+| `MatchedKeywords` | []string | Keywords that triggered a keyword match (empty for other match types) |
+| `Details`         | string   | Additional match information for logging                              |
 
 ### RoutingDecision Type
 
@@ -204,13 +204,13 @@ classDiagram
 
 **RoutingDecision fields:**
 
-| Field             | Type        | Description                                                         |
-| ----------------- | ----------- | ------------------------------------------------------------------- |
-| `AgentName`       | string      | Identifier of the selected agent                                    |
-| `Confidence`      | float64     | Routing confidence (0.0-1.0, where 1.0 = deterministic match)       |
-| `Method`          | MatchMethod | Which type of matching triggered the route                          |
-| `MatchedKeywords` | []string    | Keywords that triggered the route (only for MatchMethodKeyword)     |
-| `Reasoning`       | string      | Human-readable explanation of why this agent was selected           |
+| Field             | Type        | Description                                                     |
+| ----------------- | ----------- | --------------------------------------------------------------- |
+| `AgentName`       | string      | Identifier of the selected agent                                |
+| `Confidence`      | float64     | Routing confidence (0.0-1.0, where 1.0 = deterministic match)   |
+| `Method`          | MatchMethod | Which type of matching triggered the route                      |
+| `MatchedKeywords` | []string    | Keywords that triggered the route (only for MatchMethodKeyword) |
+| `Reasoning`       | string      | Human-readable explanation of why this agent was selected       |
 
 ### Supporting Types
 
@@ -457,10 +457,10 @@ sequenceDiagram
 
 **Configuration:**
 
-| Setting            | Default | Description                               |
-| ------------------ | ------- | ----------------------------------------- |
-| `refresh_ttl`      | 5m      | Background refresh interval               |
-| `startup_timeout`  | 30s     | Max time to wait for initial rule load    |
+| Setting           | Default | Description                            |
+| ----------------- | ------- | -------------------------------------- |
+| `refresh_ttl`     | 5m      | Background refresh interval            |
+| `startup_timeout` | 30s     | Max time to wait for initial rule load |
 
 ### Startup Behavior
 
@@ -550,10 +550,10 @@ This design ensures that high-priority rules are always considered first, and ad
 
 When multiple rules have the same priority, the following tie-breakers apply:
 
-| Order | Criterion      | Rationale                               |
-| ----- | -------------- | --------------------------------------- |
-| 1     | Match type     | keyword > regex > pattern > default     |
-| 2     | Creation time  | Older rules take precedence             |
+| Order | Criterion     | Rationale                           |
+| ----- | ------------- | ----------------------------------- |
+| 1     | Match type    | keyword > regex > pattern > default |
+| 2     | Creation time | Older rules take precedence         |
 
 Match type ordering reflects specificity: keyword matches are most explicit, while pattern matches are more fuzzy.
 
@@ -887,12 +887,12 @@ classDiagram
 
 ### Scoring Logic by Match Type
 
-| Match Type | Confidence Score | Rationale                        |
-| ---------- | ---------------- | -------------------------------- |
-| keyword    | 1.0              | Explicit keyword match           |
-| regex      | 1.0              | Explicit pattern match           |
-| pattern    | 0.0 - 1.0        | Cosine similarity score          |
-| default    | 0.5              | Baseline for fallback            |
+| Match Type | Confidence Score | Rationale               |
+| ---------- | ---------------- | ----------------------- |
+| keyword    | 1.0              | Explicit keyword match  |
+| regex      | 1.0              | Explicit pattern match  |
+| pattern    | 0.0 - 1.0        | Cosine similarity score |
+| default    | 0.5              | Baseline for fallback   |
 
 Deterministic match types (keyword, regex) always return 1.0 confidence because the match is binary - either the pattern matches or it does not.
 
@@ -933,12 +933,12 @@ stateDiagram-v2
 
 Every routing decision includes a human-readable reasoning string based on the match type:
 
-| Match Type | Reasoning Format                                     |
-| ---------- | ---------------------------------------------------- |
-| keyword    | `"Matched keywords: go, function"`                   |
-| regex      | `"Matched regex pattern: \b(go\|golang)\b"`           |
-| pattern    | `"Semantic match with confidence 87%"`               |
-| default    | `"No specific rules matched; using default agent"`   |
+| Match Type | Reasoning Format                                   |
+| ---------- | -------------------------------------------------- |
+| keyword    | `"Matched keywords: go, function"`                 |
+| regex      | `"Matched regex pattern: \b(go\|golang)\b"`        |
+| pattern    | `"Semantic match with confidence 87%"`             |
+| default    | `"No specific rules matched; using default agent"` |
 
 ## Performance Considerations
 
@@ -946,11 +946,11 @@ Every routing decision includes a human-readable reasoning string based on the m
 
 ### Latency Targets
 
-| Operation                     | Target   | Maximum |
-| ----------------------------- | -------- | ------- |
-| Rule evaluation (cache hit)   | < 10ms   | 50ms    |
-| Full route request            | < 50ms   | 200ms   |
-| Pattern match (with embedding)| < 500ms  | 2s      |
+| Operation                      | Target  | Maximum |
+| ------------------------------ | ------- | ------- |
+| Rule evaluation (cache hit)    | < 10ms  | 50ms    |
+| Full route request             | < 50ms  | 200ms   |
+| Pattern match (with embedding) | < 500ms | 2s      |
 
 The routing engine is on the critical path for every ACE request. Latency directly impacts user experience.
 
@@ -991,22 +991,22 @@ Stop evaluating rules as soon as a match is found.
 
 Pattern matching (which requires embedding) should have lower priority than keyword/regex rules:
 
-| Priority | Match Type | Rationale                           |
-| -------- | ---------- | ----------------------------------- |
-| 100+     | keyword    | Fast, explicit matches first        |
-| 50-99    | regex      | Fast, pattern-based matches second  |
-| 1-49     | pattern    | Slow, semantic matches last         |
-| 0        | default    | Fallback only                       |
+| Priority | Match Type | Rationale                          |
+| -------- | ---------- | ---------------------------------- |
+| 100+     | keyword    | Fast, explicit matches first       |
+| 50-99    | regex      | Fast, pattern-based matches second |
+| 1-49     | pattern    | Slow, semantic matches last        |
+| 0        | default    | Fallback only                      |
 
 ### Benchmarking Guidelines
 
 Benchmark targets for the routing engine:
 
-| Scenario                       | Target Latency |
-| ------------------------------ | -------------- |
-| 100 rules, keyword match       | < 1ms          |
-| 100 rules, no match (full scan)| < 5ms          |
-| 100 rules, pattern match       | < 500ms        |
+| Scenario                        | Target Latency |
+| ------------------------------- | -------------- |
+| 100 rules, keyword match        | < 1ms          |
+| 100 rules, no match (full scan) | < 5ms          |
+| 100 rules, pattern match        | < 500ms        |
 
 ## Error Handling
 
@@ -1014,13 +1014,13 @@ Benchmark targets for the routing engine:
 
 The routing engine handles errors gracefully to ensure requests are never dropped:
 
-| Error Scenario              | Behavior                              |
-| --------------------------- | ------------------------------------- |
-| Invalid regex pattern       | Skip rule, log warning, continue      |
-| Pattern embedding fails     | Skip rule, log error, continue        |
-| All rules fail              | Return default agent                  |
-| Cache refresh fails         | Use stale cache, log error            |
-| Unknown match type          | Skip rule, log warning                |
+| Error Scenario          | Behavior                         |
+| ----------------------- | -------------------------------- |
+| Invalid regex pattern   | Skip rule, log warning, continue |
+| Pattern embedding fails | Skip rule, log error, continue   |
+| All rules fail          | Return default agent             |
+| Cache refresh fails     | Use stale cache, log error       |
+| Unknown match type      | Skip rule, log warning           |
 
 ```mermaid
 stateDiagram-v2

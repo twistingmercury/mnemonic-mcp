@@ -106,11 +106,11 @@ graph TB
 
 Post-MVP: Distribution mechanism to be designed after initial release.
 
-| Aspect        | Detail                                           |
-| ------------- | ------------------------------------------------ |
-| Method        | Post-MVP: To be designed after initial release   |
-| Updates       | Post-MVP: To be designed after initial release   |
-| Configuration | Post-MVP: To be designed after initial release   |
+| Aspect        | Detail                                         |
+| ------------- | ---------------------------------------------- |
+| Method        | Post-MVP: To be designed after initial release |
+| Updates       | Post-MVP: To be designed after initial release |
+| Configuration | Post-MVP: To be designed after initial release |
 
 ### Mnemonic
 
@@ -126,12 +126,12 @@ Post-MVP: Distribution mechanism to be designed after initial release.
 
 **Resource Requirements:**
 
-| Resource | Expectation |
-|----------|-------------|
-| CPU | Low to moderate (routing + pattern queries) |
-| Memory | Moderate (caching, pattern indexing) |
-| Storage | Via external databases (Postgres, Neo4j) |
-| Network | Moderate (all CLI traffic) |
+| Resource | Expectation                                 |
+| -------- | ------------------------------------------- |
+| CPU      | Low to moderate (routing + pattern queries) |
+| Memory   | Moderate (caching, pattern indexing)        |
+| Storage  | Via external databases (Postgres, Neo4j)    |
+| Network  | Moderate (all CLI traffic)                  |
 
 **Storage Stack:**
 
@@ -185,12 +185,12 @@ graph TB
 
 ### Client Requirements
 
-| Requirement | Phase 1 | Phase 2 |
-|-------------|---------|---------|
-| ACE CLI | Required | Required |
-| Claude Code | Required | Optional |
-| Anthropic API key | Via Claude Code | Direct |
-| Network access | To Mnemonic | To Mnemonic + Anthropic |
+| Requirement       | Phase 1         | Phase 2                 |
+| ----------------- | --------------- | ----------------------- |
+| ACE CLI           | Required        | Required                |
+| Claude Code       | Required        | Optional                |
+| Anthropic API key | Via Claude Code | Direct                  |
+| Network access    | To Mnemonic     | To Mnemonic + Anthropic |
 
 ## Operational Considerations
 
@@ -198,28 +198,28 @@ graph TB
 
 Key metrics to monitor:
 
-| Component | Metrics |
-|-----------|---------|
-| Mnemonic | Request rate, latency, error rate, pattern queries |
-| Postgres | Connection count, query latency, storage usage |
-| Neo4j | Query latency, memory usage, connection count |
-| CLI (aggregated) | Usage patterns, version distribution |
+| Component        | Metrics                                            |
+| ---------------- | -------------------------------------------------- |
+| Mnemonic         | Request rate, latency, error rate, pattern queries |
+| Postgres         | Connection count, query latency, storage usage     |
+| Neo4j            | Query latency, memory usage, connection count      |
+| CLI (aggregated) | Usage patterns, version distribution               |
 
 ### Logging
 
-| Component | Log Focus                                          |
-| --------- | -------------------------------------------------- |
-| Mnemonic  | Routing decisions, pattern queries, errors         |
-| CLI       | Post-MVP: Logging configuration to be designed     |
+| Component | Log Focus                                      |
+| --------- | ---------------------------------------------- |
+| Mnemonic  | Routing decisions, pattern queries, errors     |
+| CLI       | Post-MVP: Logging configuration to be designed |
 
 ### Backup and Recovery
 
-| Component         | Strategy                                          |
-| ----------------- | ------------------------------------------------- |
-| Routing rules     | Post-MVP: Backup procedures to be designed        |
-| Postgres data     | Post-MVP: Backup procedures to be designed        |
-| Neo4j data        | Post-MVP: Backup procedures to be designed        |
-| CLI configuration | Post-MVP: Backup procedures to be designed        |
+| Component         | Strategy                                   |
+| ----------------- | ------------------------------------------ |
+| Routing rules     | Post-MVP: Backup procedures to be designed |
+| Postgres data     | Post-MVP: Backup procedures to be designed |
+| Neo4j data        | Post-MVP: Backup procedures to be designed |
+| CLI configuration | Post-MVP: Backup procedures to be designed |
 
 ### Updates and Maintenance
 
@@ -232,11 +232,11 @@ graph TB
     end
 ```
 
-| Component | Update Approach |
-|-----------|----------------|
-| Mnemonic | Rolling deployment, backward compatible |
-| Databases | Migration-aware, data preservation |
-| CLI | User-initiated, version compatibility checks |
+| Component | Update Approach                              |
+| --------- | -------------------------------------------- |
+| Mnemonic  | Rolling deployment, backward compatible      |
+| Databases | Migration-aware, data preservation           |
+| CLI       | User-initiated, version compatibility checks |
 
 ## Scaling Considerations
 
@@ -251,11 +251,11 @@ graph LR
     end
 ```
 
-| Component | Scaling Approach                               |
-| --------- | ---------------------------------------------- |
-| Mnemonic  | Add instances behind load balancer             |
-| Postgres  | Read replicas, connection pooling              |
-| Neo4j     | Post-MVP: Scaling approach to be designed      |
+| Component | Scaling Approach                          |
+| --------- | ----------------------------------------- |
+| Mnemonic  | Add instances behind load balancer        |
+| Postgres  | Read replicas, connection pooling         |
+| Neo4j     | Post-MVP: Scaling approach to be designed |
 
 ### Performance Considerations
 
@@ -266,11 +266,11 @@ graph LR
 
 ### Capacity Planning
 
-| Factor | Consideration |
-|--------|---------------|
-| Team size | Number of concurrent CLI users |
-| Request rate | Queries per minute to Mnemonic |
-| Pattern volume | Total patterns in storage |
-| Pattern size | Average pattern complexity |
+| Factor         | Consideration                  |
+| -------------- | ------------------------------ |
+| Team size      | Number of concurrent CLI users |
+| Request rate   | Queries per minute to Mnemonic |
+| Pattern volume | Total patterns in storage      |
+| Pattern size   | Average pattern complexity     |
 
 **Next:** Return to [Architecture Overview](00-overview.md)

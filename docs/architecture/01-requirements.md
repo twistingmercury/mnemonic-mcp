@@ -51,20 +51,20 @@ The following are explicitly out of scope:
 
 ### Phase 1 (MVP)
 
-| Criterion | Measure |
-|-----------|---------|
+| Criterion             | Measure                                                                   |
+| --------------------- | ------------------------------------------------------------------------- |
 | Routing functionality | CLI successfully routes requests through Mnemonic to appropriate handlers |
-| Pattern retrieval | Patterns stored in Mnemonic are accessible to all team members |
-| Claude Code execution | Local Claude Code invocation works seamlessly with enriched context |
-| Team adoption | Multiple team members can use the same centralized routing configuration |
+| Pattern retrieval     | Patterns stored in Mnemonic are accessible to all team members            |
+| Claude Code execution | Local Claude Code invocation works seamlessly with enriched context       |
+| Team adoption         | Multiple team members can use the same centralized routing configuration  |
 
 ### Phase 2 (Future)
 
-| Criterion | Measure |
-|-----------|---------|
-| Direct API integration | CLI can call Anthropic API directly without Claude Code |
-| Local tool execution | CLI handles tool calls and file operations natively |
-| Feature parity | All Phase 1 capabilities work without Claude Code dependency |
+| Criterion              | Measure                                                      |
+| ---------------------- | ------------------------------------------------------------ |
+| Direct API integration | CLI can call Anthropic API directly without Claude Code      |
+| Local tool execution   | CLI handles tool calls and file operations natively          |
+| Feature parity         | All Phase 1 capabilities work without Claude Code dependency |
 
 ### Quality Attributes
 

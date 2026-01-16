@@ -38,8 +38,8 @@ The CLI communicates with Mnemonic via REST for routing decisions and pattern re
 
 Mnemonic exposes the following REST endpoints for ACE:
 
-| Endpoint             | Method | Purpose                               |
-| -------------------- | ------ | ------------------------------------- |
+| Endpoint                | Method | Purpose                               |
+| ----------------------- | ------ | ------------------------------------- |
 | `/v1/ace/route`         | POST   | Deterministic routing based on prompt |
 | `/v1/ace/patterns`      | GET    | Pattern retrieval for agent + context |
 | `/v1/ace/agents`        | GET    | List available agents                 |
@@ -75,11 +75,11 @@ sequenceDiagram
 
 **Request Body for `/v1/ace/route`:**
 
-| Field     | Purpose                                 |
-| --------- | --------------------------------------- |
-| `prompt`  | Full prompt for routing decision        |
-| `context` | Domain, task type, preferences          |
-| `options` | Optional routing configuration          |
+| Field     | Purpose                          |
+| --------- | -------------------------------- |
+| `prompt`  | Full prompt for routing decision |
+| `context` | Domain, task type, preferences   |
+| `options` | Optional routing configuration   |
 
 ### Response Structure
 
@@ -87,12 +87,12 @@ The response provides everything the CLI needs for local execution.
 
 **Response Fields:**
 
-| Field      | Purpose                                   |
-| ---------- | ----------------------------------------- |
+| Field        | Purpose                                   |
+| ------------ | ----------------------------------------- |
 | `agent_name` | Which agent to invoke                     |
-| `patterns` | Retrieved patterns for context enrichment |
-| `hints`    | Suggested parameters for Claude Code      |
-| `metadata` | Routing rationale for logging/debugging   |
+| `patterns`   | Retrieved patterns for context enrichment |
+| `hints`      | Suggested parameters for Claude Code      |
+| `metadata`   | Routing rationale for logging/debugging   |
 
 ```mermaid
 graph TB
@@ -113,12 +113,12 @@ graph TB
 
 The CLI must handle Mnemonic errors gracefully.
 
-| HTTP Status   | Meaning      | CLI Behavior                             |
-| ------------- | ------------ | ---------------------------------------- |
-| 400           | Bad Request  | Display validation errors                |
-| 401           | Unauthorized | Prompt for re-authentication             |
-| 404           | Not Found    | Agent or pattern not found               |
-| 500           | Server Error | Retry with backoff, then fail gracefully |
+| HTTP Status   | Meaning      | CLI Behavior                               |
+| ------------- | ------------ | ------------------------------------------ |
+| 400           | Bad Request  | Display validation errors                  |
+| 401           | Unauthorized | Prompt for re-authentication               |
+| 404           | Not Found    | Agent or pattern not found                 |
+| 500           | Server Error | Retry with backoff, then fail gracefully   |
 | Network Error | Unreachable  | Post-MVP: Fallback behavior to be designed |
 
 ## CLI to Claude Code Communication
@@ -144,12 +144,12 @@ sequenceDiagram
 
 **Invocation Characteristics:**
 
-| Aspect           | Detail                                    |
-| ---------------- | ----------------------------------------- |
-| Method           | Subprocess spawn                          |
-| Prompt passing   | Post-MVP: Details to be designed          |
-| Output capture   | Post-MVP: Details to be designed          |
-| Timeout handling | Post-MVP: Details to be designed          |
+| Aspect           | Detail                           |
+| ---------------- | -------------------------------- |
+| Method           | Subprocess spawn                 |
+| Prompt passing   | Post-MVP: Details to be designed |
+| Output capture   | Post-MVP: Details to be designed |
+| Timeout handling | Post-MVP: Details to be designed |
 
 **Context Enrichment:**
 
@@ -212,10 +212,10 @@ graph TB
 
 When components are unavailable:
 
-| Scenario             | Fallback                                     |
-| -------------------- | -------------------------------------------- |
-| Mnemonic unreachable | Post-MVP: Fallback behavior to be designed   |
-| Claude Code fails    | Display error, suggest retry                 |
+| Scenario             | Fallback                                   |
+| -------------------- | ------------------------------------------ |
+| Mnemonic unreachable | Post-MVP: Fallback behavior to be designed |
+| Claude Code fails    | Display error, suggest retry               |
 
 ## Security Considerations
 

@@ -164,9 +164,9 @@ The following design documents provide implementation details:
 | -------------------------------------------------------- | -------------------------------------- | -------- |
 | [api-specification.md](../design/api-specification.md)   | OpenAPI spec for Mnemonic REST API     | Complete |
 | [pattern-processing.md](../design/pattern-processing.md) | Pattern enrichment and search pipeline | Complete |
-| [data-models.md](../design/data-models.md)             | Entity schemas and relationships       | Complete |
-| [routing-engine.md](../design/routing-engine.md)       | Routing algorithm details              | Complete |
-| [configuration.md](../design/configuration.md)         | CLI configuration reference            | Complete |
+| [data-models.md](../design/data-models.md)               | Entity schemas and relationships       | Complete |
+| [routing-engine.md](../design/routing-engine.md)         | Routing algorithm details              | Complete |
+| [configuration.md](../design/configuration.md)           | CLI configuration reference            | Complete |
 
 ### Cross-References
 

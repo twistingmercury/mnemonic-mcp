@@ -205,12 +205,12 @@ graph TB
 
 ### CLI to Mnemonic
 
-| Aspect | Detail |
-|--------|--------|
-| Protocol | REST (HTTP/HTTPS) |
-| Authentication | To be specified in design phase |
-| Request contains | Full prompt, context hints, user preferences |
-| Response contains | Agent identifier, patterns, execution hints |
+| Aspect            | Detail                                       |
+| ----------------- | -------------------------------------------- |
+| Protocol          | REST (HTTP/HTTPS)                            |
+| Authentication    | To be specified in design phase              |
+| Request contains  | Full prompt, context hints, user preferences |
+| Response contains | Agent identifier, patterns, execution hints  |
 
 **Note:** Full prompts are sent to Mnemonic for routing but are not persisted. Mnemonic is organization-controlled infrastructure and requires the full prompt for accurate routing via keyword matching, regex, and semantic similarity.
 
@@ -218,11 +218,11 @@ See [Communication Patterns](04-communication-patterns.md#rest-endpoints) for RE
 
 ### CLI to Claude Code
 
-| Aspect | Detail |
-|--------|--------|
+| Aspect            | Detail                          |
+| ----------------- | ------------------------------- |
 | Invocation method | To be specified in design phase |
-| Context passing | Enriched prompt with patterns |
-| Result capture | To be specified in design phase |
+| Context passing   | Enriched prompt with patterns   |
+| Result capture    | To be specified in design phase |
 
 ## Boundary Definitions
 

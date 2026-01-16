@@ -71,24 +71,24 @@ sequenceDiagram
 
 ### ACE-Specific Endpoints
 
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /v1/ace/route` | Determine which agent handles a prompt |
-| `GET /v1/ace/patterns` | Retrieve patterns for a specific agent + context |
-| `GET /v1/ace/agents` | List available agents and their capabilities |
-| `PUT /v1/ace/routing-rules/{id}` | Update routing rules (admin) |
+| Endpoint                         | Purpose                                          |
+| -------------------------------- | ------------------------------------------------ |
+| `POST /v1/ace/route`             | Determine which agent handles a prompt           |
+| `GET /v1/ace/patterns`           | Retrieve patterns for a specific agent + context |
+| `GET /v1/ace/agents`             | List available agents and their capabilities     |
+| `PUT /v1/ace/routing-rules/{id}` | Update routing rules (admin)                     |
 
 ## What Lives Where
 
-| Component | Location | Responsibility |
-|-----------|----------|----------------|
-| **Routing rules** | Mnemonic | Stored as queryable knowledge |
-| **Patterns** | Mnemonic | Stored in knowledge graph |
-| **Agent definitions** | Mnemonic | Stored as structured data |
-| **Routing logic** | Mnemonic | Code-based evaluation |
-| **Prompt assembly** | ACE CLI | Combines route + patterns + user prompt |
-| **Claude Code invocation** | ACE CLI | Builds and executes command |
-| **Tool execution** | ACE CLI / Claude Code | Local filesystem operations |
+| Component                  | Location              | Responsibility                          |
+| -------------------------- | --------------------- | --------------------------------------- |
+| **Routing rules**          | Mnemonic              | Stored as queryable knowledge           |
+| **Patterns**               | Mnemonic              | Stored in knowledge graph               |
+| **Agent definitions**      | Mnemonic              | Stored as structured data               |
+| **Routing logic**          | Mnemonic              | Code-based evaluation                   |
+| **Prompt assembly**        | ACE CLI               | Combines route + patterns + user prompt |
+| **Claude Code invocation** | ACE CLI               | Builds and executes command             |
+| **Tool execution**         | ACE CLI / Claude Code | Local filesystem operations             |
 
 ## Benefits of This Model
 

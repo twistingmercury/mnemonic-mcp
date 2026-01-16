@@ -247,10 +247,10 @@ Key considerations:
 
 **ACE is a monorepo containing two binaries built from a single Go module.**
 
-| Directory | Purpose |
-|-----------|---------|
-| **src/ace/** | CLI client that orchestrates routing decisions and Claude Code execution |
-| **src/mnemonic/** | Backend server providing routing and pattern retrieval via REST API |
+| Directory         | Purpose                                                                  |
+| ----------------- | ------------------------------------------------------------------------ |
+| **src/ace/**      | CLI client that orchestrates routing decisions and Claude Code execution |
+| **src/mnemonic/** | Backend server providing routing and pattern retrieval via REST API      |
 
 ```mermaid
 graph TB
@@ -359,13 +359,13 @@ graph TB
 
 ## Decision Summary
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| ADR-001 | Orchestrator model | Leverage existing Claude Code capabilities |
-| ADR-002 | Server-side routing | Enable team collaboration and central management |
-| ADR-003 | Direct CLI invocation | Minimize wrapper complexity |
-| ADR-004 | Unified backend with REST | Simplicity, excellent tooling, easy debugging |
-| ADR-005 | Monorepo structure | Atomic changes, shared tooling, simpler dependencies |
-| ADR-006 | Phased evolution | Deliver value early, design for future |
+| Decision | Choice                    | Rationale                                            |
+| -------- | ------------------------- | ---------------------------------------------------- |
+| ADR-001  | Orchestrator model        | Leverage existing Claude Code capabilities           |
+| ADR-002  | Server-side routing       | Enable team collaboration and central management     |
+| ADR-003  | Direct CLI invocation     | Minimize wrapper complexity                          |
+| ADR-004  | Unified backend with REST | Simplicity, excellent tooling, easy debugging        |
+| ADR-005  | Monorepo structure        | Atomic changes, shared tooling, simpler dependencies |
+| ADR-006  | Phased evolution          | Deliver value early, design for future               |
 
 **Next:** [System Architecture](03-system-architecture.md)

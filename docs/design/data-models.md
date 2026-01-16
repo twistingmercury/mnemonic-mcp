@@ -32,11 +32,11 @@
 
 ACE uses a polyglot persistence strategy with three storage systems:
 
-| Storage    | Purpose                                      | Data Types                     |
-| ---------- | -------------------------------------------- | ------------------------------ |
-| Postgres   | Primary relational storage                   | Agents, patterns, routing rules |
-| PGVector   | Vector embeddings (Postgres extension)       | Pattern embeddings             |
-| Neo4j      | Knowledge graph relationships                | Pattern-agent-concept links    |
+| Storage  | Purpose                                | Data Types                      |
+| -------- | -------------------------------------- | ------------------------------- |
+| Postgres | Primary relational storage             | Agents, patterns, routing rules |
+| PGVector | Vector embeddings (Postgres extension) | Pattern embeddings              |
+| Neo4j    | Knowledge graph relationships          | Pattern-agent-concept links     |
 
 This document defines the entity schemas, Go struct mappings, and data flow patterns for Mnemonic's storage layer.
 
@@ -108,16 +108,16 @@ CREATE INDEX idx_agents_updated_at ON agents (updated_at DESC);
 
 **Field Descriptions:**
 
-| Field            | Type                     | Description                                        |
-| ---------------- | ------------------------ | -------------------------------------------------- |
-| `name`           | VARCHAR(64)              | Unique identifier (lowercase, hyphens allowed)     |
-| `description`    | VARCHAR(500)             | Human-readable agent description                   |
-| `system_prompt`  | TEXT                     | Full system prompt (up to 50KB)                    |
-| `model`          | VARCHAR(20)              | Claude model: sonnet, opus, haiku, inherit         |
-| `allowed_tools`  | TEXT[]                   | Tool names the agent can use                       |
-| `routing_keywords` | TEXT[]                 | Keywords that trigger routing to this agent        |
-| `created_at`     | TIMESTAMP WITH TIME ZONE | Creation timestamp                                 |
-| `updated_at`     | TIMESTAMP WITH TIME ZONE | Last update timestamp                              |
+| Field              | Type                     | Description                                    |
+| ------------------ | ------------------------ | ---------------------------------------------- |
+| `name`             | VARCHAR(64)              | Unique identifier (lowercase, hyphens allowed) |
+| `description`      | VARCHAR(500)             | Human-readable agent description               |
+| `system_prompt`    | TEXT                     | Full system prompt (up to 50KB)                |
+| `model`            | VARCHAR(20)              | Claude model: sonnet, opus, haiku, inherit     |
+| `allowed_tools`    | TEXT[]                   | Tool names the agent can use                   |
+| `routing_keywords` | TEXT[]                   | Keywords that trigger routing to this agent    |
+| `created_at`       | TIMESTAMP WITH TIME ZONE | Creation timestamp                             |
+| `updated_at`       | TIMESTAMP WITH TIME ZONE | Last update timestamp                          |
 
 ### patterns
 
@@ -161,19 +161,19 @@ WITH (lists = 100);
 
 **Field Descriptions:**
 
-| Field               | Type                     | Description                                     |
-| ------------------- | ------------------------ | ----------------------------------------------- |
-| `id`                | UUID                     | Primary key                                     |
-| `name`              | VARCHAR(128)             | Unique pattern name                             |
-| `description`       | VARCHAR(500)             | Optional short description                      |
-| `content`           | TEXT                     | Markdown content (up to 10KB)                   |
-| `tags`              | TEXT[]                   | Categorization tags                             |
-| `embedding`         | vector(1536)             | OpenAI embedding vector                         |
-| `enrichment_status` | VARCHAR(20)              | pending, enriched, or failed                    |
-| `enrichment_error`  | TEXT                     | Error message if enrichment failed              |
-| `enriched_at`       | TIMESTAMP WITH TIME ZONE | Last successful enrichment timestamp            |
-| `created_at`        | TIMESTAMP WITH TIME ZONE | Creation timestamp                              |
-| `updated_at`        | TIMESTAMP WITH TIME ZONE | Last update timestamp                           |
+| Field               | Type                     | Description                          |
+| ------------------- | ------------------------ | ------------------------------------ |
+| `id`                | UUID                     | Primary key                          |
+| `name`              | VARCHAR(128)             | Unique pattern name                  |
+| `description`       | VARCHAR(500)             | Optional short description           |
+| `content`           | TEXT                     | Markdown content (up to 10KB)        |
+| `tags`              | TEXT[]                   | Categorization tags                  |
+| `embedding`         | vector(1536)             | OpenAI embedding vector              |
+| `enrichment_status` | VARCHAR(20)              | pending, enriched, or failed         |
+| `enrichment_error`  | TEXT                     | Error message if enrichment failed   |
+| `enriched_at`       | TIMESTAMP WITH TIME ZONE | Last successful enrichment timestamp |
+| `created_at`        | TIMESTAMP WITH TIME ZONE | Creation timestamp                   |
+| `updated_at`        | TIMESTAMP WITH TIME ZONE | Last update timestamp                |
 
 ### routing_rules
 
@@ -204,17 +204,17 @@ CREATE INDEX idx_routing_rules_match_type ON routing_rules (match_type);
 
 **Field Descriptions:**
 
-| Field          | Type         | Description                                          |
-| -------------- | ------------ | ---------------------------------------------------- |
-| `id`           | UUID         | Primary key                                          |
-| `name`         | VARCHAR(128) | Human-readable rule name                             |
-| `priority`     | INTEGER      | Evaluation order (0-1000, higher first)              |
-| `agent_name`   | VARCHAR(64)  | Target agent when rule matches (FK to agents)        |
-| `match_type`   | VARCHAR(20)  | keyword, regex, pattern, or default                  |
-| `match_config` | JSONB        | Type-specific configuration (see below)              |
-| `enabled`      | BOOLEAN      | Whether rule is active                               |
-| `created_at`   | TIMESTAMP    | Creation timestamp                                   |
-| `updated_at`   | TIMESTAMP    | Last update timestamp                                |
+| Field          | Type         | Description                                   |
+| -------------- | ------------ | --------------------------------------------- |
+| `id`           | UUID         | Primary key                                   |
+| `name`         | VARCHAR(128) | Human-readable rule name                      |
+| `priority`     | INTEGER      | Evaluation order (0-1000, higher first)       |
+| `agent_name`   | VARCHAR(64)  | Target agent when rule matches (FK to agents) |
+| `match_type`   | VARCHAR(20)  | keyword, regex, pattern, or default           |
+| `match_config` | JSONB        | Type-specific configuration (see below)       |
+| `enabled`      | BOOLEAN      | Whether rule is active                        |
+| `created_at`   | TIMESTAMP    | Creation timestamp                            |
+| `updated_at`   | TIMESTAMP    | Last update timestamp                         |
 
 **match_config Structures by match_type:**
 
@@ -273,19 +273,19 @@ CREATE INDEX idx_enrichment_jobs_pattern_id ON enrichment_jobs (pattern_id);
 
 **Field Descriptions:**
 
-| Field           | Type                     | Description                               |
-| --------------- | ------------------------ | ----------------------------------------- |
-| `id`            | UUID                     | Primary key                               |
-| `pattern_id`    | UUID                     | Pattern to enrich (FK to patterns)        |
-| `status`        | VARCHAR(20)              | pending, processing, completed, failed    |
-| `attempts`      | INTEGER                  | Number of processing attempts             |
-| `max_attempts`  | INTEGER                  | Maximum retry attempts (default: 3)       |
-| `last_error`    | TEXT                     | Error message from last failed attempt    |
-| `created_at`    | TIMESTAMP WITH TIME ZONE | Job creation timestamp                    |
-| `updated_at`    | TIMESTAMP WITH TIME ZONE | Last status update timestamp              |
-| `scheduled_for` | TIMESTAMP WITH TIME ZONE | When job should be processed              |
-| `started_at`    | TIMESTAMP WITH TIME ZONE | When processing started                   |
-| `completed_at`  | TIMESTAMP WITH TIME ZONE | When processing completed                 |
+| Field           | Type                     | Description                            |
+| --------------- | ------------------------ | -------------------------------------- |
+| `id`            | UUID                     | Primary key                            |
+| `pattern_id`    | UUID                     | Pattern to enrich (FK to patterns)     |
+| `status`        | VARCHAR(20)              | pending, processing, completed, failed |
+| `attempts`      | INTEGER                  | Number of processing attempts          |
+| `max_attempts`  | INTEGER                  | Maximum retry attempts (default: 3)    |
+| `last_error`    | TEXT                     | Error message from last failed attempt |
+| `created_at`    | TIMESTAMP WITH TIME ZONE | Job creation timestamp                 |
+| `updated_at`    | TIMESTAMP WITH TIME ZONE | Last status update timestamp           |
+| `scheduled_for` | TIMESTAMP WITH TIME ZONE | When job should be processed           |
+| `started_at`    | TIMESTAMP WITH TIME ZONE | When processing started                |
+| `completed_at`  | TIMESTAMP WITH TIME ZONE | When processing completed              |
 
 ### pattern_agent_associations
 
@@ -310,12 +310,12 @@ CREATE INDEX idx_pattern_agent_associations_relevance ON pattern_agent_associati
 
 **Field Descriptions:**
 
-| Field        | Type             | Description                                |
-| ------------ | ---------------- | ------------------------------------------ |
-| `pattern_id` | UUID             | Pattern FK (part of composite PK)          |
-| `agent_name` | VARCHAR(64)      | Agent FK (part of composite PK)            |
-| `relevance`  | DOUBLE PRECISION | Relevance score from 0.0 to 1.0            |
-| `created_at` | TIMESTAMP        | Association creation timestamp             |
+| Field        | Type             | Description                       |
+| ------------ | ---------------- | --------------------------------- |
+| `pattern_id` | UUID             | Pattern FK (part of composite PK) |
+| `agent_name` | VARCHAR(64)      | Agent FK (part of composite PK)   |
+| `relevance`  | DOUBLE PRECISION | Relevance score from 0.0 to 1.0   |
+| `created_at` | TIMESTAMP        | Association creation timestamp    |
 
 ## Neo4j Graph Model
 
@@ -383,9 +383,9 @@ Links a pattern to an agent with a relevance score.
 (p:Pattern)-[:RELEVANT_FOR {relevance: 0.95}]->(a:Agent)
 ```
 
-| Property    | Type  | Description                           |
-| ----------- | ----- | ------------------------------------- |
-| `relevance` | float | Relevance score 0.0-1.0               |
+| Property    | Type  | Description             |
+| ----------- | ----- | ----------------------- |
+| `relevance` | float | Relevance score 0.0-1.0 |
 
 #### MENTIONED_IN
 
@@ -405,8 +405,8 @@ Links patterns that share common concepts or are semantically related.
 (p1:Pattern)-[:RELATES_TO {strength: 0.8}]->(p2:Pattern)
 ```
 
-| Property   | Type  | Description                                |
-| ---------- | ----- | ------------------------------------------ |
+| Property   | Type  | Description                                    |
+| ---------- | ----- | ---------------------------------------------- |
 | `strength` | float | Relationship strength based on shared concepts |
 
 ### Schema Constraints
