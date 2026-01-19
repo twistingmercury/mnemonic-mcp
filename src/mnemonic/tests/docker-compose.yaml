@@ -1,0 +1,22 @@
+services:
+  api:
+    image:  ghcr.io/twistingmercury/mnemonic:latest
+    container_name: mnemonic
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 5
+
+  e2e-tests:
+    build:
+      context: ./e2e
+      dockerfile: Dockerfile
+    container_name: e2e-tests
+    environment:
+      - API_URL=http://api:8080
+    depends_on:
+      api:
+        condition: service_healthy
