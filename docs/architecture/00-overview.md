@@ -10,6 +10,7 @@
 - [Phased Approach](#phased-approach)
   - [Phase 1: Claude Code Integration](#phase-1-claude-code-integration)
   - [Phase 2: Direct API Integration](#phase-2-direct-api-integration)
+  - [Phase 3: Authentication and Authorization](#phase-3-authentication-and-authorization)
 - [Key Principles](#key-principles)
 - [Document Navigation](#document-navigation)
 - [Design Documents](#design-documents)
@@ -123,6 +124,43 @@ sequenceDiagram
 - Greater control over API interactions
 - Reduced external dependencies
 
+### Phase 3: Authentication and Authorization
+
+Enterprise-grade security using infrastructure-layer components.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI as ACE CLI
+    participant IDP as Identity Provider
+    participant ENV as Envoy Proxy
+    participant OPA as OPA Sidecar
+    participant MN as Mnemonic
+
+    User->>CLI: ace login
+    CLI->>IDP: OAuth2 Device Flow
+    IDP-->>CLI: Access Token + Refresh Token
+
+    User->>CLI: Submit prompt
+    CLI->>ENV: POST /v1/ace/route + Bearer token
+    ENV->>ENV: Validate JWT
+    ENV->>OPA: ext_authz request
+    OPA-->>ENV: Allow + identity headers
+    ENV->>MN: Route request + X-User-ID, X-Team-ID
+    MN-->>CLI: Agent + patterns
+    CLI->>CLI: Execute (Phase 1 or Phase 2)
+    CLI-->>User: Display output
+```
+
+**Characteristics:**
+
+- Authentication handled by Envoy at the edge (JWT validation, API keys)
+- Authorization handled by OPA sidecar (fine-grained RBAC policies)
+- Mnemonic receives pre-validated identity via headers (no security code in application)
+- CLI manages token lifecycle (login, refresh, secure storage)
+- Fail-closed design (deny by default when security services unavailable)
+- Orthogonal to execution strategy (works with both Phase 1 and Phase 2)
+
 ## Key Principles
 
 1. **Orchestration, not replacement**: ACE enhances Claude Code rather than replacing it
@@ -130,6 +168,7 @@ sequenceDiagram
 3. **Centralized patterns**: Team knowledge shared through a common memory service
 4. **Local execution**: All file operations and tool execution happen on the user's machine
 5. **Phased evolution**: Architecture supports gradual transition from Claude Code to direct API
+6. **Infrastructure-layer security**: Authentication and authorization handled by dedicated components (Envoy, OPA), keeping application code security-agnostic
 
 ## Document Navigation
 
@@ -140,6 +179,7 @@ sequenceDiagram
 | [03-system-architecture.md](03-system-architecture.md)             | Component breakdown and data flow      |
 | [04-communication-patterns.md](04-communication-patterns.md)       | Protocol and integration patterns      |
 | [05-deployment-architecture.md](05-deployment-architecture.md)     | Deployment topology and operations     |
+| [06-security-architecture.md](06-security-architecture.md)         | Phase 3 authentication and authorization |
 | [project-structure.md](project-structure.md)                       | Repository layout and organization     |
 | [mnemonic-integration-concept.md](mnemonic-integration-concept.md) | ACE + Mnemonic integration details     |
 
