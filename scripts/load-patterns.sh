@@ -105,8 +105,8 @@ load_patterns() {
     printf "Loading patterns from %s...\n" "${PATTERNS_DIR}"
 
     while IFS= read -r pattern_file; do
-        # Skip README files
-        if [[ "${pattern_file}" == */README.md ]]; then
+        # Skip README and schema reference files
+        if [[ "${pattern_file}" == */README.md ]] || [[ "${pattern_file}" == */PATTERN-METADATA-SCHEMA.md ]]; then
             printf "  Skipping: %s\n" "${pattern_file#"${PROJ_ROOT}"/}"
             continue
         fi

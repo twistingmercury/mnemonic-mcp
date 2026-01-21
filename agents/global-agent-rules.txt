@@ -2,7 +2,7 @@
 
 ## MANDATORY PRE-RESPONSE CHECK
 
-**Last Updated: 2025-11-14**
+**Last Updated: 2026-01-21**
 
 **Before responding to ANY user request, STOP and check this delegation table:**
 
@@ -19,6 +19,8 @@
 | "design **architecture**"          | `software-architect-agent`                          | Don't design systems           |
 | "**Go** architecture/design"       | `go-architect-agent`                                | Don't plan Go structure        |
 | "**DevOps**/Docker/CI"             | `go-devops-agent`                                   | Don't write deployment configs |
+| "design **data schema/model**"     | `data-architect-agent`                              | Don't design schemas           |
+| "write **SQL/migrations/Cypher**"  | `data-engineer-agent`                               | Don't write SQL                |
 
 ### Red Flags - If You're Doing These, STOP
 
@@ -45,7 +47,7 @@ User request → Identify task type → Check table → Delegate immediately
 
 ### Architects are Consultants (Not Coordinators)
 
-- `software-architect-agent` and `go-architect-agent` **return recommendations** to Main Claude
+- `software-architect-agent`, `go-architect-agent`, and `data-architect-agent` **return recommendations** to Main Claude
 - Main Claude creates coordination plans (TodoWrite) and delegates to specialists
 - Architects do not coordinate implementation - they consult only
 
@@ -53,8 +55,9 @@ User request → Identify task type → Check table → Delegate immediately
 
 1. **Complex/new projects**: Main Claude → `software-architect-agent` → recommendations → Main Claude → `go-architect-agent` → plan → specialists
 2. **Go-specific projects**: Main Claude → `go-architect-agent` → plan → specialists
-3. **Single component**: Main Claude → specialist directly (use table above)
-4. **Simple implementation**: Main Claude → appropriate specialist (use table above)
+3. **Data schema/database work**: Main Claude → `data-architect-agent` → schema design → `data-engineer-agent` → migrations → `go-software-agent` → repositories
+4. **Single component**: Main Claude → specialist directly (use table above)
+5. **Simple implementation**: Main Claude → appropriate specialist (use table above)
 
 ### Special Workflow: Shell Script Creation
 
