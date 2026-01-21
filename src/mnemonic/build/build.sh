@@ -26,7 +26,6 @@ build_api(){
         --tag "${IMAGE_NAME}:latest" \
         "$(cd "${PROJ_ROOT}" && pwd)"
 
-   
     printf "\nImage: %s:%s\n" "${IMAGE_NAME}" "${IMAGE_TAG}"
     docker images "${IMAGE_NAME}:${IMAGE_TAG}" --format "Size: {{.Size}}"
 }
@@ -43,7 +42,8 @@ main(){
     if LOCAL_BUILD=true; then
         docker run --rm ghcr.io/twistingmercury/mnemonic:latest --version
     fi
-    # e2e_tests
+
+    e2e_tests
 }
 
 main "$@"
