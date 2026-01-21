@@ -32,14 +32,14 @@ build_api(){
 
 e2e_tests(){
     printf "\n=== starting end-to-end tests ===\n"
-    docker compose -f "${PROJ_ROOT}/tests/docker-compose.yaml" up --exit-code-from e2e-tests
+    docker compose -f "${PROJ_ROOT}/tests/docker-compose.yaml" up --exit-code-from menmonic_tests
     docker compose -f "${PROJ_ROOT}/tests/docker-compose.yaml" down > /dev/null 2>&1
 }
 
 main(){
     build_api
 
-    if LOCAL_BUILD=true; then
+    if [[ "${LOCAL_BUILD}" == "true" ]]; then
         docker run --rm ghcr.io/twistingmercury/mnemonic:latest --version
     fi
 

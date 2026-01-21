@@ -28,7 +28,7 @@ echo "Running E2E tests..."
 echo ""
 
 cd /e2e
-go test -v ./...
+go test ./...
 
 echo ""
 echo "=== E2E Tests Complete ==="

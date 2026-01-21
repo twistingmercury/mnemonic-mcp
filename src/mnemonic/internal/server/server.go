@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/twistingmercury/heartbeat"
 	"github.com/twistingmercury/mnemonic/internal/handlers/operations"
 )
 
@@ -33,7 +35,7 @@ func ListenAndServe() error {
 	shutdown, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	<-shutdown.Done()
-	fmt.Print("\r") // hide the ugly ^C
+	fmt.Print("\r") // hide that ugly ^C
 
 	log.Println("mnemonic is shutting down...")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -55,4 +57,26 @@ func CreateHttpServer(r *gin.Engine) *http.Server {
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
+}
+
+func CheckHealth() error {
+	//--> THIS IS A HACK UNTIL I CAN UPDATE THE HEARTBEAT PACKAGE!!!
+	mode := gin.Mode()
+	defer gin.SetMode(mode)
+	gin.SetMode(gin.TestMode)
+
+	statCheck := heartbeat.Handler("mnemonic", operations.DefineDependencies()...)
+
+	writer := httptest.NewRecorder()
+	hackContext, _ := gin.CreateTestContext(writer)
+	hackContext.Request = httptest.NewRequest("GET", "/ops/health", nil)
+
+	statCheck(hackContext)
+
+	if writer.Code != http.StatusOK {
+		return fmt.Errorf("unhealthy: %s", writer.Body.String())
+	}
+	log.Println("healthy")
+	return nil
+	//<-- END HACK
 }
