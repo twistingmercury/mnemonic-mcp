@@ -24,9 +24,9 @@ info:
 
     | Operation | Required Role |
     |-----------|---------------|
-    | `POST /ace/route` | Any authenticated user |
-    | `GET /ace/patterns` | Any authenticated user |
-    | `GET /ace/agents` | Any authenticated user |
+    | `POST /api/route` | Any authenticated user |
+    | `GET /api/patterns` | Any authenticated user |
+    | `GET /api/agents` | Any authenticated user |
     | Admin operations (PUT/DELETE) | `admin` role |
 
     ## Error Handling
@@ -145,7 +145,7 @@ components:
       schema:
         type: string
         format: uri
-      example: /v1/ace/agents/rust-software-agent
+      example: /v1/api/agents/rust-software-agent
 
   schemas:
     # ==================== Error Schemas ====================
@@ -212,8 +212,8 @@ components:
           format: uri-reference
           description: URI reference identifying the specific occurrence
           examples:
-            - /v1/ace/agents
-            - /v1/ace/agents/unknown-agent
+            - /v1/api/agents
+            - /v1/api/agents/unknown-agent
         traceId:
           type: string
           format: uuid
@@ -1255,7 +1255,7 @@ components:
             title: Validation Error
             status: 400
             detail: The request body contains invalid fields
-            instance: /v1/ace/agents
+            instance: /v1/api/agents
             traceId: 550e8400-e29b-41d4-a716-446655440000
             errors:
               - field: name
@@ -1311,7 +1311,7 @@ components:
             title: Not Found
             status: 404
             detail: Agent with name 'unknown-agent' not found
-            instance: /v1/ace/agents/unknown-agent
+            instance: /v1/api/agents/unknown-agent
             traceId: 550e8400-e29b-41d4-a716-446655440000
 
     Conflict:
@@ -1388,7 +1388,7 @@ security:
 
 paths:
   # ==================== Routing Endpoints ====================
-  /ace/route:
+  /api/route:
     post:
       tags:
         - Routing
@@ -1512,14 +1512,14 @@ paths:
           $ref: '#/components/responses/InternalError'
 
   # ==================== Agent Endpoints ====================
-  /ace/agents:
+  /api/agents:
     get:
       tags:
         - Agents
       summary: List all agents
       description: |
         Returns a paginated list of all agents. The response excludes the
-        system_prompt field for efficiency. Use GET /ace/agents/{name} to
+        system_prompt field for efficiency. Use GET /api/agents/{name} to
         retrieve the full agent details including system prompt.
       operationId: listAgents
       parameters:
@@ -1635,7 +1635,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /ace/agents/{name}:
+  /api/agents/{name}:
     parameters:
       - $ref: '#/components/parameters/agentNameParam'
 
@@ -1772,14 +1772,14 @@ paths:
           $ref: '#/components/responses/InternalError'
 
   # ==================== Pattern Endpoints ====================
-  /ace/patterns:
+  /api/patterns:
     get:
       tags:
         - Patterns
       summary: List all patterns
       description: |
         Returns a paginated list of patterns. The response excludes the
-        content field for efficiency. Use GET /ace/patterns/{id} to
+        content field for efficiency. Use GET /api/patterns/{id} to
         retrieve the full pattern details including content.
       operationId: listPatterns
       parameters:
@@ -1893,7 +1893,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /ace/patterns/{id}:
+  /api/patterns/{id}:
     parameters:
       - $ref: '#/components/parameters/patternIdParam'
 
@@ -1992,7 +1992,7 @@ paths:
           $ref: '#/components/responses/InternalError'
 
   # ==================== Routing Rule Endpoints ====================
-  /ace/routing-rules:
+  /api/routing-rules:
     get:
       tags:
         - Routing Rules
@@ -2135,7 +2135,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /ace/routing-rules/{id}:
+  /api/routing-rules/{id}:
     parameters:
       - $ref: '#/components/parameters/routingRuleIdParam'
 
@@ -2235,7 +2235,7 @@ paths:
           $ref: '#/components/responses/InternalError'
 
   # ==================== Operational Endpoints ====================
-  /health:
+  /ops/health:
     get:
       tags:
         - Operations
@@ -2273,7 +2273,7 @@ paths:
                   neo4j: 'error: connection refused'
                 reason: neo4j connection failed
 
-  /version:
+  /ops/version:
     get:
       tags:
         - Operations
