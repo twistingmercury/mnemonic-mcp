@@ -238,6 +238,68 @@ graph TB
 | Databases | Migration-aware, data preservation           |
 | CLI       | User-initiated, version compatibility checks |
 
+### Independent Deployment Pipelines
+
+**CRITICAL PRINCIPLE:** Database migrations and application code are versioned and deployed independently.
+
+```mermaid
+graph TB
+    subgraph "Code Changes"
+        APP_CODE[internal/, cmd/**]
+        DB_CODE[migrations/**]
+    end
+
+    subgraph "CI/CD Pipelines"
+        APP_CI[mnemonic-app-ci.yaml<br/>Build, Test, Deploy Container]
+        DB_CI[mnemonic-db-ci.yaml<br/>Validate, Test, Apply Migrations]
+    end
+
+    subgraph "Deployments"
+        APP_DEPLOY[Application Container<br/>Version: v1.2.3]
+        DB_DEPLOY[Database Schema<br/>Version: migration 005]
+    end
+
+    APP_CODE -->|triggers| APP_CI
+    DB_CODE -->|triggers| DB_CI
+    APP_CI --> APP_DEPLOY
+    DB_CI --> DB_DEPLOY
+```
+
+**Why Separate Pipelines?**
+
+| Scenario | Without Separation | With Separation |
+| -------- | ------------------ | --------------- |
+| Go logic bug fix | Rebuilds app AND runs migrations | App deploys only |
+| Add new index | Rebuilds app container | Migrations run only |
+| Add column + code | Single coupled deploy | Migration first, then app |
+
+**Pipeline Triggers:**
+
+| Pipeline | Triggers On | Does NOT Trigger On |
+| -------- | ----------- | ------------------- |
+| `mnemonic-app-ci.yaml` | `internal/**`, `cmd/**`, `go.mod` | `migrations/**` |
+| `mnemonic-db-ci.yaml` | `migrations/**` | `internal/**`, `cmd/**` |
+
+**Version Compatibility:**
+
+- Application version: Git tag (e.g., `v1.2.3`)
+- Database version: Highest applied migration (e.g., `005`)
+- Compatibility matrix documented in release notes
+
+**Deployment Order for Breaking Changes:**
+
+```
+1. Deploy migration (forward-compatible: nullable/default values)
+2. Verify migration succeeded in production
+3. Deploy application (uses new schema)
+4. (Optional) Deploy tightening migration (add NOT NULL, remove old columns)
+```
+
+This separation ensures:
+- Faster deployments (only deploy what changed)
+- Safer rollbacks (can rollback app without touching DB)
+- Clear audit trail (which pipeline changed what)
+
 ## Scaling Considerations
 
 ### Horizontal Scaling
