@@ -465,6 +465,7 @@ These variables are used by the otelx library and take precedence when set.
 | `observability.metrics.path` | string | `/metrics` | `MNEMONIC_OBSERVABILITY_METRICS_PATH` | Metrics endpoint path |
 | `observability.metrics.port` | int | `9090` | `MNEMONIC_OBSERVABILITY_METRICS_PORT` | Metrics server port |
 | `observability.health.enabled` | bool | `true` | `MNEMONIC_OBSERVABILITY_HEALTH_ENABLED` | Enable health check |
+| `observability.health.path` | string | `/ops/health` | `MNEMONIC_OBSERVABILITY_HEALTH_PATH` | Health check endpoint path |
 | `observability.tracing.enabled` | bool | `false` | `MNEMONIC_OBSERVABILITY_TRACING_ENABLED` | Enable distributed tracing |
 | `observability.tracing.endpoint` | string | `""` | `MNEMONIC_OBSERVABILITY_TRACING_ENDPOINT` | OTLP collector endpoint |
 | `observability.tracing.otlp_insecure` | bool | `false` | `MNEMONIC_OBSERVABILITY_TRACING_OTLP_INSECURE` | Use insecure OTLP connection (local development only; production should use TLS) |

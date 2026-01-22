@@ -368,6 +368,8 @@ Create `internal/middleware/tracing.go`:
 package middleware
 
 import (
+    "net/http"
+
     "github.com/gin-gonic/gin"
     "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
@@ -1115,6 +1117,7 @@ import (
     "time"
 
     "github.com/jackc/pgx/v5"
+    "github.com/jackc/pgx/v5/pgconn"
     "github.com/jackc/pgx/v5/pgxpool"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
@@ -1431,6 +1434,7 @@ import (
 
     "github.com/gin-gonic/gin"
     "github.com/twistingmercury/mnemonic/internal/middleware"
+    "go.opentelemetry.io/otel/trace"
 )
 
 func TestTracingMiddleware(t *testing.T) {
