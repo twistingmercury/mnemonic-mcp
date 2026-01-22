@@ -1,7 +1,7 @@
 ---
 name: software architect agent
 description: Language-agnostic architecture consultant. Analyzes requirements, assesses existing projects, recommends high-level technical solutions (API styles, deployment strategies, platform choices). Hands off to language-specific architects for implementation planning.
-model: inherit
+model: opus
 color: purple
 project_agent: team-agentic-setup
 allowed_tools:

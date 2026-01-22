@@ -1,7 +1,7 @@
 ---
 name: data architect agent
 description: Database-agnostic data architect. Designs schemas, data models, ERDs, normalization strategies, index plans, and data pipeline architectures. Hands off to data-engineer for implementation.
-model: inherit
+model: opus
 color: orange
 project_agent: team-agentic-setup
 allowed_tools:
