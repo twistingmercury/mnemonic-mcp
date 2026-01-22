@@ -190,10 +190,9 @@ graph TB
     subgraph "Mnemonic"
         ROUTE[Routing Engine]
         PATTERN[Pattern Enrichment Service]
-        STORAGE[Storage Layer]
     end
 
-    subgraph "Storage"
+    subgraph "Storage Layer"
         PG[(Postgres)]
         PGV[(PGVector)]
         NEO[(Neo4j)]
@@ -201,10 +200,9 @@ graph TB
 
     MN --> ROUTE
     MN --> PATTERN
-    PATTERN --> STORAGE
-    STORAGE --> PG
-    STORAGE --> PGV
-    STORAGE --> NEO
+    PATTERN <--> PG
+    PATTERN <--> PGV
+    PATTERN <--> NEO
 ```
 
 See [Communication Patterns](04-communication-patterns.md#rest-endpoints) for REST endpoint details.
@@ -224,6 +222,28 @@ See [Communication Patterns](04-communication-patterns.md#rest-endpoints) for RE
 - REST less efficient than gRPC for internal communication
 - Single service means single point of failure
 - MVP scope limits immediate reusability for other tools
+
+### Future Extensibility
+
+While MVP scope limits Mnemonic to serving ACE only, the architecture accommodates future expansion:
+
+| Aspect | MVP (Current) | Future Possibility |
+| ------ | ------------- | ------------------ |
+| Clients | ACE CLI only | Multiple tools/services |
+| Tenancy | Single-tenant | Multi-tenant capable |
+| Authentication | Basic/none | Per-tenant auth, API keys |
+| Data isolation | Shared | Tenant-separated storage |
+
+**Privacy consideration:** Full prompts are sent to Mnemonic for routing but are not persisted. This design choice supports potential future multi-tenant scenarios where prompt data privacy becomes critical.
+
+**Expansion requirements:** Moving beyond ACE-only would require additional design work:
+
+- Authentication and authorization framework
+- Tenant isolation in storage layers (Postgres, PGVector, Neo4j)
+- Rate limiting and quota management per tenant
+- Audit logging for compliance
+
+The current architecture does not preclude these additions, but they are explicitly out of scope for MVP to keep initial complexity manageable.
 
 ## ADR-005: Monorepo Structure
 

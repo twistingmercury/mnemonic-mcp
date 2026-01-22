@@ -1,6 +1,6 @@
 # ACE + Mnemonic Integration Concept
 
-[Back to Overview](00-overview.md)
+[Back to Architecture Overview](architecture/00-overview.md) | [Back to Project README](../README.md)
 
 ## Unified Architecture: Mnemonic as the Backend
 

@@ -224,7 +224,7 @@ components:
           type: array
           description: Field-level validation errors (for 400 responses)
           items:
-            $ref: '#/components/schemas/FieldError'
+            $ref: "#/components/schemas/FieldError"
 
     FieldError:
       type: object
@@ -279,7 +279,7 @@ components:
         cursor:
           type:
             - string
-            - 'null'
+            - "null"
           description: Current cursor (echoed from request, null for first page)
           examples:
             - eyJpZCI6IjEyMyJ9
@@ -287,7 +287,7 @@ components:
         next_cursor:
           type:
             - string
-            - 'null'
+            - "null"
           description: Cursor for next page (null if no more pages)
           examples:
             - eyJpZCI6IjEzMyJ9
@@ -346,7 +346,7 @@ components:
           examples:
             - You are an expert Go developer. Follow these principles...
         model:
-          $ref: '#/components/schemas/ModelType'
+          $ref: "#/components/schemas/ModelType"
         allowed_tools:
           type: array
           description: Tool names/patterns the agent is allowed to use
@@ -378,14 +378,14 @@ components:
           description: ISO 8601 creation timestamp
           readOnly: true
           examples:
-            - '2024-01-15T10:30:00Z'
+            - "2024-01-15T10:30:00Z"
         updated_at:
           type: string
           format: date-time
           description: ISO 8601 last update timestamp
           readOnly: true
           examples:
-            - '2024-01-15T10:30:00Z'
+            - "2024-01-15T10:30:00Z"
 
     AgentCreate:
       type: object
@@ -419,7 +419,7 @@ components:
           examples:
             - You are an expert Rust developer...
         model:
-          $ref: '#/components/schemas/ModelType'
+          $ref: "#/components/schemas/ModelType"
         allowed_tools:
           type: array
           description: Tool names/patterns the agent is allowed to use
@@ -468,7 +468,7 @@ components:
           minLength: 1
           maxLength: 51200
         model:
-          $ref: '#/components/schemas/ModelType'
+          $ref: "#/components/schemas/ModelType"
         allowed_tools:
           type: array
           maxItems: 50
@@ -499,17 +499,17 @@ components:
           examples:
             - Expert Go developer agent
         model:
-          $ref: '#/components/schemas/ModelType'
+          $ref: "#/components/schemas/ModelType"
         created_at:
           type: string
           format: date-time
           examples:
-            - '2024-01-15T10:30:00Z'
+            - "2024-01-15T10:30:00Z"
         updated_at:
           type: string
           format: date-time
           examples:
-            - '2024-01-15T10:30:00Z'
+            - "2024-01-15T10:30:00Z"
 
     AgentList:
       type: object
@@ -521,9 +521,9 @@ components:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/AgentSummary'
+            $ref: "#/components/schemas/AgentSummary"
         pagination:
-          $ref: '#/components/schemas/Pagination'
+          $ref: "#/components/schemas/Pagination"
 
     # ==================== Pattern Schemas ====================
     AgentAssociation:
@@ -598,22 +598,24 @@ components:
           type: array
           description: Linked agents with relevance scores
           items:
-            $ref: '#/components/schemas/AgentAssociation'
+            $ref: "#/components/schemas/AgentAssociation"
         created_at:
           type: string
           format: date-time
           readOnly: true
           examples:
-            - '2024-01-10T08:00:00Z'
+            - "2024-01-10T08:00:00Z"
         updated_at:
           type: string
           format: date-time
           readOnly: true
           examples:
-            - '2024-01-10T08:00:00Z'
+            - "2024-01-10T08:00:00Z"
         enrichment_status:
           type: string
-          description: Status of background enrichment processing. Patterns must be 'enriched' for semantic search.
+          description: |
+            Status of background enrichment processing. Patterns with status other than 'enriched'
+            are excluded from semantic search results. See pattern-processing.md for pipeline details.
           enum:
             - pending
             - enriched
@@ -624,21 +626,21 @@ components:
         enrichment_error:
           type:
             - string
-            - 'null'
+            - "null"
           description: Error message if enrichment failed. Only present when enrichment_status is 'failed'.
           readOnly: true
           examples:
-            - 'embedding generation failed: context deadline exceeded'
+            - "embedding generation failed: context deadline exceeded"
             - null
         enriched_at:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
           description: Timestamp of last successful enrichment. Null if pattern has never been enriched.
           readOnly: true
           examples:
-            - '2024-01-10T08:05:00Z'
+            - "2024-01-10T08:05:00Z"
             - null
 
     PatternCreate:
@@ -677,7 +679,7 @@ components:
         agent_associations:
           type: array
           items:
-            $ref: '#/components/schemas/AgentAssociation'
+            $ref: "#/components/schemas/AgentAssociation"
           default: []
 
     PatternUpdate:
@@ -706,7 +708,7 @@ components:
         agent_associations:
           type: array
           items:
-            $ref: '#/components/schemas/AgentAssociation'
+            $ref: "#/components/schemas/AgentAssociation"
 
     PatternSummary:
       type: object
@@ -742,12 +744,12 @@ components:
           type: string
           format: date-time
           examples:
-            - '2024-01-10T08:00:00Z'
+            - "2024-01-10T08:00:00Z"
         updated_at:
           type: string
           format: date-time
           examples:
-            - '2024-01-10T08:00:00Z'
+            - "2024-01-10T08:00:00Z"
 
     PatternList:
       type: object
@@ -759,9 +761,9 @@ components:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/PatternSummary'
+            $ref: "#/components/schemas/PatternSummary"
         pagination:
-          $ref: '#/components/schemas/Pagination'
+          $ref: "#/components/schemas/Pagination"
 
     # ==================== Routing Schemas ====================
     RouteContext:
@@ -825,9 +827,9 @@ components:
           examples:
             - Write a Go function to calculate fibonacci numbers
         context:
-          $ref: '#/components/schemas/RouteContext'
+          $ref: "#/components/schemas/RouteContext"
         options:
-          $ref: '#/components/schemas/RouteOptions'
+          $ref: "#/components/schemas/RouteOptions"
 
     RoutingDecision:
       type: object
@@ -873,7 +875,7 @@ components:
           type: string
           description: Human-readable routing explanation
           examples:
-            - 'Matched keywords: go, function'
+            - "Matched keywords: go, function"
 
     RoutePatternResult:
       type: object
@@ -935,16 +937,16 @@ components:
         - agent
       properties:
         routing:
-          $ref: '#/components/schemas/RoutingDecision'
+          $ref: "#/components/schemas/RoutingDecision"
         agent:
-          $ref: '#/components/schemas/Agent'
+          $ref: "#/components/schemas/Agent"
         patterns:
           type: array
           description: Relevant patterns (if include_patterns is true)
           items:
-            $ref: '#/components/schemas/RoutePatternResult'
+            $ref: "#/components/schemas/RoutePatternResult"
         metadata:
-          $ref: '#/components/schemas/RouteMetadata'
+          $ref: "#/components/schemas/RouteMetadata"
 
     # ==================== Routing Rule Schemas ====================
     MatchType:
@@ -1066,13 +1068,13 @@ components:
           examples:
             - go-software-agent
         match_type:
-          $ref: '#/components/schemas/MatchType'
+          $ref: "#/components/schemas/MatchType"
         match_config:
           oneOf:
-            - $ref: '#/components/schemas/KeywordMatchConfig'
-            - $ref: '#/components/schemas/RegexMatchConfig'
-            - $ref: '#/components/schemas/PatternMatchConfig'
-            - $ref: '#/components/schemas/DefaultMatchConfig'
+            - $ref: "#/components/schemas/KeywordMatchConfig"
+            - $ref: "#/components/schemas/RegexMatchConfig"
+            - $ref: "#/components/schemas/PatternMatchConfig"
+            - $ref: "#/components/schemas/DefaultMatchConfig"
           description: Type-specific configuration
         enabled:
           type: boolean
@@ -1083,13 +1085,13 @@ components:
           format: date-time
           readOnly: true
           examples:
-            - '2024-01-10T08:00:00Z'
+            - "2024-01-10T08:00:00Z"
         updated_at:
           type: string
           format: date-time
           readOnly: true
           examples:
-            - '2024-01-10T08:00:00Z'
+            - "2024-01-10T08:00:00Z"
 
     RoutingRuleCreate:
       type: object
@@ -1118,13 +1120,13 @@ components:
           examples:
             - rust-software-agent
         match_type:
-          $ref: '#/components/schemas/MatchType'
+          $ref: "#/components/schemas/MatchType"
         match_config:
           oneOf:
-            - $ref: '#/components/schemas/KeywordMatchConfig'
-            - $ref: '#/components/schemas/RegexMatchConfig'
-            - $ref: '#/components/schemas/PatternMatchConfig'
-            - $ref: '#/components/schemas/DefaultMatchConfig'
+            - $ref: "#/components/schemas/KeywordMatchConfig"
+            - $ref: "#/components/schemas/RegexMatchConfig"
+            - $ref: "#/components/schemas/PatternMatchConfig"
+            - $ref: "#/components/schemas/DefaultMatchConfig"
         enabled:
           type: boolean
           default: true
@@ -1150,13 +1152,13 @@ components:
         agent_name:
           type: string
         match_type:
-          $ref: '#/components/schemas/MatchType'
+          $ref: "#/components/schemas/MatchType"
         match_config:
           oneOf:
-            - $ref: '#/components/schemas/KeywordMatchConfig'
-            - $ref: '#/components/schemas/RegexMatchConfig'
-            - $ref: '#/components/schemas/PatternMatchConfig'
-            - $ref: '#/components/schemas/DefaultMatchConfig'
+            - $ref: "#/components/schemas/KeywordMatchConfig"
+            - $ref: "#/components/schemas/RegexMatchConfig"
+            - $ref: "#/components/schemas/PatternMatchConfig"
+            - $ref: "#/components/schemas/DefaultMatchConfig"
         enabled:
           type: boolean
 
@@ -1170,9 +1172,9 @@ components:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/RoutingRule'
+            $ref: "#/components/schemas/RoutingRule"
         pagination:
-          $ref: '#/components/schemas/Pagination'
+          $ref: "#/components/schemas/Pagination"
 
     # ==================== Health/Operational Schemas ====================
     HealthStatus:
@@ -1190,7 +1192,7 @@ components:
         - checks
       properties:
         status:
-          $ref: '#/components/schemas/HealthStatus'
+          $ref: "#/components/schemas/HealthStatus"
         checks:
           type: object
           description: Status of individual components (postgres, pgvector, neo4j)
@@ -1233,7 +1235,7 @@ components:
           format: date-time
           description: Build timestamp
           examples:
-            - '2024-01-16T10:00:00Z'
+            - "2024-01-16T10:00:00Z"
         go_version:
           type: string
           description: Go runtime version
@@ -1245,11 +1247,11 @@ components:
       description: Validation error or malformed request
       headers:
         X-Request-ID:
-          $ref: '#/components/headers/X-Request-ID'
+          $ref: "#/components/headers/X-Request-ID"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             type: https://mnemonic.example.com/problems/validation-error
             title: Validation Error
@@ -1263,17 +1265,17 @@ components:
                 message: Agent name is required
               - field: model
                 code: INVALID_ENUM
-                message: 'Model must be one of: sonnet, opus, haiku, inherit'
+                message: "Model must be one of: sonnet, opus, haiku, inherit"
 
     Unauthorized:
       description: Missing authentication headers
       headers:
         X-Request-ID:
-          $ref: '#/components/headers/X-Request-ID'
+          $ref: "#/components/headers/X-Request-ID"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             type: https://mnemonic.example.com/problems/unauthorized
             title: Unauthorized
@@ -1285,11 +1287,11 @@ components:
       description: Insufficient permissions (admin role required)
       headers:
         X-Request-ID:
-          $ref: '#/components/headers/X-Request-ID'
+          $ref: "#/components/headers/X-Request-ID"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             type: https://mnemonic.example.com/problems/forbidden
             title: Forbidden
@@ -1301,11 +1303,11 @@ components:
       description: Resource not found
       headers:
         X-Request-ID:
-          $ref: '#/components/headers/X-Request-ID'
+          $ref: "#/components/headers/X-Request-ID"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             type: https://mnemonic.example.com/problems/not-found
             title: Not Found
@@ -1318,11 +1320,11 @@ components:
       description: Resource conflict (e.g., duplicate name, referenced by other resources)
       headers:
         X-Request-ID:
-          $ref: '#/components/headers/X-Request-ID'
+          $ref: "#/components/headers/X-Request-ID"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             type: https://mnemonic.example.com/problems/conflict
             title: Conflict
@@ -1334,7 +1336,7 @@ components:
       description: Rate limit exceeded
       headers:
         X-Request-ID:
-          $ref: '#/components/headers/X-Request-ID'
+          $ref: "#/components/headers/X-Request-ID"
         Retry-After:
           description: Number of seconds to wait before retrying
           schema:
@@ -1343,7 +1345,7 @@ components:
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             type: https://mnemonic.example.com/problems/rate-limited
             title: Rate Limited
@@ -1355,11 +1357,11 @@ components:
       description: Internal server error
       headers:
         X-Request-ID:
-          $ref: '#/components/headers/X-Request-ID'
+          $ref: "#/components/headers/X-Request-ID"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             type: https://mnemonic.example.com/problems/internal-error
             title: Internal Error
@@ -1371,11 +1373,11 @@ components:
       description: Service temporarily unavailable
       headers:
         X-Request-ID:
-          $ref: '#/components/headers/X-Request-ID'
+          $ref: "#/components/headers/X-Request-ID"
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             type: https://mnemonic.example.com/problems/service-unavailable
             title: Service Unavailable
@@ -1411,7 +1413,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RouteRequest'
+              $ref: "#/components/schemas/RouteRequest"
             examples:
               go_fibonacci:
                 summary: Go development request
@@ -1433,15 +1435,15 @@ paths:
                 value:
                   prompt: Help me debug this Python script
       responses:
-        '200':
+        "200":
           description: Routing decision with agent and patterns
           headers:
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
+              $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RouteResponse'
+                $ref: "#/components/schemas/RouteResponse"
               examples:
                 go_match:
                   summary: Successful Go agent match
@@ -1453,7 +1455,7 @@ paths:
                       matched_keywords:
                         - go
                         - function
-                      reasoning: 'Matched keywords: go, function'
+                      reasoning: "Matched keywords: go, function"
                     agent:
                       name: go-software-agent
                       description: Expert Go developer agent for writing idiomatic Go code
@@ -1469,8 +1471,8 @@ paths:
                       routing_keywords:
                         - go
                         - golang
-                      created_at: '2024-01-15T10:30:00Z'
-                      updated_at: '2024-01-15T10:30:00Z'
+                      created_at: "2024-01-15T10:30:00Z"
+                      updated_at: "2024-01-15T10:30:00Z"
                     patterns:
                       - name: go-error-handling
                         content: '# Go Error Handling Pattern\n\nAlways check errors...'
@@ -1489,27 +1491,27 @@ paths:
                       routing_duration_ms: 12
                       pattern_retrieval_duration_ms: 45
                       total_patterns_considered: 23
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
           description: No matching agent found (if strict routing)
           headers:
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
+              $ref: "#/components/headers/X-Request-ID"
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 type: https://mnemonic.example.com/problems/not-found
                 title: Not Found
                 status: 404
                 detail: No agent matched the prompt and no default agent configured
                 traceId: 550e8400-e29b-41d4-a716-446655440000
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   # ==================== Agent Endpoints ====================
   /api/agents:
@@ -1523,44 +1525,44 @@ paths:
         retrieve the full agent details including system prompt.
       operationId: listAgents
       parameters:
-        - $ref: '#/components/parameters/limitParam'
-        - $ref: '#/components/parameters/cursorParam'
+        - $ref: "#/components/parameters/limitParam"
+        - $ref: "#/components/parameters/cursorParam"
         - name: model
           in: query
           description: Filter agents by model type
           schema:
-            $ref: '#/components/schemas/ModelType'
+            $ref: "#/components/schemas/ModelType"
       responses:
-        '200':
+        "200":
           description: List of agents
           headers:
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
+              $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AgentList'
+                $ref: "#/components/schemas/AgentList"
               example:
                 data:
                   - name: go-software-agent
                     description: Expert Go developer agent
                     model: sonnet
-                    created_at: '2024-01-15T10:30:00Z'
-                    updated_at: '2024-01-15T10:30:00Z'
+                    created_at: "2024-01-15T10:30:00Z"
+                    updated_at: "2024-01-15T10:30:00Z"
                   - name: python-software-agent
                     description: Expert Python developer agent
                     model: sonnet
-                    created_at: '2024-01-14T09:00:00Z'
-                    updated_at: '2024-01-14T09:00:00Z'
+                    created_at: "2024-01-14T09:00:00Z"
+                    updated_at: "2024-01-14T09:00:00Z"
                 pagination:
                   limit: 20
                   cursor: null
                   next_cursor: eyJpZCI6IjEzMyJ9
                   has_more: true
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
     post:
       tags:
@@ -1577,7 +1579,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AgentCreate'
+              $ref: "#/components/schemas/AgentCreate"
             example:
               name: rust-software-agent
               description: Expert Rust developer agent for systems programming
@@ -1595,17 +1597,17 @@ paths:
                 - cargo
                 - rustc
       responses:
-        '201':
+        "201":
           description: Agent created successfully
           headers:
             Location:
-              $ref: '#/components/headers/Location'
+              $ref: "#/components/headers/Location"
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
+              $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Agent'
+                $ref: "#/components/schemas/Agent"
               example:
                 name: rust-software-agent
                 description: Expert Rust developer agent for systems programming
@@ -1622,22 +1624,22 @@ paths:
                   - rust
                   - cargo
                   - rustc
-                created_at: '2024-01-16T14:00:00Z'
-                updated_at: '2024-01-16T14:00:00Z'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                created_at: "2024-01-16T14:00:00Z"
+                updated_at: "2024-01-16T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /api/agents/{name}:
     parameters:
-      - $ref: '#/components/parameters/agentNameParam'
+      - $ref: "#/components/parameters/agentNameParam"
 
     get:
       tags:
@@ -1647,15 +1649,15 @@ paths:
         Returns the full agent definition including the system prompt.
       operationId: getAgent
       responses:
-        '200':
+        "200":
           description: Agent details
           headers:
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
+              $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Agent'
+                $ref: "#/components/schemas/Agent"
               example:
                 name: go-software-agent
                 description: Expert Go developer agent for writing idiomatic Go code
@@ -1674,14 +1676,14 @@ paths:
                   - golang
                   - go function
                   - go package
-                created_at: '2024-01-15T10:30:00Z'
-                updated_at: '2024-01-15T10:30:00Z'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                created_at: "2024-01-15T10:30:00Z"
+                updated_at: "2024-01-15T10:30:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
     put:
       tags:
@@ -1697,7 +1699,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AgentUpdate'
+              $ref: "#/components/schemas/AgentUpdate"
             example:
               name: go-software-agent
               description: Updated description
@@ -1712,25 +1714,25 @@ paths:
                 - go
                 - golang
       responses:
-        '200':
+        "200":
           description: Agent updated successfully
           headers:
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
+              $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Agent'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/Agent"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
     delete:
       tags:
@@ -1742,34 +1744,34 @@ paths:
         Returns 409 Conflict if the agent is referenced by routing rules.
       operationId: deleteAgent
       responses:
-        '204':
+        "204":
           description: Agent deleted successfully
           headers:
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
+              $ref: "#/components/headers/X-Request-ID"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
           description: Agent is referenced by routing rules
           headers:
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
+              $ref: "#/components/headers/X-Request-ID"
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 type: https://mnemonic.example.com/problems/conflict
                 title: Conflict
                 status: 409
                 detail: Agent is referenced by 2 routing rules
                 traceId: 550e8400-e29b-41d4-a716-446655440000
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   # ==================== Pattern Endpoints ====================
   /api/patterns:
@@ -1783,8 +1785,8 @@ paths:
         retrieve the full pattern details including content.
       operationId: listPatterns
       parameters:
-        - $ref: '#/components/parameters/limitParam'
-        - $ref: '#/components/parameters/cursorParam'
+        - $ref: "#/components/parameters/limitParam"
+        - $ref: "#/components/parameters/cursorParam"
         - name: tags
           in: query
           description: Comma-separated tags to filter by
@@ -1798,15 +1800,15 @@ paths:
             type: string
           example: error handling
       responses:
-        '200':
+        "200":
           description: List of patterns
           headers:
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
+              $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PatternList'
+                $ref: "#/components/schemas/PatternList"
               example:
                 data:
                   - id: 550e8400-e29b-41d4-a716-446655440001
@@ -1816,17 +1818,17 @@ paths:
                       - go
                       - errors
                       - best-practices
-                    created_at: '2024-01-10T08:00:00Z'
-                    updated_at: '2024-01-10T08:00:00Z'
+                    created_at: "2024-01-10T08:00:00Z"
+                    updated_at: "2024-01-10T08:00:00Z"
                 pagination:
                   limit: 20
                   cursor: null
                   next_cursor: null
                   has_more: false
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
     post:
       tags:
@@ -1840,7 +1842,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PatternCreate'
+              $ref: "#/components/schemas/PatternCreate"
             example:
               name: go-concurrency
               description: Patterns for safe concurrency in Go
@@ -1852,20 +1854,26 @@ paths:
                 - agent_name: go-software-agent
                   relevance: 0.9
       responses:
-        '202':
+        "202":
           description: |
-            Pattern accepted for processing. The pattern is created immediately but background
-            enrichment (embedding generation, entity extraction) is asynchronous. Check
-            enrichment_status field for processing state.
+            Pattern accepted for processing. The pattern is persisted immediately but background
+            enrichment (embedding generation, entity extraction) is asynchronous. The response
+            includes `enrichment_status: pending` to indicate that enrichment is in progress.
+
+            HTTP 202 is used because while the pattern is stored, it is not yet usable for its
+            primary purpose (semantic search). Patterns with `enrichment_status` other than
+            `enriched` are excluded from search results until enrichment completes.
+
+            See [Pattern Enrichment](../../docs/design/pattern-processing.md) for detailed pipeline behavior.
           headers:
             Location:
-              $ref: '#/components/headers/Location'
+              $ref: "#/components/headers/Location"
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
+              $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Pattern'
+                $ref: "#/components/schemas/Pattern"
               example:
                 id: 550e8400-e29b-41d4-a716-446655440005
                 name: go-concurrency
@@ -1880,22 +1888,22 @@ paths:
                 enrichment_status: pending
                 enrichment_error: null
                 enriched_at: null
-                created_at: '2024-01-16T14:00:00Z'
-                updated_at: '2024-01-16T14:00:00Z'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                created_at: "2024-01-16T14:00:00Z"
+                updated_at: "2024-01-16T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /api/patterns/{id}:
     parameters:
-      - $ref: '#/components/parameters/patternIdParam'
+      - $ref: "#/components/parameters/patternIdParam"
 
     get:
       tags:
@@ -1905,15 +1913,15 @@ paths:
         Returns the full pattern details including content.
       operationId: getPattern
       responses:
-        '200':
+        "200":
           description: Pattern details
           headers:
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
+              $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Pattern'
+                $ref: "#/components/schemas/Pattern"
               example:
                 id: 550e8400-e29b-41d4-a716-446655440001
                 name: go-error-handling
@@ -1926,14 +1934,14 @@ paths:
                 agent_associations:
                   - agent_name: go-software-agent
                     relevance: 0.95
-                created_at: '2024-01-10T08:00:00Z'
-                updated_at: '2024-01-10T08:00:00Z'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                created_at: "2024-01-10T08:00:00Z"
+                updated_at: "2024-01-10T08:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
     put:
       tags:
@@ -1947,27 +1955,27 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PatternUpdate'
+              $ref: "#/components/schemas/PatternUpdate"
       responses:
-        '200':
+        "200":
           description: Pattern updated successfully
           headers:
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
+              $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Pattern'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/Pattern"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
     delete:
       tags:
@@ -1977,19 +1985,19 @@ paths:
         Deletes a pattern. Requires the `admin` role.
       operationId: deletePattern
       responses:
-        '204':
+        "204":
           description: Pattern deleted successfully
           headers:
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+              $ref: "#/components/headers/X-Request-ID"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   # ==================== Routing Rule Endpoints ====================
   /api/routing-rules:
@@ -2002,18 +2010,18 @@ paths:
         priority order (higher priority first).
       operationId: listRoutingRules
       parameters:
-        - $ref: '#/components/parameters/limitParam'
-        - $ref: '#/components/parameters/cursorParam'
+        - $ref: "#/components/parameters/limitParam"
+        - $ref: "#/components/parameters/cursorParam"
       responses:
-        '200':
+        "200":
           description: List of routing rules
           headers:
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
+              $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RoutingRuleList'
+                $ref: "#/components/schemas/RoutingRuleList"
               example:
                 data:
                   - id: 550e8400-e29b-41d4-a716-446655440002
@@ -2028,8 +2036,8 @@ paths:
                         - go function
                       match_mode: any
                     enabled: true
-                    created_at: '2024-01-10T08:00:00Z'
-                    updated_at: '2024-01-10T08:00:00Z'
+                    created_at: "2024-01-10T08:00:00Z"
+                    updated_at: "2024-01-10T08:00:00Z"
                   - id: 550e8400-e29b-41d4-a716-446655440003
                     name: python-keyword-match
                     priority: 100
@@ -2042,8 +2050,8 @@ paths:
                         - pip
                       match_mode: any
                     enabled: true
-                    created_at: '2024-01-10T08:00:00Z'
-                    updated_at: '2024-01-10T08:00:00Z'
+                    created_at: "2024-01-10T08:00:00Z"
+                    updated_at: "2024-01-10T08:00:00Z"
                   - id: 550e8400-e29b-41d4-a716-446655440004
                     name: default-fallback
                     priority: 0
@@ -2051,17 +2059,17 @@ paths:
                     match_type: default
                     match_config: {}
                     enabled: true
-                    created_at: '2024-01-10T08:00:00Z'
-                    updated_at: '2024-01-10T08:00:00Z'
+                    created_at: "2024-01-10T08:00:00Z"
+                    updated_at: "2024-01-10T08:00:00Z"
                 pagination:
                   limit: 50
                   cursor: null
                   next_cursor: null
                   has_more: false
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalError'
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
     post:
       tags:
@@ -2075,7 +2083,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RoutingRuleCreate'
+              $ref: "#/components/schemas/RoutingRuleCreate"
             examples:
               keyword_rule:
                 summary: Keyword-based routing rule
@@ -2113,31 +2121,31 @@ paths:
                   match_config: {}
                   enabled: true
       responses:
-        '201':
+        "201":
           description: Routing rule created successfully
           headers:
             Location:
-              $ref: '#/components/headers/Location'
+              $ref: "#/components/headers/Location"
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
+              $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RoutingRule'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/RoutingRule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /api/routing-rules/{id}:
     parameters:
-      - $ref: '#/components/parameters/routingRuleIdParam'
+      - $ref: "#/components/parameters/routingRuleIdParam"
 
     get:
       tags:
@@ -2147,15 +2155,15 @@ paths:
         Returns the full routing rule details.
       operationId: getRoutingRule
       responses:
-        '200':
+        "200":
           description: Routing rule details
           headers:
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
+              $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RoutingRule'
+                $ref: "#/components/schemas/RoutingRule"
               example:
                 id: 550e8400-e29b-41d4-a716-446655440002
                 name: go-keyword-match
@@ -2169,14 +2177,14 @@ paths:
                     - go function
                   match_mode: any
                 enabled: true
-                created_at: '2024-01-10T08:00:00Z'
-                updated_at: '2024-01-10T08:00:00Z'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                created_at: "2024-01-10T08:00:00Z"
+                updated_at: "2024-01-10T08:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
     put:
       tags:
@@ -2190,27 +2198,27 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RoutingRuleUpdate'
+              $ref: "#/components/schemas/RoutingRuleUpdate"
       responses:
-        '200':
+        "200":
           description: Routing rule updated successfully
           headers:
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
+              $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RoutingRule'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/RoutingRule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
     delete:
       tags:
@@ -2220,22 +2228,22 @@ paths:
         Deletes a routing rule. Requires the `admin` role.
       operationId: deleteRoutingRule
       responses:
-        '204':
+        "204":
           description: Routing rule deleted successfully
           headers:
             X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+              $ref: "#/components/headers/X-Request-ID"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   # ==================== Operational Endpoints ====================
-  /ops/health:
+  /health:
     get:
       tags:
         - Operations
@@ -2247,33 +2255,33 @@ paths:
       operationId: healthCheck
       security: []
       responses:
-        '200':
+        "200":
           description: Service is healthy and all dependencies are available
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
+                $ref: "#/components/schemas/HealthResponse"
               example:
                 status: healthy
                 checks:
                   postgres: ok
                   pgvector: ok
                   neo4j: ok
-        '503':
+        "503":
           description: Service is unhealthy (one or more dependencies unavailable)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
+                $ref: "#/components/schemas/HealthResponse"
               example:
                 status: unhealthy
                 checks:
                   postgres: ok
                   pgvector: ok
-                  neo4j: 'error: connection refused'
+                  neo4j: "error: connection refused"
                 reason: neo4j connection failed
 
-  /ops/version:
+  /version:
     get:
       tags:
         - Operations
@@ -2283,15 +2291,15 @@ paths:
       operationId: getVersion
       security: []
       responses:
-        '200':
+        "200":
           description: Version information
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/VersionResponse'
+                $ref: "#/components/schemas/VersionResponse"
               example:
                 version: 1.0.0
                 api_version: v1
                 build_commit: abc123def
-                build_time: '2024-01-16T10:00:00Z'
+                build_time: "2024-01-16T10:00:00Z"
                 go_version: 1.22.0

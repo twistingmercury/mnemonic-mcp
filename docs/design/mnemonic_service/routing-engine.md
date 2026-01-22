@@ -1,6 +1,6 @@
 # Routing Engine
 
-[Back to Architecture Overview](../architecture/00-overview.md) | [Back to System Architecture](../architecture/03-system-architecture.md)
+[Back to Architecture Overview](../../architecture/00-overview.md) | [Back to Project README](../../../README.md)
 
 ## Table of Contents
 
@@ -14,8 +14,8 @@
   - [Complete Type Relationships](#complete-type-relationships)
 - [Rule Loading and Caching](#rule-loading-and-caching)
   - [Cache Architecture](#cache-architecture)
-  - [Cache Invalidation](#cache-invalidation)
   - [Startup Behavior](#startup-behavior)
+  - [Rule Reloading (Post-MVP)](#rule-reloading-post-mvp)
 - [Priority-Ordered Evaluation](#priority-ordered-evaluation)
   - [Evaluation Algorithm](#evaluation-algorithm)
   - [Short-Circuit Behavior](#short-circuit-behavior)
@@ -40,20 +40,24 @@
 
 [↑ Table of Contents](#table-of-contents)
 
-The routing engine is the core component within Mnemonic that determines which agent should handle a given prompt. As defined in [ADR-002](../architecture/02-architectural-decisions.md#adr-002-routing-location), routing logic lives server-side in Mnemonic, providing team-wide consistency and centralized management.
+> **Architecture Reference:** [ADR-002: Routing Location](../../architecture/02-architectural-decisions.md#adr-002-routing-location) | [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic) | [Overview - Key Principles](../../architecture/00-overview.md#key-principles)
+
+The routing engine is the core component within Mnemonic that determines which agent should handle a given prompt. As defined in [ADR-002](../../architecture/02-architectural-decisions.md#adr-002-routing-location), routing logic lives server-side in Mnemonic, providing team-wide consistency and centralized management.
 
 Key characteristics:
 
 - **Deterministic**: Routing is code-based, not LLM-driven (per architecture requirements)
 - **Priority-ordered**: Rules are evaluated in priority order (highest first)
 - **Configurable**: Rules are stored in the database and managed via REST API
-- **Fast**: Routing decisions must be made quickly (target: <50ms)
+- **Fast**: Routing decisions must be made quickly (target: <50ms for deterministic rules; see [Latency Targets](#latency-targets) for tiered SLOs)
 
-The routing engine implements the logic described in the [OpenAPI specification](/api/openapi/mnemonic-v1.yaml) for the `POST /api/route` endpoint.
+The routing engine implements the logic described in the [OpenAPI specification](../../../api/openapi/mnemonic-v1.yaml) for the `POST /api/route` endpoint.
 
 ## Design Principles
 
 [↑ Table of Contents](#table-of-contents)
+
+> **Architecture Reference:** [Overview - Key Principles](../../architecture/00-overview.md#key-principles) | [Architectural Decisions](../../architecture/02-architectural-decisions.md)
 
 1. **Determinism over intelligence**: The routing engine uses explicit rules, not LLM inference. This ensures predictable, auditable, and fast routing decisions.
 
@@ -69,6 +73,8 @@ The routing engine implements the logic described in the [OpenAPI specification]
 
 [↑ Table of Contents](#table-of-contents)
 
+> **Architecture Reference:** [Communication Patterns - CLI to Mnemonic Communication](../../architecture/04-communication-patterns.md#cli-to-mnemonic-communication) | [Communication Patterns - Response Structure](../../architecture/04-communication-patterns.md#response-structure)
+
 ### Router Interface
 
 The `Router` interface defines the primary routing contract. It evaluates the prompt against all enabled routing rules in priority order and returns the first match.
@@ -78,7 +84,6 @@ classDiagram
     class Router {
         <<interface>>
         +Route(ctx context.Context, req RouteRequest) RoutingDecision, error
-        +ReloadRules(ctx context.Context) error
     }
 
     class RouteRequest {
@@ -99,21 +104,20 @@ classDiagram
         +float64 PatternRelevanceThreshold
     }
 
+    note for RouteOptions "Per-request overrides for pattern retrieval.\nIf not specified, defaults from CLI config are used.\nSee configuration.md for default values."
+
     Router ..> RouteRequest : uses
     RouteRequest *-- RouteContext : contains
     RouteRequest *-- RouteOptions : contains
 ```
+
+**RouteOptions precedence:** The `RouteOptions` fields (`IncludePatterns`, `MaxPatterns`, `PatternRelevanceThreshold`) allow per-request overrides of the default values configured in the ACE CLI configuration file. If these fields are not specified in a request, the CLI configuration defaults are used. See [Configuration - Routing Preferences](configuration.md#ace-cli-configuration) for default values.
 
 **Router.Route behavior:**
 
 - Evaluates rules in descending priority order
 - Returns immediately when a rule matches (short-circuit evaluation)
 - If no rules match, returns a default routing decision using the configured default agent
-
-**Router.ReloadRules behavior:**
-
-- Forces the router to refresh its cached rules from the database
-- Called when rules are modified via the admin API
 
 ### RuleMatcher Interface
 
@@ -186,31 +190,23 @@ classDiagram
     class RoutingDecision {
         +string AgentName
         +float64 Confidence
-        +MatchMethod Method
+        +MatchType MatchType
         +[]string MatchedKeywords
         +string Reasoning
     }
 
-    class MatchMethod {
-        <<enumeration>>
-        MatchMethodKeyword
-        MatchMethodRegex
-        MatchMethodPattern
-        MatchMethodDefault
-    }
-
-    RoutingDecision --> MatchMethod : uses
+    RoutingDecision --> MatchType : uses
 ```
 
 **RoutingDecision fields:**
 
-| Field             | Type        | Description                                                     |
-| ----------------- | ----------- | --------------------------------------------------------------- |
-| `AgentName`       | string      | Identifier of the selected agent                                |
-| `Confidence`      | float64     | Routing confidence (0.0-1.0, where 1.0 = deterministic match)   |
-| `Method`          | MatchMethod | Which type of matching triggered the route                      |
-| `MatchedKeywords` | []string    | Keywords that triggered the route (only for MatchMethodKeyword) |
-| `Reasoning`       | string      | Human-readable explanation of why this agent was selected       |
+| Field             | Type      | Description                                                     |
+| ----------------- | --------- | --------------------------------------------------------------- |
+| `AgentName`       | string    | Identifier of the selected agent                                |
+| `Confidence`      | float64   | Routing confidence (0.0-1.0, where 1.0 = deterministic match)   |
+| `MatchType`       | MatchType | Which type of matching triggered the route                      |
+| `MatchedKeywords` | []string  | Keywords that triggered the route (only for MatchTypeKeyword)   |
+| `Reasoning`       | string    | Human-readable explanation of why this agent was selected       |
 
 ### Supporting Types
 
@@ -292,16 +288,12 @@ classDiagram
     class Router {
         <<interface>>
         +Route(ctx context.Context, req RouteRequest) RoutingDecision, error
-        +ReloadRules(ctx context.Context) error
     }
 
     class RuleCache {
         -sync.RWMutex mu
         -[]RoutingRule rules
-        -time.Time lastRefresh
-        -time.Duration refreshTTL
         +GetRules() []RoutingRule
-        +Refresh(ctx context.Context, repo RuleRepository) error
     }
 
     class MatcherRegistry {
@@ -330,7 +322,7 @@ classDiagram
     class RoutingDecision {
         +string AgentName
         +float64 Confidence
-        +MatchMethod Method
+        +MatchType MatchType
         +[]string MatchedKeywords
         +string Reasoning
     }
@@ -366,9 +358,13 @@ classDiagram
 
 [↑ Table of Contents](#table-of-contents)
 
+> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic) | [Deployment Architecture - Operational Considerations](../../architecture/05-deployment-architecture.md#operational-considerations)
+
 ### Cache Architecture
 
 The routing engine maintains an in-memory cache of enabled routing rules to minimize database queries during routing decisions.
+
+> **MVP Note:** The MVP design uses a simplified cache that loads rules once at startup. Restart the service to reload rules if they change. Background refresh with automatic rule reloading is a Post-MVP feature for multi-user/cloud deployments.
 
 ```mermaid
 flowchart TD
@@ -384,87 +380,52 @@ flowchart TD
 
     ROUTER --> CACHE
     ROUTER --> MATCHERS
-    CACHE <-->|"Load on startup<br/>Refresh on invalidation"| PG
+    CACHE <--|"Load on startup"| PG
 ```
 
-**RuleCache behavior:**
+**RuleCache implementation (MVP):**
 
-```mermaid
-classDiagram
-    class RuleCache {
-        -sync.RWMutex mu
-        -[]RoutingRule rules
-        -time.Time lastRefresh
-        -time.Duration refreshTTL
-        +GetRules() []RoutingRule
-        +Refresh(ctx context.Context, repo RuleRepository) error
-        +NeedsRefresh() bool
+```go
+type RuleCache struct {
+    rules []Rule
+    mu    sync.RWMutex
+}
+
+func NewRuleCache(loader RuleLoader) (*RuleCache, error) {
+    rules, err := loader.Load(context.Background())
+    if err != nil {
+        return nil, fmt.Errorf("failed to load rules at startup: %w", err)
     }
+    return &RuleCache{rules: rules}, nil
+}
 
-    class RuleRepository {
-        <<interface>>
-        +ListEnabledRules(ctx context.Context) []RoutingRule, error
-    }
-
-    RuleCache ..> RuleRepository : uses
+func (c *RuleCache) GetRules() []Rule {
+    c.mu.RLock()
+    defer c.mu.RUnlock()
+    return c.rules
+}
 ```
 
 **GetRules behavior:**
 
-- Returns a copy of cached rules (prevents mutation)
-- Rules are pre-sorted by priority (highest first)
-- Thread-safe via RWMutex read lock
+- Returns cached rules (thread-safe via RWMutex read lock)
+- Rules are pre-sorted by priority DESC, then by Rule ID ASC (lexicographic)
+- The RWMutex ensures safe concurrent access from multiple routing requests
 
-**Refresh behavior:**
+**Sorting implementation (performed at startup):**
 
-- Loads rules from the database via repository
-- Sorts rules by priority descending
-- Updates cache with write lock
-- Records refresh timestamp
-
-### Cache Invalidation
-
-Cache invalidation occurs in two scenarios:
-
-1. **Explicit invalidation**: When routing rules are created, updated, or deleted via the admin API, the cache is explicitly invalidated.
-
-2. **Background refresh**: A background goroutine periodically refreshes the cache to catch any missed invalidations or external database changes.
-
-```mermaid
-sequenceDiagram
-    participant Admin as Admin API
-    participant Router as Router
-    participant Cache as Rule Cache
-    participant PG as Postgres
-
-    Note over Admin,PG: Explicit Invalidation
-    Admin->>PG: UPDATE routing_rules
-    Admin->>Router: ReloadRules()
-    Router->>Cache: Refresh()
-    Cache->>PG: SELECT * FROM routing_rules WHERE enabled
-    PG-->>Cache: Rules
-    Cache-->>Router: Updated
-
-    Note over Router,PG: Background Refresh (every 5 minutes)
-    loop Every refreshTTL
-        Router->>Cache: NeedsRefresh()?
-        Cache-->>Router: Yes (if stale)
-        Router->>Cache: Refresh()
-        Cache->>PG: SELECT * FROM routing_rules WHERE enabled
-        PG-->>Cache: Rules
-    end
+```go
+sort.Slice(rules, func(i, j int) bool {
+    if rules[i].Priority != rules[j].Priority {
+        return rules[i].Priority > rules[j].Priority
+    }
+    return rules[i].ID.String() < rules[j].ID.String()
+})
 ```
-
-**Configuration:**
-
-| Setting           | Default | Description                            |
-| ----------------- | ------- | -------------------------------------- |
-| `refresh_ttl`     | 5m      | Background refresh interval            |
-| `startup_timeout` | 30s     | Max time to wait for initial rule load |
 
 ### Startup Behavior
 
-On startup, the routing engine must successfully load rules before accepting requests.
+On startup, the routing engine must successfully load rules before accepting requests. The MVP uses a fail-fast approach.
 
 ```mermaid
 stateDiagram-v2
@@ -473,34 +434,65 @@ stateDiagram-v2
     InitializeCache --> LoadRules
 
     state LoadRules <<choice>>
-    LoadRules --> StartBackgroundRefresh: Success
-    LoadRules --> FailStartup: Timeout
+    LoadRules --> AcceptRequests: Success
+    LoadRules --> FailStartup: Error
 
-    StartBackgroundRefresh --> AcceptRequests
     AcceptRequests --> [*]
 
     FailStartup --> ServiceUnhealthy
     ServiceUnhealthy --> [*]
 ```
 
-**Startup failure behavior:**
+**Startup failure behavior (MVP):**
 
-- If rules cannot be loaded within the startup timeout, the service fails to start
-- This prevents routing requests with stale or missing rules
+- If rules cannot be loaded, the service fails to start immediately (fail-fast)
+- This prevents routing requests with missing rules
 - Health checks report unhealthy until rules are loaded
+
+**Reloading rules (MVP):**
+
+- Restart the service to reload rules from the database
+- There is no runtime rule refresh in the MVP
+
+### Rule Reloading (Post-MVP)
+
+> **Post-MVP Feature:** The following capabilities are planned for future releases to support multi-user and cloud deployments.
+
+**Planned features:**
+
+- Background refresh via ticker with configurable `refresh_interval`
+- Explicit cache invalidation when rules are modified via admin API
+- Graceful degradation for refresh failures (use stale cache)
+- `Router.ReloadRules(ctx context.Context) error` method for on-demand refresh
+- Configurable `startup_timeout` for initial rule load
+
+**Planned configuration:**
+
+| Setting           | Default | Description                            |
+| ----------------- | ------- | -------------------------------------- |
+| `refresh_interval`| 5m      | Background refresh interval            |
+| `startup_timeout` | 30s     | Max time to wait for initial rule load |
+
+These features enable rule changes to propagate without service restarts, which is important for:
+
+- Multi-user environments where different teams manage rules
+- Cloud deployments with automated rule updates
+- High-availability scenarios where restarts are undesirable
 
 ## Priority-Ordered Evaluation
 
 [↑ Table of Contents](#table-of-contents)
 
+> **Architecture Reference:** [System Architecture - Data Flow](../../architecture/03-system-architecture.md#data-flow) | [Requirements - Goals](../../architecture/01-requirements.md#goals)
+
 ### Evaluation Algorithm
 
-Rules are evaluated in descending priority order. The first rule that matches determines the routing decision.
+Rules are evaluated in a deterministic order: descending by priority, then ascending by Rule ID (lexicographic). The first rule that matches determines the routing decision.
 
 ```mermaid
 stateDiagram-v2
     [*] --> ReceiveRequest
-    ReceiveRequest --> GetCachedRules: Get rules sorted by priority desc
+    ReceiveRequest --> GetCachedRules: Get rules sorted by priority DESC, ID ASC
     GetCachedRules --> CheckMoreRules
 
     state CheckMoreRules <<choice>>
@@ -548,27 +540,20 @@ This design ensures that high-priority rules are always considered first, and ad
 
 ### Tie-Breaking Rules
 
-When multiple rules have the same priority, the following tie-breakers apply:
+When multiple rules have the same priority, ties are broken deterministically using the Rule ID:
 
-| Order | Criterion     | Rationale                           |
-| ----- | ------------- | ----------------------------------- |
-| 1     | Match type    | keyword > regex > pattern > default |
-| 2     | Creation time | Older rules take precedence         |
+| Order | Criterion | Rationale                                   |
+| ----- | --------- | ------------------------------------------- |
+| 1     | Priority  | Explicit operator control                   |
+| 2     | Rule ID   | Deterministic fallback (lexicographic sort) |
 
-Match type ordering reflects specificity: keyword matches are most explicit, while pattern matches are more fuzzy.
-
-```mermaid
-flowchart LR
-    subgraph "Match Type Priority"
-        K[keyword<br/>order: 0] --> R[regex<br/>order: 1]
-        R --> P[pattern<br/>order: 2]
-        P --> D[default<br/>order: 3]
-    end
-```
+**Best Practice:** Assign unique priorities to rules whenever possible. This gives operators explicit control over evaluation order and makes rule behavior easier to understand and debug. Rule ID tie-breaking exists as a deterministic fallback, not as a primary ordering mechanism.
 
 ## Match Type Implementations
 
 [↑ Table of Contents](#table-of-contents)
+
+> **Architecture Reference:** [Communication Patterns - Request Flow](../../architecture/04-communication-patterns.md#request-flow)
 
 ### Keyword Matcher
 
@@ -885,6 +870,8 @@ classDiagram
 
 [↑ Table of Contents](#table-of-contents)
 
+> **Architecture Reference:** [Communication Patterns - Response Structure](../../architecture/04-communication-patterns.md#response-structure)
+
 ### Scoring Logic by Match Type
 
 | Match Type | Confidence Score | Rationale               |
@@ -896,7 +883,9 @@ classDiagram
 
 Deterministic match types (keyword, regex) always return 1.0 confidence because the match is binary - either the pattern matches or it does not.
 
-Pattern matching returns the actual similarity score, allowing downstream systems to understand match quality.
+Pattern matching returns the actual cosine similarity score, allowing downstream systems to understand match quality.
+
+> **Note:** Routing uses simple cosine similarity for fast rule matching. For richer relevance scoring during pattern search and retrieval, the Pattern Processing system uses a combined formula that incorporates graph context. See [Pattern Processing - Relevance Scoring](pattern-processing.md#relevance-scoring) for details.
 
 ```mermaid
 flowchart LR
@@ -944,13 +933,47 @@ Every routing decision includes a human-readable reasoning string based on the m
 
 [↑ Table of Contents](#table-of-contents)
 
+> **Architecture Reference:** [Requirements - Quality Attributes](../../architecture/01-requirements.md#quality-attributes) | [Communication Patterns - Timeout Handling](../../architecture/04-communication-patterns.md#timeout-handling)
+
 ### Latency Targets
 
-| Operation                      | Target  | Maximum |
-| ------------------------------ | ------- | ------- |
-| Rule evaluation (cache hit)    | < 10ms  | 50ms    |
-| Full route request             | < 50ms  | 200ms   |
-| Pattern match (with embedding) | < 500ms | 2s      |
+The routing engine uses a **tiered latency model** because different match types have fundamentally different computational costs:
+
+- **Keyword/Regex matching** is deterministic and fast (string operations only)
+- **Pattern matching** requires embedding generation and vector similarity search, which involves external API calls or model inference
+
+This is why the Design Principles section references "<50ms" while pattern matching allows up to 2 seconds - these are separate tiers, not contradictory targets.
+
+**Tiered SLO Table:**
+
+| Match Type | P50 | P95 | P99 (Max) | Notes |
+| --- | --- | --- | --- | --- |
+| Keyword | <5ms | <20ms | <50ms | String matching only |
+| Regex | <5ms | <20ms | <50ms | Compiled regex, cached |
+| Pattern (semantic) | <300ms | <800ms | <2s | Embedding generation + vector search |
+| Default | <1ms | <5ms | <10ms | No-op, always matches |
+
+**Operation-Level Targets:**
+
+| Operation                      | Target  | Maximum | Applies To |
+| ------------------------------ | ------- | ------- | ---------- |
+| Rule evaluation (cache hit)    | < 10ms  | 50ms    | Keyword, Regex, Default |
+| Full route request (deterministic) | < 50ms  | 200ms   | When pattern rules not triggered |
+| Full route request (with pattern fallback) | < 500ms | 2s      | When pattern matching required |
+
+**Why Pattern Matching is Slower:**
+
+1. **Embedding generation**: The prompt must be converted to a vector embedding, typically requiring an API call to an embedding service or local model inference
+2. **Vector similarity search**: The prompt embedding is compared against stored pattern embeddings using cosine similarity
+3. **Multiple pattern comparisons**: A single pattern rule may reference multiple pattern IDs, each requiring similarity calculation
+
+**Priority Ordering Ensures Fast Paths First:**
+
+The [Optimization Strategies](#optimization-strategies) section explains that keyword and regex rules should have higher priority than pattern rules. This ensures:
+
+- Most requests are routed via fast deterministic rules (<50ms)
+- Pattern matching only runs as a fallback when deterministic rules do not match
+- Users experience fast routing for common cases while still having semantic flexibility for edge cases
 
 The routing engine is on the critical path for every ACE request. Latency directly impacts user experience.
 
@@ -1012,15 +1035,25 @@ Benchmark targets for the routing engine:
 
 [↑ Table of Contents](#table-of-contents)
 
+> **Architecture Reference:** [Communication Patterns - Error Handling](../../architecture/04-communication-patterns.md#error-handling) | [Communication Patterns - Fallback Behavior](../../architecture/04-communication-patterns.md#fallback-behavior)
+
 The routing engine handles errors gracefully to ensure requests are never dropped:
+
+**MVP error handling:**
 
 | Error Scenario          | Behavior                         |
 | ----------------------- | -------------------------------- |
 | Invalid regex pattern   | Skip rule, log warning, continue |
 | Pattern embedding fails | Skip rule, log error, continue   |
 | All rules fail          | Return default agent             |
-| Cache refresh fails     | Use stale cache, log error       |
 | Unknown match type      | Skip rule, log warning           |
+| Startup rule load fails | Service fails to start (fail-fast) |
+
+**Post-MVP error handling:**
+
+| Error Scenario          | Behavior                         |
+| ----------------------- | -------------------------------- |
+| Cache refresh fails     | Use stale cache, log error       |
 
 ```mermaid
 stateDiagram-v2
@@ -1052,9 +1085,9 @@ stateDiagram-v2
 
 [↑ Table of Contents](#table-of-contents)
 
-- [OpenAPI Specification](/api/openapi/mnemonic-v1.yaml) - RoutingRule, MatchType, RoutingDecision schemas
-- [System Architecture](../architecture/03-system-architecture.md) - Mnemonic component overview
-- [Communication Patterns](../architecture/04-communication-patterns.md) - REST endpoint patterns
-- [Architectural Decisions](../architecture/02-architectural-decisions.md) - ADR-002: Routing Location
+- [OpenAPI Specification](../../../api/openapi/mnemonic-v1.yaml) - RoutingRule, MatchType, RoutingDecision schemas
+- [System Architecture](../../architecture/03-system-architecture.md) - Mnemonic component overview
+- [Communication Patterns](../../architecture/04-communication-patterns.md) - REST endpoint patterns
+- [Architectural Decisions](../../architecture/02-architectural-decisions.md) - ADR-002: Routing Location
 - [Pattern Processing](pattern-processing.md) - Pattern enrichment and embedding
 - [Configuration](configuration.md) - Server configuration including routing settings

@@ -201,13 +201,21 @@ Architecture documents describe **what** the system does and **why** decisions w
 
 The following design documents provide implementation details:
 
-| Document                                                 | Description                            | Status   |
-| -------------------------------------------------------- | -------------------------------------- | -------- |
-| [api-specification.md](../design/api-specification.md)   | OpenAPI spec for Mnemonic REST API     | Complete |
-| [pattern-processing.md](../design/pattern-processing.md) | Pattern enrichment and search pipeline | Complete |
-| [data-models.md](../design/data-models.md)               | Entity schemas and relationships       | Complete |
-| [routing-engine.md](../design/routing-engine.md)         | Routing algorithm details              | Complete |
-| [configuration.md](../design/configuration.md)           | CLI configuration reference            | Complete |
+**ACE CLI:**
+
+| Document                                                                    | Description             | Status   |
+| --------------------------------------------------------------------------- | ----------------------- | -------- |
+| [configuration.md](../design/ace_cli/configuration.md)                      | CLI configuration       | Complete |
+
+**Mnemonic Service:**
+
+| Document                                                                              | Description                            | Status   |
+| ------------------------------------------------------------------------------------- | -------------------------------------- | -------- |
+| [api-specification.md](../design/mnemonic_service/api-specification.md)               | OpenAPI spec for Mnemonic REST API     | Complete |
+| [pattern-processing.md](../design/mnemonic_service/pattern-processing.md)             | Pattern enrichment and search pipeline | Complete |
+| [routing-engine.md](../design/mnemonic_service/routing-engine.md)                     | Routing algorithm details              | Complete |
+| [configuration.md](../design/mnemonic_service/configuration.md)                       | Server configuration                   | Complete |
+| [observability-implementation.md](../design/mnemonic_service/observability-implementation.md) | Observability design           | Complete |
 
 ### Cross-References
 
