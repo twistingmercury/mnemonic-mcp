@@ -189,6 +189,8 @@ graph TB
 | CLI to Mnemonic    | **5s** - fail fast for routing decisions (configurable via `server.timeout`)     |
 | CLI to Claude Code | **300s** (5 minutes) - long timeout for LLM execution with progress indication   |
 
+> **Timeout vs SLO Note:** The 5-second CLI-to-Mnemonic timeout is a ceiling for edge cases (cold starts, network hiccups, container spin-up). Normal operations target sub-100ms latency per the [SLO targets](07-observability-architecture.md#mnemonic-slos). The timeout is intentionally higher than the SLO to avoid false failures during transient conditions while still failing fast enough to provide good user experience.
+
 ### Retry Logic
 
 ```mermaid

@@ -5,7 +5,7 @@
 ## Table of Contents
 
 - [Overview](#overview)
-- [Implementation Phases](#implementation-phases)
+- [Implementation Stages](#implementation-stages)
 - [Observability Stack](#observability-stack)
 - [Metrics (Prometheus)](#metrics-prometheus)
 - [Logs (Loki)](#logs-loki)
@@ -30,13 +30,15 @@ Observability enables understanding system behavior through external outputs. Fo
 
 **Key Characteristic:** Mnemonic is a lightweight service (no LLM inference), so observability focuses on routing performance, pattern retrieval efficiency, and database health rather than compute-intensive operations.
 
-## Implementation Phases
+## Implementation Stages
 
 [Back to Table of Contents](#table-of-contents)
 
-Observability is implemented in phases, starting with application instrumentation before building out the full observability stack.
+> **Note:** This document uses "Observability Stages" to describe the observability rollout milestones. These are independent of the main ACE execution phases (Phase 1: Claude Code, Phase 2: Direct API, Phase 3: Auth) described in the [Architecture Overview](00-overview.md#phased-approach).
 
-### Phase 1: Application Instrumentation (MVP)
+Observability is implemented in stages, starting with application instrumentation before building out the full observability stack.
+
+### Observability Stage 1: Application Instrumentation (MVP)
 
 MVP focuses on instrumenting Mnemonic to emit telemetry data via OpenTelemetry. This establishes the foundation for observability without requiring external infrastructure.
 
@@ -50,7 +52,7 @@ MVP focuses on instrumenting Mnemonic to emit telemetry data via OpenTelemetry. 
 
 **Why this first:** Proper instrumentation is the foundation. Once the application emits telemetry correctly, the collection and visualization infrastructure can be added without code changes.
 
-### Phase 2: Collection and Storage (Post-MVP)
+### Observability Stage 2: Collection and Storage (Post-MVP)
 
 After MVP, deploy the observability stack to collect and store telemetry data.
 
@@ -61,7 +63,7 @@ After MVP, deploy the observability stack to collect and store telemetry data.
 - Loki for log aggregation
 - Jaeger for trace storage
 
-### Phase 3: Visualization and Operations (Post-MVP)
+### Observability Stage 3: Visualization and Operations (Post-MVP)
 
 With collection in place, build operational tooling for monitoring and incident response.
 
@@ -76,7 +78,7 @@ With collection in place, build operational tooling for monitoring and incident 
 
 [Back to Table of Contents](#table-of-contents)
 
-**Note:** This section describes the target architecture. MVP (Phase 1) implements only the application instrumentation layer. Collection, storage, and visualization components are deployed in later phases.
+**Note:** This section describes the target architecture. MVP (Observability Stage 1) implements only the application instrumentation layer. Collection, storage, and visualization components are deployed in later stages.
 
 The observability stack uses industry-standard open-source tools:
 
@@ -123,7 +125,7 @@ graph TB
 
 [Back to Table of Contents](#table-of-contents)
 
-**Phase 1 (MVP):** Mnemonic emits metrics via OpenTelemetry. **Phase 2+:** Prometheus scrapes and stores these metrics.
+**Observability Stage 1 (MVP):** Mnemonic emits metrics via OpenTelemetry. **Stage 2+:** Prometheus scrapes and stores these metrics.
 
 ### Application Metrics
 
@@ -155,9 +157,9 @@ Mnemonic exposes metrics across several categories:
 
 For implementation details including specific metric names and labels, see operations documentation (TBD).
 
-### Alerting Strategy (Phase 3)
+### Alerting Strategy (Stage 3)
 
-**Note:** Alerting is implemented in Phase 3 after the observability stack is deployed.
+**Note:** Alerting is implemented in Observability Stage 3 after the observability stack is deployed.
 
 We alert on conditions that require attention:
 
@@ -184,7 +186,7 @@ For alert rule definitions, see operations documentation (TBD).
 
 [Back to Table of Contents](#table-of-contents)
 
-**Phase 1 (MVP):** Mnemonic emits structured logs with trace correlation. **Phase 2+:** Loki aggregates and indexes logs for querying.
+**Observability Stage 1 (MVP):** Mnemonic emits structured logs with trace correlation. **Stage 2+:** Loki aggregates and indexes logs for querying.
 
 ### Structured Logging
 
@@ -228,7 +230,7 @@ All logs use structured JSON format for consistent parsing and querying. Every l
 
 [Back to Table of Contents](#table-of-contents)
 
-**Phase 1 (MVP):** Mnemonic creates spans and propagates trace context. **Phase 2+:** Jaeger collects and visualizes traces.
+**Observability Stage 1 (MVP):** Mnemonic creates spans and propagates trace context. **Stage 2+:** Jaeger collects and visualizes traces.
 
 ### Trace Structure
 
@@ -302,7 +304,7 @@ For sampling configuration, see operations documentation (TBD).
 
 [Back to Table of Contents](#table-of-contents)
 
-**Note:** Dashboards are implemented in Phase 3 after the observability stack is deployed.
+**Note:** Dashboards are implemented in Observability Stage 3 after the observability stack is deployed.
 
 Grafana provides unified visualization across all telemetry signals.
 
@@ -352,7 +354,7 @@ For dashboard configuration and queries, see operations documentation (TBD).
 
 [Back to Table of Contents](#table-of-contents)
 
-**Note:** SLO monitoring requires the observability stack (Phase 2+). The targets below define what we measure once infrastructure is in place.
+**Note:** SLO monitoring requires the observability stack (Observability Stage 2+). The targets below define what we measure once infrastructure is in place.
 
 ### Mnemonic SLOs
 
@@ -376,7 +378,7 @@ Note: These are aggressive targets because Mnemonic does no LLM inference. Routi
 
 [Back to Table of Contents](#table-of-contents)
 
-**Note:** Runbooks are implemented in Phase 3 alongside alerting.
+**Note:** Runbooks are implemented in Observability Stage 3 alongside alerting.
 
 Every alert links to a runbook. ACE requires the following runbooks:
 
@@ -397,12 +399,12 @@ For runbook templates and content, see operations documentation (TBD).
 
 [Back to Table of Contents](#table-of-contents)
 
-- **Phased approach** - MVP instruments the application; observability stack and operational tooling come later
+- **Staged approach** - MVP instruments the application; observability stack and operational tooling come later
 - **OpenTelemetry** - Standard collection layer for metrics, logs, and traces (MVP foundation)
 - **Correlation** - Trace IDs connect signals for root cause analysis
 - **Lightweight focus** - Mnemonic observability focuses on routing efficiency, not LLM costs
 - **SLOs matter** - Track what users care about (availability, latency)
-- **Runbooks** - Every alert has documented recovery steps (Phase 3)
+- **Runbooks** - Every alert has documented recovery steps (Stage 3)
 
 **Next:** Return to [Architecture Overview](00-overview.md)
 

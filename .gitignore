@@ -76,3 +76,6 @@ docs/scripts/
 # Go artifacts
 
 **/coverage.out
+
+**/rlm_state/
+**/rlm_state/*
