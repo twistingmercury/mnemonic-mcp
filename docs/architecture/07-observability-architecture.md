@@ -237,7 +237,7 @@ A routing request trace shows the journey through Mnemonic:
 ```mermaid
 flowchart TB
     subgraph Trace["Trace ID: abc123"]
-        HTTP["POST /v1/ace/route<br/>45ms"]
+        HTTP["POST /api/route<br/>45ms"]
 
         subgraph HTTPSpans[" "]
             Valid["Validate Request<br/>2ms"]
