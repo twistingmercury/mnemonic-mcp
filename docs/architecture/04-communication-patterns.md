@@ -40,10 +40,10 @@ Mnemonic exposes the following REST endpoints for ACE:
 
 | Endpoint                | Method | Purpose                               |
 | ----------------------- | ------ | ------------------------------------- |
-| `/v1/ace/route`         | POST   | Deterministic routing based on prompt |
-| `/v1/ace/patterns`      | GET    | Pattern retrieval for agent + context |
-| `/v1/ace/agents`        | GET    | List available agents                 |
-| `/v1/ace/agents/{name}` | GET    | Get agent details                     |
+| `/v1/api/route`         | POST   | Deterministic routing based on prompt |
+| `/v1/api/patterns`      | GET    | Pattern retrieval for agent + context |
+| `/v1/api/agents`        | GET    | List available agents                 |
+| `/v1/api/agents/{name}` | GET    | Get agent details                     |
 
 > **Note:** This table shows primary endpoints. See the [API Specification](../design/mnemonic_service/api-specification.md) for the complete endpoint reference including patterns and routing-rules CRUD operations.
 
@@ -54,7 +54,7 @@ sequenceDiagram
     participant CLI as ACE CLI
     participant MN as Mnemonic
 
-    CLI->>MN: POST /v1/ace/route
+    CLI->>MN: POST /v1/api/route
     Note right of MN: Validate request
     Note right of MN: Apply routing rules
     Note right of MN: Fetch patterns from storage
@@ -73,7 +73,7 @@ sequenceDiagram
 - Includes context hints for better routing
 - Authenticated per team/user
 
-**Request Body for `/v1/ace/route`:**
+**Request Body for `/v1/api/route`:**
 
 | Field     | Purpose                          |
 | --------- | -------------------------------- |

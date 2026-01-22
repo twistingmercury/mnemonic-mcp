@@ -51,7 +51,7 @@ Key characteristics:
 - **Configurable**: Rules are stored in the database and managed via REST API
 - **Fast**: Routing decisions must be made quickly (target: <50ms for deterministic rules; see [Latency Targets](#latency-targets) for tiered SLOs)
 
-The routing engine implements the logic described in the [OpenAPI specification](../../../api/openapi/mnemonic-v1.yaml) for the `POST /api/route` endpoint.
+The routing engine implements the logic described in the [OpenAPI specification](../../../api/openapi/mnemonic-v1.yaml) for the `POST /v1/api/route` endpoint.
 
 ## Design Principles
 

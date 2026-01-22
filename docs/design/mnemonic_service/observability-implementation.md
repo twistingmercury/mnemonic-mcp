@@ -356,7 +356,7 @@ func main() {
 Based on the architecture document, traces should capture:
 
 ```text
-POST /api/route (45ms)
+POST /v1/api/route (45ms)
 ├── Validate Request (2ms)
 ├── Apply Routing Rules (8ms)
 ├── Fetch Patterns (30ms)
@@ -938,7 +938,7 @@ All log entries automatically include (via otelx):
   "span_id": "789xyz...",
   "message": "request completed",
   "http.method": "POST",
-  "http.path": "/api/route",
+  "http.path": "/v1/api/route",
   "http.status_code": 200,
   "latency_ms": 45
 }
@@ -1014,7 +1014,7 @@ import (
     "github.com/twistingmercury/mnemonic/internal/handlers"
 )
 
-// RoutePrompt handles POST /api/route with full observability.
+// RoutePrompt handles POST /v1/api/route with full observability.
 func RoutePrompt(deps *handlers.Dependencies) gin.HandlerFunc {
     return func(c *gin.Context) {
         ctx := c.Request.Context()
@@ -1113,7 +1113,7 @@ import (
 
 // SetupHandlers registers route handlers with dependencies.
 func SetupHandlers(r *gin.Engine, deps *handlers.Dependencies) {
-    r.POST("/api/route", RoutePrompt(deps))
+    r.POST("/v1/api/route", RoutePrompt(deps))
 }
 ```
 

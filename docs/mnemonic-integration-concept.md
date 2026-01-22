@@ -19,12 +19,12 @@ sequenceDiagram
     User->>CLI: "Write a Go function to sum numbers"
 
     Note over CLI,MN: Step 1: Get routing decision
-    CLI->>MN: POST /v1/ace/route
+    CLI->>MN: POST /v1/api/route
     MN->>MN: Evaluate routing rules (code-based)
     MN-->>CLI: { agent: "go-software-agent", confidence: 1.0 }
 
     Note over CLI,MN: Step 2: Get relevant patterns
-    CLI->>MN: GET /v1/ace/patterns?agent="go-software-agent"&context="sum function"
+    CLI->>MN: GET /v1/api/patterns?agent="go-software-agent"&context="sum function"
     MN->>MN: Query knowledge graph
     MN-->>CLI: { patterns: [...], system_prompt: "..." }
 
@@ -50,11 +50,11 @@ sequenceDiagram
     User->>CLI: "Write a Go function to sum numbers"
 
     Note over CLI,MN: Step 1: Get routing decision
-    CLI->>MN: POST /v1/ace/route
+    CLI->>MN: POST /v1/api/route
     MN-->>CLI: { agent: "go-software-agent" }
 
     Note over CLI,MN: Step 2: Get relevant patterns
-    CLI->>MN: GET /v1/ace/patterns?agent="go-software-agent"&context="sum function"
+    CLI->>MN: GET /v1/api/patterns?agent="go-software-agent"&context="sum function"
     MN-->>CLI: { patterns: [...], system_prompt: "..." }
 
     Note over CLI,ANT: Step 3: Direct API call
@@ -73,10 +73,10 @@ sequenceDiagram
 
 | Endpoint                         | Purpose                                          |
 | -------------------------------- | ------------------------------------------------ |
-| `POST /v1/ace/route`             | Determine which agent handles a prompt           |
-| `GET /v1/ace/patterns`           | Retrieve patterns for a specific agent + context |
-| `GET /v1/ace/agents`             | List available agents and their capabilities     |
-| `PUT /v1/ace/routing-rules/{id}` | Update routing rules (admin)                     |
+| `POST /v1/api/route`             | Determine which agent handles a prompt           |
+| `GET /v1/api/patterns`           | Retrieve patterns for a specific agent + context |
+| `GET /v1/api/agents`             | List available agents and their capabilities     |
+| `PUT /v1/api/routing-rules/{id}` | Update routing rules (admin)                     |
 
 ## What Lives Where
 

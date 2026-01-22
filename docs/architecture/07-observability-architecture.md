@@ -239,7 +239,7 @@ A routing request trace shows the journey through Mnemonic:
 ```mermaid
 flowchart TB
     subgraph Trace["Trace ID: abc123"]
-        HTTP["POST /api/route<br/>45ms"]
+        HTTP["POST /v1/api/route<br/>45ms"]
 
         subgraph HTTPSpans[" "]
             Valid["Validate Request<br/>2ms"]
@@ -273,7 +273,7 @@ sequenceDiagram
     participant NEO as Neo4j
 
     Note over CLI: Generate trace ID
-    CLI->>MN: POST /v1/ace/route<br/>traceparent: 00-abc123-...
+    CLI->>MN: POST /v1/api/route<br/>traceparent: 00-abc123-...
     MN->>PG: Query patterns<br/>(child span)
     PG-->>MN: Results
     MN->>NEO: Query relationships<br/>(child span)

@@ -180,8 +180,18 @@ claude_code:
 # NOTE: This is CLIENT-SIDE caching within the ACE CLI. It determines how long the
 # CLI caches routing decisions locally before re-querying Mnemonic. This reduces
 # network calls for repeated prompts and improves CLI responsiveness.
-# Compare with Mnemonic's routing.cache.refresh_ttl (SERVER-SIDE), which controls
-# how often Mnemonic refreshes its internal rule cache from the database.
+#
+# Cache Layer Comparison:
+# - CLI client-side cache (cache.ttl: 5m): Caches routing decisions locally within
+#   the CLI to avoid repeated network calls to Mnemonic for the same or similar prompts.
+#   This improves CLI responsiveness and reduces network traffic.
+# - Mnemonic server-side cache (routing.cache.refresh_ttl: 5m, Post-MVP): Controls how
+#   often Mnemonic refreshes its internal rule cache from the database. In MVP, rules
+#   are loaded once at startup and require service restart to reload.
+#
+# These caches operate at different layers:
+# - Client cache: Reduces CLI-to-Mnemonic calls
+# - Server cache: Reduces Mnemonic-to-database calls (Post-MVP)
 cache:
   # Enable local caching of routing decisions
   enabled: true
