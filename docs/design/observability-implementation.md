@@ -149,7 +149,7 @@ func DefaultObservabilityConfig() ObservabilityConfig {
         MetricsPort:     getEnvInt("MNEMONIC_OBSERVABILITY_METRICS_PORT", 9090),
         MetricsPath:     getEnvOrDefault("MNEMONIC_OBSERVABILITY_METRICS_PATH", "/metrics"),
         HealthEnabled:   getEnvBool("MNEMONIC_OBSERVABILITY_HEALTH_ENABLED", true),
-        HealthPath:      getEnvOrDefault("MNEMONIC_OBSERVABILITY_HEALTH_PATH", "/health"),
+        HealthPath:      getEnvOrDefault("MNEMONIC_OBSERVABILITY_HEALTH_PATH", "/ops/health"),
         TracingEnabled:  getEnvBool("MNEMONIC_OBSERVABILITY_TRACING_ENABLED", false),
         OTLPEndpoint:    getEnvOrDefault("MNEMONIC_OBSERVABILITY_TRACING_ENDPOINT", ""),
         OTLPInsecure:    getEnvBool("OTEL_EXPORTER_OTLP_INSECURE", true),
