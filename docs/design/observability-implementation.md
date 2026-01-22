@@ -348,7 +348,7 @@ func main() {
 Based on the architecture document, traces should capture:
 
 ```text
-POST /v1/ace/route (45ms)
+POST /api/route (45ms)
 ├── Validate Request (2ms)
 ├── Apply Routing Rules (8ms)
 ├── Fetch Patterns (30ms)
