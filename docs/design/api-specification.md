@@ -58,7 +58,7 @@ Use this OpenAPI spec to:
 
 ### POST vs GET for Routing
 
-**Decision**: Use POST for `/ace/route` instead of GET.
+**Decision**: Use POST for `/api/route` instead of GET.
 
 **Rationale**:
 
@@ -78,7 +78,7 @@ Use this OpenAPI spec to:
 3. Server can optimize internal queries
 4. Reduces latency for the critical path
 
-The `/ace/route` endpoint returns:
+The `/api/route` endpoint returns:
 
 - Routing decision (which agent was selected and why)
 - Full agent definition (including system prompt)
@@ -123,9 +123,9 @@ Authentication is handled by Envoy proxy (outside Mnemonic scope per architectur
 
 | Operation                          | Required Role          |
 | ---------------------------------- | ---------------------- |
-| `POST /v1/ace/route`               | Any authenticated user |
-| `GET /v1/ace/patterns`             | Any authenticated user |
-| `GET /v1/ace/agents`               | Any authenticated user |
+| `POST /api/route`                  | Any authenticated user |
+| `GET /api/patterns`                | Any authenticated user |
+| `GET /api/agents`                  | Any authenticated user |
 | Admin operations (PUT/DELETE)      | `admin` role           |
 
 **Why headers instead of token validation**:
@@ -155,6 +155,10 @@ Errors follow [RFC 7807 Problem Details](https://tools.ietf.org/html/rfc7807) fo
 - Validation errors include field-level details in `errors` array
 - Error `type` URIs are stable and can be used for client logic
 - HTTP status codes follow standard semantics
+
+**Post-MVP Features**:
+
+- Rate limiting (429 responses): Server-side rate limiting will be available in a later phase. The OpenAPI spec defines the response format for forward compatibility, but rate limiting is not enforced in MVP.
 
 See the OpenAPI spec for complete error schemas and example responses.
 
