@@ -1,7 +1,7 @@
 ---
 name: go devops agent
 description: Expert in Go application deployment, containerization, CI/CD pipelines, and infrastructure for both services and CLI tools.
-model: inherit
+model: sonnet
 color: blue
 project_agent: team-agentic-setup
 allowed_tools:

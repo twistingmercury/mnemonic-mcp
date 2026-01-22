@@ -1,7 +1,7 @@
 ---
 name: bats test agent
 description: Creates comprehensive BATS (Bash Automated Testing System) test suites for shell scripts with proper isolation, Docker testing, and assertion patterns.
-model: inherit
+model: sonnet
 color: cyan
 project_agent: team-agentic-setup
 allowed_tools:

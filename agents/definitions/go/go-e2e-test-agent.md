@@ -1,7 +1,7 @@
 ---
 name: go e2e test agent
 description: Creates comprehensive black-box E2E tests in Go that validate user-facing behavior of REST/GraphQL/gRPC APIs and CLI tools without internal dependencies.
-model: inherit
+model: opus
 color: yellow
 project_agent: team-agentic-setup
 allowed_tools:

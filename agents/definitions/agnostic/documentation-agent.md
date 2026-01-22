@@ -1,7 +1,7 @@
 ---
 name: documentation agent
 description: Creates and maintains project documentation (README, CHANGELOG, guides) following strict documentation standards and best practices.
-model: inherit
+model: sonnet
 color: blue
 project_agent: team-agentic-setup
 allowed_tools:

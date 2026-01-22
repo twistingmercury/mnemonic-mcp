@@ -126,12 +126,6 @@ graph TB
 
 See [Communication Patterns](04-communication-patterns.md#rest-endpoints) for REST endpoint details.
 
-**Routing Rule Cache (MVP):**
-
-- Routing rules are loaded once at startup from the database
-- Service restart is required to reload rules if they change
-- Background refresh with configurable TTL is planned for Post-MVP
-
 **What Mnemonic Does NOT Do:**
 
 - Make LLM API calls
@@ -155,7 +149,7 @@ sequenceDiagram
 
     Note over CLI: Parse and validate input
 
-    CLI->>MN: POST /v1/api/route
+    CLI->>MN: POST /v1/ace/route
 
     Note over MN: Apply routing rules
     Note over MN: Fetch patterns from storage
@@ -196,7 +190,7 @@ graph TB
     end
 
     USER -->|"Commands"| CLI
-    CLI -->|"POST /v1/api/route"| MN
+    CLI -->|"POST /v1/ace/route"| MN
     MN -->|"Agent + Patterns"| CLI
     CLI -->|"Execute"| EXEC
     EXEC -->|"Results"| CLI

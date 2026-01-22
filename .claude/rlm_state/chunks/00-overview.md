@@ -83,7 +83,7 @@ sequenceDiagram
     participant CC as Claude Code
 
     User->>CLI: Submit prompt
-    CLI->>MN: POST /v1/api/route
+    CLI->>MN: POST /v1/ace/route
     MN-->>CLI: Return agent + patterns
     CLI->>CC: Invoke with enriched prompt
     CC-->>CLI: Return results
@@ -109,7 +109,7 @@ sequenceDiagram
     participant ANT as Anthropic API
 
     User->>CLI: Submit prompt
-    CLI->>MN: POST /v1/api/route
+    CLI->>MN: POST /v1/ace/route
     MN-->>CLI: Return agent + patterns
     CLI->>ANT: Direct API call
     ANT-->>CLI: Return response
@@ -142,7 +142,7 @@ sequenceDiagram
     IDP-->>CLI: Access Token + Refresh Token
 
     User->>CLI: Submit prompt
-    CLI->>ENV: POST /v1/api/route + Bearer token
+    CLI->>ENV: POST /v1/ace/route + Bearer token
     ENV->>ENV: Validate JWT
     ENV->>OPA: ext_authz request
     OPA-->>ENV: Allow + identity headers

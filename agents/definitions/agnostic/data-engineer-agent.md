@@ -1,7 +1,7 @@
 ---
 name: data engineer agent
 description: Language-agnostic data engineer. Writes SQL migrations, stored procedures, Cypher queries, and data transformation scripts. Implements schemas designed by data-architect.
-model: inherit
+model: opus
 color: cyan
 project_agent: team-agentic-setup
 allowed_tools:

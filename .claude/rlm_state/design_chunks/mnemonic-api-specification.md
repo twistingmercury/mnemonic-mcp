@@ -31,7 +31,7 @@ This document describes the design rationale behind API decisions. For complete 
 
 ### POST vs GET for Routing
 
-**Decision**: Use POST for `/v1/api/route` instead of GET.
+**Decision**: Use POST for `/api/route` instead of GET.
 
 **Rationale**:
 
@@ -51,7 +51,7 @@ This document describes the design rationale behind API decisions. For complete 
 3. Server can optimize internal queries
 4. Reduces latency for the critical path
 
-The `/v1/api/route` endpoint returns:
+The `/api/route` endpoint returns:
 
 - Routing decision (which agent was selected and why)
 - Full agent definition (including system prompt)

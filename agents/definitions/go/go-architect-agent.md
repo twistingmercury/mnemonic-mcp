@@ -1,7 +1,7 @@
 ---
 name: go architect agent
 description: Go-specific architecture consultant. Receives high-level architecture from software-architect and translates it into detailed Go implementation plans with specific frameworks, patterns, project structure, and CLI design. Can also work directly for Go-only projects.
-model: inherit
+model: opus
 color: purple
 project_agent: team-agentic-setup
 allowed_tools:
