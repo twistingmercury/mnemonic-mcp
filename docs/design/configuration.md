@@ -467,7 +467,7 @@ These variables are used by the otelx library and take precedence when set.
 | `observability.health.enabled` | bool | `true` | `MNEMONIC_OBSERVABILITY_HEALTH_ENABLED` | Enable health check |
 | `observability.tracing.enabled` | bool | `false` | `MNEMONIC_OBSERVABILITY_TRACING_ENABLED` | Enable distributed tracing |
 | `observability.tracing.endpoint` | string | `""` | `MNEMONIC_OBSERVABILITY_TRACING_ENDPOINT` | OTLP collector endpoint |
-| `observability.tracing.otlp_insecure` | bool | `true` | `MNEMONIC_OBSERVABILITY_TRACING_OTLP_INSECURE` | Use insecure OTLP connection |
+| `observability.tracing.otlp_insecure` | bool | `false` | `MNEMONIC_OBSERVABILITY_TRACING_OTLP_INSECURE` | Use insecure OTLP connection (local development only; production should use TLS) |
 
 ## Environment Variable Naming Conventions
 
