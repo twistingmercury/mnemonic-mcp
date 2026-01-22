@@ -25,8 +25,11 @@ graph TB
         FS[Local Filesystem]
     end
 
-    subgraph "Server Infrastructure"
+    subgraph "Service Tier"
         MN[Mnemonic]
+    end
+
+    subgraph "Data Tier"
         PG[(Postgres + PGVector)]
         NEO[(Neo4j)]
     end
@@ -218,11 +221,13 @@ See [Communication Patterns](04-communication-patterns.md#rest-endpoints) for RE
 
 ### CLI to Claude Code
 
-| Aspect            | Detail                          |
-| ----------------- | ------------------------------- |
-| Invocation method | To be specified in design phase |
-| Context passing   | Enriched prompt with patterns   |
-| Result capture    | To be specified in design phase |
+| Aspect            | Detail                                                                 |
+| ----------------- | ---------------------------------------------------------------------- |
+| Invocation method | Direct subprocess invocation (see ADR-003 in Architectural Decisions) |
+| Context passing   | Enriched prompt with routing decision and patterns from Mnemonic       |
+| Result capture    | Standard output/error streams from Claude Code process                 |
+
+See [ADR-003: Claude Code Integration Strategy](02-architectural-decisions.md#adr-003-claude-code-integration-strategy) for the full specification of the execution model.
 
 ## Boundary Definitions
 

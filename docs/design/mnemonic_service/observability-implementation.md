@@ -1,6 +1,6 @@
 # Observability Implementation Design
 
-[Back to Architecture](../architecture/07-observability-architecture.md) | [Back to Design Documents](.)
+[Back to Architecture Overview](../../architecture/00-overview.md) | [Back to Project README](../../../README.md)
 
 ## Table of Contents
 
@@ -18,7 +18,9 @@
 
 ## Overview
 
-This document provides the detailed Go implementation design for Phase 1 (MVP) observability in Mnemonic, as defined in the [Observability Architecture](../architecture/07-observability-architecture.md).
+> **Architecture Reference:** [Observability Architecture](../../architecture/07-observability-architecture.md) | [Requirements - Quality Attributes](../../architecture/01-requirements.md#quality-attributes)
+
+This document provides the detailed Go implementation design for Phase 1 (MVP) observability in Mnemonic, as defined in the [Observability Architecture](../../architecture/07-observability-architecture.md).
 
 **Phase 1 Scope:**
 
@@ -63,6 +65,8 @@ src/mnemonic/
 
 ## otelx Package Integration
 
+> **Architecture Reference:** [Observability Architecture - Observability Stack](../../architecture/07-observability-architecture.md#observability-stack)
+
 ### Package Capabilities
 
 The `otelx` package (v1.0.0) provides:
@@ -96,6 +100,8 @@ The `otelgin` package provides the tracing middleware that otelx does not includ
 
 ## Initialization and Configuration
 
+> **Architecture Reference:** [Observability Architecture - Implementation Phases](../../architecture/07-observability-architecture.md#implementation-phases) | [Deployment Architecture - Operational Considerations](../../architecture/05-deployment-architecture.md#operational-considerations)
+>
 > **Note:** This configuration aligns with the established patterns in [Configuration Design](configuration.md). Environment variables use the `MNEMONIC_OBSERVABILITY_*` prefix for observability settings.
 
 ### Configuration Package
@@ -149,7 +155,7 @@ func DefaultObservabilityConfig() ObservabilityConfig {
         MetricsPort:     getEnvInt("MNEMONIC_OBSERVABILITY_METRICS_PORT", 9090),
         MetricsPath:     getEnvOrDefault("MNEMONIC_OBSERVABILITY_METRICS_PATH", "/metrics"),
         HealthEnabled:   getEnvBool("MNEMONIC_OBSERVABILITY_HEALTH_ENABLED", true),
-        HealthPath:      getEnvOrDefault("MNEMONIC_OBSERVABILITY_HEALTH_PATH", "/ops/health"),
+        HealthPath:      getEnvOrDefault("MNEMONIC_OBSERVABILITY_HEALTH_PATH", "/health"),
         TracingEnabled:  getEnvBool("MNEMONIC_OBSERVABILITY_TRACING_ENABLED", false),
         OTLPEndpoint:    getEnvOrDefault("MNEMONIC_OBSERVABILITY_TRACING_ENDPOINT", ""),
         OTLPInsecure:    getEnvBool("MNEMONIC_OBSERVABILITY_TRACING_OTLP_INSECURE", true),
@@ -343,6 +349,8 @@ func main() {
 
 ## Distributed Tracing Implementation
 
+> **Architecture Reference:** [Observability Architecture - Distributed Tracing (Jaeger)](../../architecture/07-observability-architecture.md#distributed-tracing-jaeger)
+
 ### Trace Structure
 
 Based on the architecture document, traces should capture:
@@ -380,7 +388,7 @@ func TracingMiddleware(serviceName string) gin.HandlerFunc {
     return otelgin.Middleware(serviceName,
         otelgin.WithFilter(func(req *http.Request) bool {
             // Skip tracing for health checks to reduce noise
-            return req.URL.Path != "/ops/health"
+            return req.URL.Path != "/health"
         }),
     )
 }
@@ -469,6 +477,8 @@ func RoutePrompt(c *gin.Context) {
 | Neo4j query        | `neo4j.query`           | `db.statement`, `db.operation`       |
 
 ## Metrics Implementation
+
+> **Architecture Reference:** [Observability Architecture - Metrics (Prometheus)](../../architecture/07-observability-architecture.md#metrics-prometheus)
 
 ### Metrics Categories
 
@@ -856,6 +866,8 @@ func NewRegistry(meter metric.Meter) (*Registry, error) {
 
 ## Structured Logging Implementation
 
+> **Architecture Reference:** [Observability Architecture - Logs (Loki)](../../architecture/07-observability-architecture.md#logs-loki)
+
 ### Using otelx Gin Middleware
 
 otelx provides `middleware/gin.LoggingMiddleware` for request logging with trace correlation:
@@ -879,7 +891,7 @@ func setupRouter(tel *telemetry.Telemetry) *gin.Engine {
 
     // otelx logging middleware with trace correlation
     router.Use(otelgin.LoggingMiddleware(tel.Telemetry,
-        otelgin.WithSkipPaths([]string{"/ops/health"}),
+        otelgin.WithSkipPaths([]string{"/health"}),
         otelgin.WithRequestHeaders([]string{"X-Request-ID", "X-Correlation-ID"}),
     ))
 
@@ -948,6 +960,8 @@ All log entries automatically include (via otelx):
 | Database error          | Error | Connection/query failure    |
 
 ## Handler Instrumentation Patterns
+
+> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic) | [Observability Architecture - Key Takeaways](../../architecture/07-observability-architecture.md#key-takeaways)
 
 ### Handler Dependencies
 
@@ -1104,6 +1118,8 @@ func SetupHandlers(r *gin.Engine, deps *handlers.Dependencies) {
 ```
 
 ## Database Instrumentation
+
+> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic) | [Observability Architecture - Metrics (Prometheus)](../../architecture/07-observability-architecture.md#metrics-prometheus)
 
 ### Postgres/PGVector Instrumentation
 
@@ -1373,6 +1389,8 @@ src/mnemonic/internal/
 ```
 
 ## Testing Strategy
+
+> **Architecture Reference:** [Requirements - Success Criteria](../../architecture/01-requirements.md#success-criteria)
 
 ### Unit Testing Observability
 

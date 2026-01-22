@@ -64,5 +64,7 @@ This project uses git tag-based semantic versioning. No releases have been publi
 
 ### Design
 
-- [API Specification](docs/design/api-specification.md) - OpenAPI spec for Mnemonic REST API
-- [Pattern Processing](docs/design/pattern-processing.md) - Pattern enrichment and search pipeline
+- [API Specification](docs/design/mnemonic_service/api-specification.md) - OpenAPI spec for Mnemonic REST API
+- [Pattern Processing](docs/design/mnemonic_service/pattern-processing.md) - Pattern enrichment and search pipeline
+- [ACE CLI Configuration](docs/design/ace_cli/configuration.md) - CLI configuration reference
+- [Mnemonic Configuration](docs/design/mnemonic_service/configuration.md) - Server configuration reference

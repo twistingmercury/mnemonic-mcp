@@ -207,10 +207,14 @@ Key metrics to monitor:
 
 ### Logging
 
-| Component | Log Focus                                      |
-| --------- | ---------------------------------------------- |
-| Mnemonic  | Routing decisions, pattern queries, errors     |
-| CLI       | Post-MVP: Logging configuration to be designed |
+**MVP scope:** Mnemonic emits structured logs with trace correlation via OpenTelemetry (see [Observability Architecture](07-observability-architecture.md)). Log collection and storage infrastructure (Loki) is Post-MVP.
+
+| Component | Log Focus                                                               |
+| --------- | ----------------------------------------------------------------------- |
+| Mnemonic  | Routing decisions, pattern queries, errors (instrumented in MVP)        |
+| CLI       | Post-MVP: Aggregated usage telemetry and logging to be designed         |
+
+**Note:** "Post-MVP" for CLI logging refers to the entire CLI telemetry design. For Mnemonic, MVP includes log instrumentation (emitting logs); Post-MVP includes log collection infrastructure (Loki aggregation, querying, retention).
 
 ### Backup and Recovery
 
@@ -288,7 +292,7 @@ graph TB
 
 **Deployment Order for Breaking Changes:**
 
-```
+```text
 1. Deploy migration (forward-compatible: nullable/default values)
 2. Verify migration succeeded in production
 3. Deploy application (uses new schema)
@@ -296,6 +300,7 @@ graph TB
 ```
 
 This separation ensures:
+
 - Faster deployments (only deploy what changed)
 - Safer rollbacks (can rollback app without touching DB)
 - Clear audit trail (which pipeline changed what)

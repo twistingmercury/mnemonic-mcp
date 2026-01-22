@@ -43,7 +43,7 @@ The following are explicitly out of scope:
 
 - **Replacing Claude Code**: ACE orchestrates Claude Code; it does not replace its functionality
 - **Running LLM inference on server**: All LLM interactions happen locally via Claude Code or direct API calls from the CLI
-- **Managing user credentials**: ACE does not store or manage Anthropic API keys
+- **Managing user credentials**: ACE does not store or manage Anthropic API keys (the user's LLM credentials). Note: This non-goal refers specifically to external API keys. ACE does manage its own internal OAuth tokens for Mnemonic authentication (Phase 3), which are stored securely using platform-native mechanisms as described in the [Security Architecture](06-security-architecture.md#token-storage)
 - **File synchronization**: ACE does not sync files between workstations; file operations are strictly local
 - **Real-time collaboration**: ACE does not provide real-time collaborative editing or presence features
 

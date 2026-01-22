@@ -45,7 +45,7 @@ Mnemonic exposes the following REST endpoints for ACE:
 | `/v1/ace/agents`        | GET    | List available agents                 |
 | `/v1/ace/agents/{name}` | GET    | Get agent details                     |
 
-> **Note:** This table shows primary endpoints. See the [API Specification](../design/api-specification.md) for the complete endpoint reference including patterns and routing-rules CRUD operations.
+> **Note:** This table shows primary endpoints. See the [API Specification](../design/mnemonic_service/api-specification.md) for the complete endpoint reference including patterns and routing-rules CRUD operations.
 
 ### Request Flow
 
@@ -142,14 +142,14 @@ sequenceDiagram
     CC-->>CLI: Final output
 ```
 
-**Invocation Characteristics:**
+**Invocation Characteristics (per [ADR-003](02-architectural-decisions.md#adr-003-claude-code-integration-strategy)):**
 
-| Aspect           | Detail                           |
-| ---------------- | -------------------------------- |
-| Method           | Subprocess spawn                 |
-| Prompt passing   | Post-MVP: Details to be designed |
-| Output capture   | Post-MVP: Details to be designed |
-| Timeout handling | Post-MVP: Details to be designed |
+| Aspect           | Detail                                                                 |
+| ---------------- | ---------------------------------------------------------------------- |
+| Method           | Subprocess spawn - CLI invokes Claude Code directly as execution engine |
+| Prompt passing   | CLI constructs enriched prompt (route context + patterns), passes to Claude Code |
+| Output capture   | Claude Code returns results to CLI, which presents them to user        |
+| Timeout handling | Long timeout with progress indication (see [Timeout Handling](#timeout-handling)) |
 
 **Context Enrichment:**
 
@@ -179,15 +179,15 @@ Each communication channel has timeout considerations.
 ```mermaid
 graph TB
     subgraph "Timeout Strategy"
-        CLI_MN[CLI to Mnemonic<br/>Short timeout]
-        CLI_CC[CLI to Claude Code<br/>Long timeout]
+        CLI_MN[CLI to Mnemonic<br/>5s timeout]
+        CLI_CC[CLI to Claude Code<br/>300s timeout]
     end
 ```
 
-| Channel            | Timeout Strategy                  |
-| ------------------ | --------------------------------- |
-| CLI to Mnemonic    | Short timeout, fail fast          |
-| CLI to Claude Code | Long timeout, progress indication |
+| Channel            | Timeout Strategy                                                                 |
+| ------------------ | -------------------------------------------------------------------------------- |
+| CLI to Mnemonic    | **5s** - fail fast for routing decisions (configurable via `server.timeout`)     |
+| CLI to Claude Code | **300s** (5 minutes) - long timeout for LLM execution with progress indication   |
 
 ### Retry Logic
 
