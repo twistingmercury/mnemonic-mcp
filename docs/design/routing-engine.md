@@ -49,7 +49,7 @@ Key characteristics:
 - **Configurable**: Rules are stored in the database and managed via REST API
 - **Fast**: Routing decisions must be made quickly (target: <50ms)
 
-The routing engine implements the logic described in the [OpenAPI specification](/api/openapi/mnemonic-v1.yaml) for the `POST /v1/ace/route` endpoint.
+The routing engine implements the logic described in the [OpenAPI specification](/api/openapi/mnemonic-v1.yaml) for the `POST /api/route` endpoint.
 
 ## Design Principles
 
@@ -1057,4 +1057,4 @@ stateDiagram-v2
 - [Communication Patterns](../architecture/04-communication-patterns.md) - REST endpoint patterns
 - [Architectural Decisions](../architecture/02-architectural-decisions.md) - ADR-002: Routing Location
 - [Pattern Processing](pattern-processing.md) - Pattern enrichment and embedding
-- [Data Models](data-models.md) - Database schemas and Go struct definitions
+- [Configuration](configuration.md) - Server configuration including routing settings

@@ -180,6 +180,7 @@ sequenceDiagram
 | [04-communication-patterns.md](04-communication-patterns.md)       | Protocol and integration patterns      |
 | [05-deployment-architecture.md](05-deployment-architecture.md)     | Deployment topology and operations     |
 | [06-security-architecture.md](06-security-architecture.md)         | Phase 3 authentication and authorization |
+| [07-observability-architecture.md](07-observability-architecture.md) | Monitoring, logging, and tracing       |
 | [project-structure.md](project-structure.md)                       | Repository layout and organization     |
 | [mnemonic-integration-concept.md](mnemonic-integration-concept.md) | ACE + Mnemonic integration details     |
 

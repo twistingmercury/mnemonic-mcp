@@ -372,16 +372,17 @@ observability:
   metrics:
     enabled: true
     path: /metrics
+    port: 9090
 
   health:
     enabled: true
-    path: /health
+    path: /ops/health
 
-  # NOTE: Post-MVP feature - Distributed tracing will be available in a later phase
   tracing:
     enabled: false
     endpoint: ""
     sample_rate: 0.1
+    otlp_insecure: true
 ```
 
 ### Mnemonic Environment Variables
@@ -407,6 +408,18 @@ export MNEMONIC_RATE_LIMIT_REQUESTS_PER_SECOND="100"
 # Logging
 export MNEMONIC_LOGGING_LEVEL="debug"
 ```
+
+### OpenTelemetry Standard Variables
+
+In addition to `MNEMONIC_` prefixed variables, Mnemonic respects standard OpenTelemetry environment variables for tracing configuration:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector endpoint | `localhost:4317` |
+| `OTEL_EXPORTER_OTLP_INSECURE` | Use insecure connection | `true` |
+| `OTEL_SERVICE_NAME` | Service name (overridden by config) | `mnemonic` |
+
+These variables are used by the otelx library and take precedence when set.
 
 ### Mnemonic Configuration Reference
 
@@ -450,8 +463,11 @@ export MNEMONIC_LOGGING_LEVEL="debug"
 | `logging.format` | string | `json` | `MNEMONIC_LOGGING_FORMAT` | Log format |
 | `observability.metrics.enabled` | bool | `true` | `MNEMONIC_OBSERVABILITY_METRICS_ENABLED` | Enable metrics |
 | `observability.metrics.path` | string | `/metrics` | `MNEMONIC_OBSERVABILITY_METRICS_PATH` | Metrics endpoint path |
+| `observability.metrics.port` | int | `9090` | `MNEMONIC_OBSERVABILITY_METRICS_PORT` | Metrics server port |
 | `observability.health.enabled` | bool | `true` | `MNEMONIC_OBSERVABILITY_HEALTH_ENABLED` | Enable health check |
-| `observability.tracing.enabled` | bool | `false` | `MNEMONIC_OBSERVABILITY_TRACING_ENABLED` | Enable distributed tracing (Post-MVP) |
+| `observability.tracing.enabled` | bool | `false` | `MNEMONIC_OBSERVABILITY_TRACING_ENABLED` | Enable distributed tracing |
+| `observability.tracing.endpoint` | string | `""` | `MNEMONIC_OBSERVABILITY_TRACING_ENDPOINT` | OTLP collector endpoint |
+| `observability.tracing.otlp_insecure` | bool | `true` | `MNEMONIC_OBSERVABILITY_TRACING_OTLP_INSECURE` | Use insecure OTLP connection |
 
 ## Environment Variable Naming Conventions
 
@@ -897,6 +913,7 @@ classDiagram
     class MetricsConfig {
         +bool Enabled
         +string Path
+        +int Port
     }
 
     class HealthConfig {
@@ -908,6 +925,7 @@ classDiagram
         +bool Enabled
         +string Endpoint
         +float64 SampleRate
+        +bool OTLPInsecure
     }
 
     MnemonicConfig *-- MnemonicServerConfig : Server

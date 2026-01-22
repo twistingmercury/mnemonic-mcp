@@ -49,7 +49,7 @@ sequenceDiagram
     participant PGV as PGVector
     participant Neo4j as Neo4j
 
-    Client->>API: POST /v1/ace/patterns
+    Client->>API: POST /api/patterns
     API->>PG: Save pattern (status: "pending")
     API->>PG: Queue enrichment job
     API-->>Client: 202 Accepted
@@ -84,7 +84,7 @@ Key characteristics:
 
 ### Write-time Enrichment
 
-When a pattern is created or updated via `POST/PUT /v1/ace/patterns`:
+When a pattern is created or updated via `POST/PUT /api/patterns`:
 
 ```mermaid
 stateDiagram-v2
@@ -215,7 +215,7 @@ WHERE id = $patternId;
 
 ### Query-time Processing
 
-When patterns are retrieved via `POST /v1/ace/route`:
+When patterns are retrieved via `POST /api/route`:
 
 ```mermaid
 stateDiagram-v2
@@ -533,14 +533,17 @@ Additional LLM providers (Anthropic, Azure OpenAI) can be added post-MVP if need
 
 ```bash
 # Required for embedding generation and entity extraction
-OPENAI_API_KEY=sk-...
+MNEMONIC_OPENAI_API_KEY=sk-...
 ```
 
 ### Application Configuration
 
+Configuration follows the patterns established in [configuration.md](configuration.md).
+
 ```yaml
 openai:
-  api_key_env: OPENAI_API_KEY
+  # API key should be set via MNEMONIC_OPENAI_API_KEY
+  api_key: ""
 
   # Embedding configuration
   embedding_model: text-embedding-3-small
@@ -552,20 +555,21 @@ openai:
   # Rate limiting (recommended)
   max_requests_per_minute: 500
   retry_attempts: 3
-  retry_delay_ms: 1000
+  retry_delay: 1s
 
 # Enrichment worker configuration
 enrichment:
-  worker_count: 1 # Number of concurrent workers (goroutines)
-  poll_interval_seconds: 5 # How often to check for new jobs
+  worker_count: 2 # Number of concurrent workers (goroutines)
+  poll_interval: 5s # How often to check for new jobs
   max_attempts: 3 # Retry attempts before marking as failed
-  retry_delay_seconds: 30 # Delay between retry attempts
+  retry_delay: 30s # Delay between retry attempts
 
 # Neo4j configuration (required)
 neo4j:
   uri: bolt://localhost:7687
   username: neo4j
-  password_env: NEO4J_PASSWORD
+  # password should be set via MNEMONIC_DATABASE_NEO4J_PASSWORD
+  password: ""
   database: neo4j
 ```
 
