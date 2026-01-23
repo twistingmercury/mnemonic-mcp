@@ -138,7 +138,7 @@ openai:
 # Rate limiting
 # NOTE: Post-MVP feature - Server-side rate limiting will be available in a later phase
 rate_limit:
-  enabled: true
+  enabled: false
   requests_per_second: 100
   burst_size: 200
 
@@ -155,10 +155,11 @@ routing:
     # from ACE CLI's cache.ttl (CLIENT-SIDE), which controls how long the CLI caches
     # routing decisions before re-querying Mnemonic.
     #
-    # Post-MVP: Background refresh settings (not used in MVP)
-    # For MVP, rules are loaded once at startup. Restart the service to reload rules.
-    refresh_ttl: 5m       # Post-MVP: How often Mnemonic refreshes rules from database
-    startup_timeout: 30s  # Post-MVP: Timeout for initial cache load
+    # MVP LIMITATION: These settings exist for forward compatibility but are IGNORED
+    # in MVP. Rules are loaded once at startup and cached indefinitely. Restart the
+    # service to reload rules after database changes. Background refresh is Post-MVP.
+    refresh_ttl: 5m       # IGNORED IN MVP: How often Mnemonic refreshes rules from database
+    startup_timeout: 30s  # IGNORED IN MVP: Timeout for initial cache load
 
   # Default agent when no rules match
   default_agent: general-agent
@@ -228,7 +229,7 @@ export MNEMONIC_DATABASE_NEO4J_PASSWORD="secret"
 export MNEMONIC_OPENAI_API_KEY="sk-..."
 
 # Rate limiting
-export MNEMONIC_RATE_LIMIT_ENABLED="true"
+export MNEMONIC_RATE_LIMIT_ENABLED="false"
 export MNEMONIC_RATE_LIMIT_REQUESTS_PER_SECOND="100"
 
 # Logging
@@ -294,7 +295,7 @@ The otelx package handles the complexity of OpenTelemetry SDK setup, allowing Mn
 | `openai.embedding_model`                  | string   | `text-embedding-3-small` | `MNEMONIC_OPENAI_EMBEDDING_MODEL`                  | Embedding model                                                                  |
 | `openai.embedding_dimensions`             | int      | `1536`                   | `MNEMONIC_OPENAI_EMBEDDING_DIMENSIONS`             | Embedding dimensions                                                             |
 | `openai.extraction_model`                 | string   | `gpt-4o-mini`            | `MNEMONIC_OPENAI_EXTRACTION_MODEL`                 | Entity extraction model                                                          |
-| `rate_limit.enabled`                      | bool     | `true`                   | `MNEMONIC_RATE_LIMIT_ENABLED`                      | Enable rate limiting (Post-MVP)                                                  |
+| `rate_limit.enabled`                      | bool     | `false`                  | `MNEMONIC_RATE_LIMIT_ENABLED`                      | Enable rate limiting (Post-MVP)                                                  |
 | `rate_limit.requests_per_second`          | int      | `100`                    | `MNEMONIC_RATE_LIMIT_REQUESTS_PER_SECOND`          | Global RPS limit (Post-MVP)                                                      |
 | `rate_limit.burst_size`                   | int      | `200`                    | `MNEMONIC_RATE_LIMIT_BURST_SIZE`                   | Burst size (Post-MVP)                                                            |
 | `rate_limit.per_user.requests_per_minute` | int      | `60`                     | `MNEMONIC_RATE_LIMIT_PER_USER_REQUESTS_PER_MINUTE` | Per-user RPM (Post-MVP)                                                          |

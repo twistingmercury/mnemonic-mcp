@@ -13,7 +13,6 @@ allowed-tools:
 # rlm (Recursive Language Model workflow)
 
 Use this Skill when:
-
 - The user provides (or references) a very large context file (docs, logs, transcripts, scraped webpages) that won't fit comfortably in chat context.
 - You need to iteratively inspect, search, chunk, and extract information from that context.
 - You can delegate chunk-level analysis to a subagent.
@@ -29,27 +28,23 @@ Use this Skill when:
 ### Inputs
 
 This Skill reads `$ARGUMENTS`. Accept these patterns:
-
 - `context=<path>` (required): path to the file containing the large context.
 - `query=<question>` (required): what the user wants.
 - Optional: `chunk_chars=<int>` (default ~200000) and `overlap_chars=<int>` (default 0).
 
 If the user didn't supply arguments, ask for:
-
-1. the context file path, and
-2. the query.
+1) the context file path, and
+2) the query.
 
 ### Step-by-step procedure
 
 1. Initialise the REPL state
-
    ```bash
    python3 .claude/skills/rlm/scripts/rlm_repl.py init <context_path>
    python3 .claude/skills/rlm/scripts/rlm_repl.py status
    ```
 
 2. Scout the context quickly
-
    ```bash
    python3 .claude/skills/rlm/scripts/rlm_repl.py exec -c "print(peek(0, 3000))"
    python3 .claude/skills/rlm/scripts/rlm_repl.py exec -c "print(peek(len(content)-3000, len(content)))"
@@ -60,7 +55,6 @@ If the user didn't supply arguments, ask for:
    - Otherwise, chunk by characters (size around chunk_chars, optional overlap).
 
 4. Materialise chunks as files (so subagents can read them)
-
    ```bash
    python3 .claude/skills/rlm/scripts/rlm_repl.py exec <<'PY'
    paths = write_chunks('.claude/rlm_state/chunks', size=200000, overlap=0)
