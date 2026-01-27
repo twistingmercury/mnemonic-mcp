@@ -1,3 +1,6 @@
+<!--
+I want to give credit where credit is due; this is not my creation. I got it from this post Zero-Setup RLMs with Claude Code (https://www.youtube.com/watch?v=m6itCxJFqpo)
+-->
 ---
 name: rlm-subcall
 description: Acts as the RLM sub-LLM (llm_query). Given a chunk of context (usually via a file path) and a query, extract only what is relevant and return a compact structured result. Use proactively for long contexts.
