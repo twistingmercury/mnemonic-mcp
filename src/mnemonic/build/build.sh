@@ -12,9 +12,14 @@ BUILD_VER="${BUILD_VER:-$(git -C "${PROJ_ROOT}" describe --tags --abbrev=0 2>/de
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 BUILD_COMMIT="${BUILD_COMMIT:-$(git -C "${PROJ_ROOT}" rev-parse --short HEAD 2>/dev/null || echo 'unknown')}"
 
-LOCAL_BUILD="${BUILD_COMMIT:-false}"
+LOCAL_BUILD="${LOCAL_BUILD:-0}"
+
+if [ "${LOCAL_BUILD}" -eq 1 ]; then
+    IMAGE_TAG="${BUILD_VER}-localdev"
+fi
 
 build_api(){
+    # linting, scans, and unit tests will be ran inside this container build
     printf "\n=== starting image build ===\n"
     docker build --rm --no-cache \
         --file "${SCRIPT_DIR}/Dockerfile" \
@@ -32,18 +37,29 @@ build_api(){
 
 e2e_tests(){
     printf "\n=== starting end-to-end tests ===\n"
-    docker compose -f "${PROJ_ROOT}/tests/docker-compose.yaml" up --exit-code-from menmonic_tests
+    docker compose -f "${PROJ_ROOT}/tests/docker-compose.yaml" up --exit-code-from mnemonic_tests
     docker compose -f "${PROJ_ROOT}/tests/docker-compose.yaml" down > /dev/null 2>&1
+}
+
+push_image(){
+    printf "\n=== pushing image to registry ===\n"
+    docker push "${IMAGE_NAME}:${IMAGE_TAG}"
+    docker push "${IMAGE_NAME}:latest"
+    printf "Pushed: %s:%s and %s:latest\n" "${IMAGE_NAME}" "${IMAGE_TAG}" "${IMAGE_NAME}"
 }
 
 main(){
     build_api
 
-    if [[ "${LOCAL_BUILD}" == "true" ]]; then
-        docker run --rm ghcr.io/twistingmercury/mnemonic:latest --version
+    if [ "${LOCAL_BUILD}" -eq 1 ]; then
+        docker run --rm "${IMAGE_NAME}:${IMAGE_TAG}" --version
     fi
 
     e2e_tests
+
+    if [ "${LOCAL_BUILD}" -ne 1 ]; then
+        push_image
+    fi
 }
 
 main "$@"

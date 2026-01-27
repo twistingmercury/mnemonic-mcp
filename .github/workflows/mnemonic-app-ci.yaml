@@ -1,0 +1,40 @@
+name: Mnemonic Application CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/mnemonic/internal/**'
+      - 'src/mnemonic/cmd/**'
+      - 'src/mnemonic/go.mod'
+      - 'src/mnemonic/go.sum'
+      - 'src/mnemonic/build/**'
+      - '.github/workflows/mnemonic-app-ci.yaml'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/mnemonic/internal/**'
+      - 'src/mnemonic/cmd/**'
+      - 'src/mnemonic/go.mod'
+      - 'src/mnemonic/go.sum'
+      - 'src/mnemonic/build/**'
+      - '.github/workflows/mnemonic-app-ci.yaml'
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/mnemonic
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run build script
+        run: ./build/build.sh
