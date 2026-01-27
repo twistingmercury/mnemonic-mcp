@@ -60,7 +60,7 @@ jobs:
       - name: Set build metadata
         id: meta
         run: |
-          echo "version=$(git describe --tags --abbrev=0 2>/dev/null || echo 'untagged')" >> "$GITHUB_OUTPUT"
+          echo "version=$(git describe --tags --abbrev=0 2>/dev/null || echo 'v0.0.0')" >> "$GITHUB_OUTPUT"
           echo "date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
           echo "commit=$(git rev-parse --short=8 HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -115,7 +115,7 @@ build:
   before_script:
     - apk add --no-cache git bash
   script:
-    - export BUILD_VER=$(git describe --tags --abbrev=0 2>/dev/null || echo 'untagged')
+    - export BUILD_VER=$(git describe --tags --abbrev=0 2>/dev/null || echo 'v0.0.0')
     - export BUILD_DATE=$(date +%Y-%m-%d)
     - export BUILD_COMMIT=$(git rev-parse --short=8 HEAD)
     - ./build/build.sh
@@ -150,7 +150,7 @@ steps:
     fetchDepth: 0
 
   - script: |
-      export BUILD_VER=$(git describe --tags --abbrev=0 2>/dev/null || echo 'untagged')
+      export BUILD_VER=$(git describe --tags --abbrev=0 2>/dev/null || echo 'v0.0.0')
       export BUILD_DATE=$(date +%Y-%m-%d)
       export BUILD_COMMIT=$(git rev-parse --short=8 HEAD)
       ./build/build.sh
@@ -251,6 +251,171 @@ The CI workflow expects the build script to:
 
 This contract keeps the CI configuration stable while allowing build logic to evolve independently.
 
+## Permissions for Artifacts
+
+When passing artifacts between workflows (CI → CD), specific permissions are required:
+
+```yaml
+permissions:
+  contents: read
+  actions: write  # Required for cross-workflow artifact access
+```
+
+**Permission Requirements**:
+
+| Scenario | Permission | Why |
+|----------|------------|-----|
+| Upload artifacts for same workflow | None (default) | Same workflow access is implicit |
+| Upload artifacts for other workflows | `actions: write` | Cross-workflow artifact access |
+| Download from same workflow | None (default) | Same workflow access is implicit |
+| Download from other workflow | `actions: read` | Cross-workflow artifact access |
+
+**Example with Artifact Permissions**:
+
+```yaml
+name: CI
+
+permissions:
+  contents: read
+  actions: write  # Enable CD workflow to download our artifacts
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build
+        run: ./build/build.sh
+
+      - name: Save Docker image for CD
+        run: docker save my-service:${{ steps.meta.outputs.version }} -o /tmp/image.tar
+
+      - name: Upload for CD workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/image.tar
+          retention-days: 1  # Short retention for intermediate artifacts
+```
+
+## Working Directory for Monorepos
+
+For monorepos where the service lives in a subdirectory, use `defaults.run.working-directory`:
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'services/my-service/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'services/my-service/**'
+
+defaults:
+  run:
+    working-directory: services/my-service
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # All run commands execute in services/my-service/
+      - name: Build
+        run: ./build/build.sh
+
+      # Actions still need explicit paths
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: services/my-service/.bin/  # Full path required for actions
+```
+
+**Key Points**:
+
+- `defaults.run.working-directory` affects all `run:` steps
+- `paths:` filter limits workflow triggers to relevant files
+- Actions (`uses:`) still require full paths from repo root
+- Combine with `paths:` filter to avoid running CI for unrelated changes
+
+## PR vs Push Behavior
+
+Control build behavior differently for PRs vs direct pushes. Common pattern: skip registry push on PRs.
+
+**Using Environment Variables**:
+
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # LOCAL_BUILD=true on PRs to skip push operations
+      LOCAL_BUILD: ${{ github.event_name == 'pull_request' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and test
+        env:
+          LOCAL_BUILD: ${{ env.LOCAL_BUILD }}
+        run: ./build/build.sh
+```
+
+**In the build script**:
+
+```bash
+#!/usr/bin/env bash
+set -e
+
+# Skip push operations if LOCAL_BUILD is set
+if [ "${LOCAL_BUILD}" = "true" ]; then
+    echo "PR build - skipping registry push"
+    # Build and test only, no push
+    docker build -t "${IMAGE_NAME}:${VERSION}" .
+else
+    echo "Main branch build - will push to registry"
+    # Full build with push
+    docker build -t "${IMAGE_NAME}:${VERSION}" .
+    docker push "${IMAGE_NAME}:${VERSION}"
+fi
+```
+
+**Alternative: Conditional Job**:
+
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build and test
+        run: ./build/build.sh
+
+  push:
+    needs: build
+    if: github.event_name == 'push'  # Skip on PRs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Push to registry
+        run: ./scripts/push.sh
+```
+
+**Why Skip Push on PRs**:
+
+- PRs should validate code, not deploy it
+- Reduces CI time for PR feedback loop
+- Prevents intermediate/broken images in registry
+- CD workflow handles push after merge
+
 ## Key Practices
 
 - **Full git history**: Always use `fetch-depth: 0` for version detection
@@ -258,3 +423,6 @@ This contract keeps the CI configuration stable while allowing build logic to ev
 - **Named artifacts**: Include commit or version in artifact names
 - **Retention policies**: Set appropriate artifact retention (30 days for CI, 90+ for releases)
 - **Script does the work**: CI orchestrates, script implements
+- **Explicit permissions**: Declare `actions: write` when artifacts need cross-workflow access
+- **Path filters for monorepos**: Use `paths:` to limit CI triggers to relevant directories
+- **PR-aware builds**: Use `LOCAL_BUILD` or conditional jobs to skip push on PRs
