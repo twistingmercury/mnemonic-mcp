@@ -1,0 +1,125 @@
+# MVP Implementation Plan
+
+## High level plan
+
+**IMPORTANT: NON-NEGOTIABLE**: Before the next step can begin:
+
+- Each phase must pass testing as applicable.
+- the user has reviewed and commited the changes.
+- The CI build has worked successfully.
+
+| Phase | Step | Goal | Agent(s) | Design Reference |
+| ----- | ---- | ---- | -------- | ---------------- |
+| 1     | A    | Get the CI build working on Git. That included creating the docker image and pushing it to the ghcr repo. | go devops agent | [Deployment Architecture - Independent Deployment Pipelines](../architecture/05-deployment-architecture.md#independent-deployment-pipelines) |
+|       | B    | Update any docs as needed, i.e., README, CHANGELOG, architecture and design docs. | go devops agent & documentation agent | N/A (documentation task) |
+|       | C    | Implement and unit test the configuration functionality. | go software agent | [Mnemonic Configuration](../design/mnemonic_service/configuration.md) |
+|       | D    | Update any docs as needed, i.e., README, CHANGELOG, architecture and design docs. | go software agent & documentation agent | N/A (documentation task) |
+|       | E    | Implement and unit test the observability functionality. | go software agent & documentation agent | [Observability Implementation](../design/mnemonic_service/observability-implementation.md), [Observability Architecture](../architecture/07-observability-architecture.md) |
+|       | F    | Update any docs as needed, i.e., README, CHANGELOG, architecture and design docs. | go software agent & documentation agent | N/A (documentation task) |
+|       | G    | Architectural review: Validate Phase 1 deliverables against requirements. Issues addressed, deferred, or dismissed. | software architect agent & go architect agent | [Requirements](../architecture/01-requirements.md) |
+| 2     | A    | Design PostgreSQL schema for routing rules, patterns, agents, and job queue tables. | data architect agent | [Data Architecture - PostgreSQL Schema](../architecture/08-data-architecture.md#postgresql-schema), [Data Storage - PostgreSQL Migrations](../design/mnemonic_service/data-storage.md#postgresql-migrations) |
+|       | B    | Design PGVector schema for pattern embeddings (1536 dimensions, IVFFlat index). | data architect agent | [Data Architecture - PGVector Configuration](../architecture/08-data-architecture.md#pgvector-configuration), [Data Storage - PGVector Configuration](../design/mnemonic_service/data-storage.md#pgvector-configuration) |
+|       | C    | Design Neo4j schema for knowledge graph (nodes: Pattern, Concept, Agent; relationships). | data architect agent | [Data Architecture - Neo4j Graph Model](../architecture/08-data-architecture.md#neo4j-graph-model), [Data Storage - Neo4j Setup](../design/mnemonic_service/data-storage.md#neo4j-setup) |
+|       | D    | Implement PostgreSQL migrations (7 migrations as specified in MVP scope). | data engineer agent | [Data Storage - PostgreSQL Migrations](../design/mnemonic_service/data-storage.md#postgresql-migrations) |
+|       | E    | Implement PGVector extension setup and embedding table migration. | data engineer agent | [Data Storage - Migration 001: Extensions and Functions](../design/mnemonic_service/data-storage.md#migration-001-extensions-and-functions), [Data Storage - Migration 003: Patterns Table](../design/mnemonic_service/data-storage.md#migration-003-patterns-table) |
+|       | F    | Implement Neo4j constraints and indexes (startup warnings if missing, no failure). | data engineer agent | [Data Storage - Schema Constraints](../design/mnemonic_service/data-storage.md#schema-constraints), [Data Storage - Startup Constraint Validation](../design/mnemonic_service/data-storage.md#startup-constraint-validation) |
+|       | G    | Update any docs as needed, i.e., README, CHANGELOG, architecture and design docs. | data engineer agent & documentation agent | N/A (documentation task) |
+|       | H    | Architectural review: Validate data layer schema design and migrations. Issues addressed, deferred, or dismissed. | software architect agent & go architect agent | [Data Architecture](../architecture/08-data-architecture.md) |
+| 3     | A    | Implement PostgreSQL repository layer (connection pooling, CRUD operations for rules, patterns, agents). | go software agent | [Data Storage - Repository Interfaces](../design/mnemonic_service/data-storage.md#repository-interfaces), [Data Storage - Connection Configuration](../design/mnemonic_service/data-storage.md#connection-configuration) |
+|       | B    | Implement PGVector repository layer (embedding storage and cosine similarity search). | go software agent | [Data Storage - PatternRepository](../design/mnemonic_service/data-storage.md#patternrepository), [Data Storage - Similarity Search Queries](../design/mnemonic_service/data-storage.md#similarity-search-queries) |
+|       | C    | Implement Neo4j repository layer (graph queries, relationship management, best-effort sync). | go software agent | [Data Storage - GraphRepository](../design/mnemonic_service/data-storage.md#graphrepository), [Data Storage - Graph Synchronization Queries](../design/mnemonic_service/data-storage.md#graph-synchronization-queries) |
+|       | D    | Unit test all repository implementations with table-driven tests. | go software agent | N/A (testing task) |
+|       | E    | Update any docs as needed, i.e., README, CHANGELOG, architecture and design docs. | go software agent & documentation agent | N/A (documentation task) |
+|       | F    | Architectural review: Validate repository implementations and data access patterns. Issues addressed, deferred, or dismissed. | software architect agent & go architect agent | [Data Architecture - Data Flow Patterns](../architecture/08-data-architecture.md#data-flow-patterns) |
+| 4     | A    | Implement deterministic routing engine with priority-ordered rule evaluation. | go software agent | [Routing Engine - Router Interface](../design/mnemonic_service/routing-engine.md#router-interface), [Routing Engine - Routing Algorithm](../design/mnemonic_service/routing-engine.md#routing-algorithm) |
+|       | B    | Implement keyword matcher (exact and substring matching). | go software agent | [Routing Engine - Keyword Matcher](../design/mnemonic_service/routing-engine.md#keyword-matcher) |
+|       | C    | Implement regex matcher (compiled pattern caching). | go software agent | [Routing Engine - Regex Matcher](../design/mnemonic_service/routing-engine.md#regex-matcher) |
+|       | D    | Implement pattern/semantic matcher (vector similarity with confidence scoring). | go software agent | [Routing Engine - Pattern Matcher](../design/mnemonic_service/routing-engine.md#pattern-matcher) |
+|       | E    | Implement default matcher (fallback routing). | go software agent | [Routing Engine - Default Matcher](../design/mnemonic_service/routing-engine.md#default-matcher) |
+|       | F    | Implement in-memory rule cache (requires restart to reload as per MVP scope). | go software agent | [Routing Engine - Rule Caching](../design/mnemonic_service/routing-engine.md#rule-caching), [Mnemonic Configuration - routing.cache](../design/mnemonic_service/configuration.md#configuration-file) |
+|       | G    | Unit test routing engine with all matcher types and priority scenarios. | go software agent | N/A (testing task) |
+|       | H    | Update any docs as needed, i.e., README, CHANGELOG, architecture and design docs. | go software agent & documentation agent | N/A (documentation task) |
+|       | I    | Architectural review: Validate routing engine design and matcher implementations. Issues addressed, deferred, or dismissed. | software architect agent & go architect agent | [Routing Engine](../design/mnemonic_service/routing-engine.md) |
+| 5     | A    | Implement REST API endpoint `/v1/api/route` (routing requests to appropriate handlers). | go software agent | [API Specification](../design/mnemonic_service/api-specification.md), [OpenAPI Spec](../../api/openapi/mnemonic-v1.yaml) |
+|       | B    | Implement REST API endpoint `/v1/api/patterns` (pattern retrieval and management). | go software agent | [API Specification](../design/mnemonic_service/api-specification.md), [OpenAPI Spec](../../api/openapi/mnemonic-v1.yaml) |
+|       | C    | Implement REST API endpoint `/v1/api/agents` (agent configuration retrieval). | go software agent | [API Specification](../design/mnemonic_service/api-specification.md), [OpenAPI Spec](../../api/openapi/mnemonic-v1.yaml) |
+|       | D    | Implement OpenTelemetry handler instrumentation (request tracing, latency metrics). | go software agent | [Observability Implementation - Handler Instrumentation](../design/mnemonic_service/observability-implementation.md#handler-instrumentation) |
+|       | E    | Unit test all API endpoints and error scenarios. | go software agent | N/A (testing task) |
+|       | F    | Update any docs as needed, i.e., README, CHANGELOG, architecture and design docs. | go software agent & documentation agent | N/A (documentation task) |
+|       | G    | Architectural review: Validate Mnemonic API implementation against spec. Issues addressed, deferred, or dismissed. | software architect agent & go architect agent | [API Specification](../design/mnemonic_service/api-specification.md) |
+| 6     | A    | Implement Postgres-backed job queue for pattern enrichment (enqueue, dequeue, status tracking). | go software agent | [Pattern Processing - Job Queue](../design/mnemonic_service/pattern-processing.md#job-queue), [Data Storage - EnrichmentJobRepository](../design/mnemonic_service/data-storage.md#enrichmentjobrepository) |
+|       | B    | Implement background worker with graceful shutdown and error handling. | go software agent | [Pattern Processing - Background Worker](../design/mnemonic_service/pattern-processing.md#background-worker), [Mnemonic Configuration - enrichment](../design/mnemonic_service/configuration.md#configuration-file) |
+|       | C    | Implement OpenAI text-embedding-3-small integration for embedding generation. | go software agent | [Pattern Processing - Embedding Generation](../design/mnemonic_service/pattern-processing.md#embedding-generation), [Mnemonic Configuration - openai](../design/mnemonic_service/configuration.md#configuration-file) |
+|       | D    | Implement OpenAI gpt-4o-mini integration for concept extraction. | go software agent | [Pattern Processing - Entity Extraction](../design/mnemonic_service/pattern-processing.md#entity-extraction) |
+|       | E    | Implement Neo4j sync (best-effort: failures logged, processing continues). | go software agent | [Pattern Processing - Neo4j Relationships](../design/mnemonic_service/pattern-processing.md#neo4j-relationships), [Data Architecture - Cross-Database Consistency](../architecture/08-data-architecture.md#cross-database-consistency) |
+|       | F    | Unit test pattern enrichment pipeline components. | go software agent | N/A (testing task) |
+|       | G    | Update any docs as needed, i.e., README, CHANGELOG, architecture and design docs. | go software agent & documentation agent | N/A (documentation task) |
+|       | H    | Architectural review: Validate pattern enrichment pipeline design. Issues addressed, deferred, or dismissed. | software architect agent & go architect agent | [Pattern Processing](../design/mnemonic_service/pattern-processing.md) |
+| 7     | A    | Create Docker Compose configuration for local development (Mnemonic, PostgreSQL, Neo4j). | go devops agent | [Deployment Architecture - Minimal Deployment](../architecture/05-deployment-architecture.md#minimal-deployment) |
+|       | B    | Create Kubernetes manifests for production deployment (single Mnemonic pod initially). | go devops agent | [Deployment Architecture - Kubernetes Deployment](../architecture/05-deployment-architecture.md#scaling-considerations), [Security Architecture - Kubernetes Deployment](../architecture/06-security-architecture.md#kubernetes-deployment) |
+|       | C    | Configure Envoy proxy for API key validation and TLS termination (authentication at edge layer). | go devops agent | [Security Architecture - Edge Layer](../architecture/06-security-architecture.md#edge-layer-envoy-proxy) |
+|       | D    | Create independent CI/CD pipeline for database migrations. | go devops agent | [Deployment Architecture - Independent Deployment Pipelines](../architecture/05-deployment-architecture.md#independent-deployment-pipelines), [Data Architecture - Migration Strategy](../architecture/08-data-architecture.md#migration-strategy) |
+|       | E    | Update any docs as needed, i.e., README, CHANGELOG, architecture and design docs. | go devops agent & documentation agent | N/A (documentation task) |
+|       | F    | Architectural review: Validate deployment architecture and CI/CD pipelines. Issues addressed, deferred, or dismissed. | software architect agent & go architect agent | [Deployment Architecture](../architecture/05-deployment-architecture.md) |
+| 8     | A    | Implement E2E tests for routing workflow (API request -> Mnemonic -> routing decision). | go e2e test agent | [E2E Tests](../../src/mnemonic/tests/e2e/) - scenarios documented, awaiting infrastructure |
+|       | B    | Implement E2E tests for pattern enrichment workflow (add pattern -> embedding -> graph sync). | go e2e test agent | [E2E Tests](../../src/mnemonic/tests/e2e/) - scenarios documented, awaiting infrastructure |
+|       | C    | Implement E2E tests for API authentication and error handling. | go e2e test agent | [E2E Tests](../../src/mnemonic/tests/e2e/) - scenarios documented, awaiting infrastructure |
+|       | D    | Update any docs as needed, i.e., README, CHANGELOG, architecture and design docs. | go e2e test agent & documentation agent | N/A (documentation task) |
+|       | E    | Architectural review: Validate E2E test coverage against success criteria. Issues addressed, deferred, or dismissed. | software architect agent & go architect agent | [Requirements - Success Criteria](../architecture/01-requirements.md#success-criteria) |
+| 9     | A    | Final integration testing: Full workflow validation for Mnemonic API endpoints. | go e2e test agent | [Requirements - Success Criteria](../architecture/01-requirements.md#success-criteria) |
+|       | B    | Performance validation: Verify routing latency targets documented in routing engine design. | go e2e test agent | [Routing Engine - Performance Considerations](../design/mnemonic_service/routing-engine.md#performance-considerations), [Observability Architecture - SLOs](../architecture/07-observability-architecture.md#slos-service-level-objectives) |
+|       | C    | Documentation review: Ensure all docs are consistent and complete. | documentation agent | N/A (documentation task) |
+|       | D    | Final architectural review: Validate Mnemonic MVP against success criteria and requirements. Issues addressed, deferred, or dismissed. | software architect agent & go architect agent | [Requirements](../architecture/01-requirements.md) |
+
+## Phase Summary
+
+| Phase | Focus Area            | Key Deliverables                                                |
+| ----- | --------------------- | --------------------------------------------------------------- |
+| 1     | Foundation            | CI/CD, configuration, observability                             |
+| 2     | Data Schema Design    | PostgreSQL, PGVector, Neo4j schema and migrations               |
+| 3     | Data Repository Layer | Repository implementations for all data stores                  |
+| 4     | Routing Engine        | Deterministic routing with all matcher types                    |
+| 5     | Mnemonic REST API     | `/v1/api/route`, `/v1/api/patterns`, `/v1/api/agents` endpoints |
+| 6     | Pattern Enrichment    | Job queue, background worker, OpenAI integrations               |
+| 7     | Deployment            | Docker Compose, Kubernetes, CI/CD pipelines                     |
+| 8     | E2E Testing           | End-to-end test coverage for Mnemonic workflows                 |
+| 9     | Final Validation      | Integration testing, performance validation, documentation      |
+
+## Phase Dependencies
+
+| Phase | Depends On | Reason |
+| ----- | ---------- | ------ |
+| 3 (Repository Layer) | 2 (Data Schema) | Repositories require database schemas and migrations |
+| 4 (Routing Engine) | 3 (Repository Layer) | Routing uses repositories for rule/pattern lookup |
+| 5 (REST API) | 3, 4 | API handlers use repositories and routing engine |
+| 6 (Pattern Enrichment) | 3, 5 | Enrichment uses repositories; triggered via API |
+| 8 (E2E Testing) | 2, 3, 7 | Tests require migrations, data access, and running infrastructure |
+| 9 (Final Validation) | 1-8 | All components must be complete |
+
+## Success Criteria Reference
+
+From [MVP Scope](./mvp-scope.md) (Mnemonic-focused):
+
+- Mnemonic routes requests to appropriate handlers via REST API
+- Patterns are accessible via `/v1/api/patterns` endpoint
+- Routing decisions are deterministic and reproducible
+- Pattern enrichment pipeline processes and stores embeddings
+
+## Known Limitations to Track
+
+| Limitation                      | Phase Impacted | Mitigation                            | Source Documentation                                                                                                             |
+| ------------------------------- | -------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Rules require restart to reload | 4, 5           | Document restart requirement          | [Routing Engine](../design/mnemonic_service/routing-engine.md), [System Architecture](../architecture/03-system-architecture.md) |
+| Single point of failure         | 7              | Document operational requirements     | [Architectural Decisions](../architecture/02-architectural-decisions.md)                                                         |
+| Neo4j sync is best-effort       | 6              | Failures logged, processing continues | [Data Architecture](../architecture/08-data-architecture.md), [Data Storage](../design/mnemonic_service/data-storage.md)         |
+| No rate limiting enforcement    | 5              | Operational monitoring                | [API Specification](../design/mnemonic_service/api-specification.md)                                                             |
+| Authentication at infrastructure layer | 7        | Envoy handles API key validation; Mnemonic receives pre-validated headers | [Security Architecture](../architecture/06-security-architecture.md)                                                             |
+
+## Design Gaps
+
+All design gaps have been resolved:
+
+| Original Gap | Resolution |
+| ------------ | ---------- |
+| MVP API key authentication (Phase 5) | Authentication handled by Envoy proxy at infrastructure layer |
+| E2E test scenarios (Phase 8) | Test scenarios documented in `src/mnemonic/tests/e2e/*_test.go`; implementation depends on Phases 2, 3, 7 |

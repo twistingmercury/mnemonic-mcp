@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+
+# I want to give credit where credit is due; this is not my creation. I got it from this post Zero-Setup RLMs with Claude Code (https://www.youtube.com/watch?v=m6itCxJFqpo)
+
 """Persistent mini-REPL for RLM-style workflows in Claude Code.
 
 This script provides a *stateful* Python environment across invocations by
