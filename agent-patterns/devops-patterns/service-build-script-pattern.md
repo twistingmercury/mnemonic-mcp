@@ -119,14 +119,18 @@ build_image() {
 run_e2e_tests() {
     print::section "Running E2E Tests"
 
-    if ! docker-compose -f tests/docker-compose.yaml up \
+    # Cleanup function for docker compose resources
+    cleanup() {
+        docker compose -f tests/docker-compose.yaml down --remove-orphans > /dev/null 2>&1 || true
+    }
+    trap cleanup EXIT
+
+    if ! docker compose -f tests/docker-compose.yaml up \
         --build --exit-code-from app_tests; then
         print::error "end-to-end tests failed"
-        docker-compose -f tests/docker-compose.yaml down --remove-orphans
         return 1
     fi
 
-    docker-compose -f tests/docker-compose.yaml down --remove-orphans
     print::success "E2E tests passed"
 }
 
@@ -290,6 +294,50 @@ The script fails fast (`set -e`) if any stage fails:
 5. Docker build fails → Build fails
 6. E2E tests fail → Build fails
 
+## Cleanup Trap Pattern
+
+When using docker compose for E2E tests, always use a cleanup trap to ensure resources are removed even if tests fail or the script is interrupted:
+
+```bash
+run_e2e_tests() {
+    # Define cleanup function
+    cleanup() {
+        docker compose -f tests/docker-compose.yaml down --remove-orphans > /dev/null 2>&1 || true
+    }
+    # Register cleanup to run on EXIT (covers success, failure, and interrupts)
+    trap cleanup EXIT
+
+    # Run tests - cleanup happens automatically after this
+    if ! docker compose -f tests/docker-compose.yaml up \
+        --build --exit-code-from app_tests; then
+        print::error "end-to-end tests failed"
+        return 1  # Cleanup still runs due to trap
+    fi
+
+    print::success "E2E tests passed"
+    # Cleanup runs automatically on function exit
+}
+```
+
+**Why This Pattern**:
+
+- **Reliability**: Cleanup runs regardless of how the function exits
+- **CI-friendly**: Prevents orphaned containers in CI environments
+- **Interrupt handling**: Ctrl+C triggers EXIT, so cleanup still runs
+- **Silent failures**: `|| true` prevents cleanup errors from masking test results
+- **Quiet output**: `> /dev/null 2>&1` keeps logs focused on test output
+
+**Common Trap Signals**:
+
+| Signal | When | Use Case |
+|--------|------|----------|
+| `EXIT` | Function/script exit | General cleanup (most common) |
+| `INT` | Ctrl+C | Interactive interrupt handling |
+| `TERM` | kill command | Graceful termination |
+| `ERR` | Command failure (with `set -e`) | Error-specific cleanup |
+
+**Best Practice**: Use `trap cleanup EXIT` for docker compose cleanup. It covers all exit scenarios including success, failure, and signals.
+
 ## Key Patterns
 
 - **Fail fast**: `set -e` exits on first error
@@ -299,6 +347,7 @@ The script fails fast (`set -e`) if any stage fails:
 - **Quality gates**: Lint → Security → Tests → Build
 - **Coverage reporting**: JUnit and Cobertura for CI integration
 - **Conditional ACR tagging**: Only if registry configured
+- **Cleanup traps**: Use `trap cleanup EXIT` for docker compose teardown
 
 ## Usage
 

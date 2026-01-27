@@ -169,6 +169,54 @@ search(
   search_query="GitHub Actions CI pattern containerized builds",
   search_type="GRAPH_COMPLETION"
 )
+
+# For GitHub Actions CD (registry push):
+search(
+  search_query="GitHub Actions CD pattern workflow_run artifact registry push",
+  search_type="GRAPH_COMPLETION"
+)
+
+# For CI/CD separation with artifacts:
+search(
+  search_query="CI CD separation pattern artifact passing between workflows",
+  search_type="GRAPH_COMPLETION"
+)
+
+# For artifact permissions:
+search(
+  search_query="GitHub Actions permissions actions write read artifact cross-workflow",
+  search_type="GRAPH_COMPLETION"
+)
+
+# For monorepo working directory:
+search(
+  search_query="GitHub Actions monorepo working-directory path filter",
+  search_type="GRAPH_COMPLETION"
+)
+
+# For PR vs push behavior:
+search(
+  search_query="GitHub Actions LOCAL_BUILD PR behavior skip push",
+  search_type="GRAPH_COMPLETION"
+)
+
+# For cleanup traps in build scripts:
+search(
+  search_query="bash cleanup trap EXIT docker compose",
+  search_type="GRAPH_COMPLETION"
+)
+
+# For container registry authentication:
+search(
+  search_query="container registry authentication GHCR ACR Docker Hub login-action",
+  search_type="GRAPH_COMPLETION"
+)
+
+# For conditional latest tag:
+search(
+  search_query="conditional latest tag main branch Docker registry",
+  search_type="GRAPH_COMPLETION"
+)
 ```
 
 ### Step 3: Apply Retrieved Patterns
