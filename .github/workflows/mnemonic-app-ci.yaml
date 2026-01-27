@@ -11,6 +11,7 @@ on:
       - 'src/mnemonic/go.mod'
       - 'src/mnemonic/go.sum'
       - 'src/mnemonic/build/**'
+      - 'src/mnemonic/tests/**'
       - '.github/workflows/mnemonic-app-ci.yaml'
   pull_request:
     branches:
@@ -22,6 +23,7 @@ on:
       - 'src/mnemonic/go.mod'
       - 'src/mnemonic/go.sum'
       - 'src/mnemonic/build/**'
+      - 'src/mnemonic/tests/**'
       - '.github/workflows/mnemonic-app-ci.yaml'
   workflow_dispatch:
 
@@ -47,4 +49,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run build script
+        env:
+          LOCAL_BUILD: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+          BRANCH_NAME: ${{ github.ref_name }}
         run: ./build/build.sh
