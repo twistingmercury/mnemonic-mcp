@@ -1,0 +1,61 @@
+name: Mnemonic CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/mnemonic/internal/**'
+      - 'src/mnemonic/cmd/**'
+      - 'src/mnemonic/go.mod'
+      - 'src/mnemonic/go.sum'
+      - 'src/mnemonic/build/**'
+      - 'src/mnemonic/tests/**'
+      - '.github/workflows/mnemonic-ci.yaml'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/mnemonic/internal/**'
+      - 'src/mnemonic/cmd/**'
+      - 'src/mnemonic/go.mod'
+      - 'src/mnemonic/go.sum'
+      - 'src/mnemonic/build/**'
+      - 'src/mnemonic/tests/**'
+      - '.github/workflows/mnemonic-ci.yaml'
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    defaults:
+      run:
+        working-directory: src/mnemonic
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run build script
+        env:
+          LOCAL_BUILD: 1
+        run: ./build/build.sh
+
+      - name: Save Docker image
+        if: github.event_name == 'push'
+        run: docker save ghcr.io/twistingmercury/mnemonic:latest -o mnemonic-image.tar
+
+      - name: Upload image artifact
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnemonic-image
+          path: src/mnemonic/mnemonic-image.tar
+          retention-days: 1
