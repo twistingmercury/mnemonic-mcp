@@ -6,12 +6,13 @@ import "time"
 
 // Default values for server configuration
 const (
-	DefaultServerHost         = "0.0.0.0"
-	DefaultServerPort         = 8080
-	DefaultServerReadTimeout  = 30 * time.Second
-	DefaultServerWriteTimeout = 30 * time.Second
-	DefaultServerIdleTimeout  = 120 * time.Second
-	DefaultServerTLSEnabled   = false
+	DefaultServerHost            = "0.0.0.0"
+	DefaultServerPort            = 8080
+	DefaultServerReadTimeout     = 30 * time.Second
+	DefaultServerWriteTimeout    = 30 * time.Second
+	DefaultServerIdleTimeout     = 120 * time.Second
+	DefaultServerShutdownTimeout = 5 * time.Second
+	DefaultServerTLSEnabled      = false
 )
 
 // Default values for PostgreSQL configuration

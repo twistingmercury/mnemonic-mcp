@@ -20,7 +20,7 @@ func TestDefaultValues(t *testing.T) {
 	clearMnemonicEnvVars(t)
 
 	v := viper.New()
-	setTestDefaults(v)
+	config.SetDefaults(v)
 
 	cfg := &config.MnemonicConfig{}
 	err := v.Unmarshal(cfg)
@@ -32,6 +32,7 @@ func TestDefaultValues(t *testing.T) {
 	assert.Equal(t, config.DefaultServerReadTimeout, cfg.Server.ReadTimeout)
 	assert.Equal(t, config.DefaultServerWriteTimeout, cfg.Server.WriteTimeout)
 	assert.Equal(t, config.DefaultServerIdleTimeout, cfg.Server.IdleTimeout)
+	assert.Equal(t, config.DefaultServerShutdownTimeout, cfg.Server.ShutdownTimeout)
 	assert.Equal(t, config.DefaultServerTLSEnabled, cfg.Server.TLS.Enabled)
 
 	// PostgreSQL defaults
@@ -143,7 +144,7 @@ routing:
 	require.NoError(t, err)
 
 	v := viper.New()
-	setTestDefaults(v)
+	config.SetDefaults(v)
 	v.SetConfigFile(configPath)
 	err = v.ReadInConfig()
 	require.NoError(t, err)
@@ -217,7 +218,7 @@ routing:
 	t.Setenv("MNEMONIC_LOGGING_LEVEL", "error")
 
 	v := viper.New()
-	setTestDefaults(v)
+	config.SetDefaults(v)
 	v.SetConfigFile(configPath)
 	err = v.ReadInConfig()
 	require.NoError(t, err)
@@ -314,7 +315,7 @@ func TestEnvironmentVariableNaming(t *testing.T) {
 			t.Setenv(tt.envVar, tt.value)
 
 			v := viper.New()
-			setTestDefaults(v)
+			config.SetDefaults(v)
 			v.SetEnvPrefix("MNEMONIC")
 			v.SetEnvKeyReplacer(replaceUnderscores())
 			v.AutomaticEnv()
@@ -369,6 +370,20 @@ func TestValidation_ServerConfig(t *testing.T) {
 			expectError: "server.idle_timeout",
 		},
 		{
+			name: "invalid shutdown_timeout - zero",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Server.ShutdownTimeout = 0
+			},
+			expectError: "server.shutdown_timeout",
+		},
+		{
+			name: "invalid shutdown_timeout - negative",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Server.ShutdownTimeout = -1 * time.Second
+			},
+			expectError: "server.shutdown_timeout",
+		},
+		{
 			name: "TLS enabled without cert_file",
 			modify: func(cfg *config.MnemonicConfig) {
 				cfg.Server.TLS.Enabled = true
@@ -407,6 +422,20 @@ func TestValidation_DatabaseConfig(t *testing.T) {
 		expectError string
 	}{
 		{
+			name: "empty postgres host",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Database.Postgres.Host = ""
+			},
+			expectError: "database.postgres.host",
+		},
+		{
+			name: "empty postgres database",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Database.Postgres.Database = ""
+			},
+			expectError: "database.postgres.database",
+		},
+		{
 			name: "invalid postgres port",
 			modify: func(cfg *config.MnemonicConfig) {
 				cfg.Database.Postgres.Port = 0
@@ -428,11 +457,40 @@ func TestValidation_DatabaseConfig(t *testing.T) {
 			expectError: "database.postgres.max_idle_conns",
 		},
 		{
+			name: "max_idle_conns greater than max_open_conns",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Database.Postgres.MaxOpenConns = 10
+				cfg.Database.Postgres.MaxIdleConns = 20
+			},
+			expectError: "database.postgres.max_idle_conns",
+		},
+		{
 			name: "negative postgres conn_max_lifetime",
 			modify: func(cfg *config.MnemonicConfig) {
 				cfg.Database.Postgres.ConnMaxLifetime = -1 * time.Second
 			},
 			expectError: "database.postgres.conn_max_lifetime",
+		},
+		{
+			name: "empty neo4j uri",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Database.Neo4j.URI = ""
+			},
+			expectError: "database.neo4j.uri",
+		},
+		{
+			name: "invalid neo4j uri prefix - http",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Database.Neo4j.URI = "http://localhost:7687"
+			},
+			expectError: "database.neo4j.uri",
+		},
+		{
+			name: "invalid neo4j uri prefix - no scheme",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Database.Neo4j.URI = "localhost:7687"
+			},
+			expectError: "database.neo4j.uri",
 		},
 		{
 			name: "invalid neo4j max_connection_pool_size",
@@ -457,6 +515,28 @@ func TestValidation_DatabaseConfig(t *testing.T) {
 			errs := cfg.Validate()
 			require.NotEmpty(t, errs, "expected validation errors")
 			assert.Contains(t, errs.Error(), tt.expectError)
+		})
+	}
+}
+
+// TestValidation_Neo4jValidURIs tests that valid Neo4j URI prefixes are accepted.
+func TestValidation_Neo4jValidURIs(t *testing.T) {
+	validURIs := []string{
+		"bolt://localhost:7687",
+		"bolt://neo4j-server:7687",
+		"neo4j://localhost:7687",
+		"neo4j://neo4j-cluster:7687",
+	}
+
+	for _, uri := range validURIs {
+		t.Run(uri, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Database.Neo4j.URI = uri
+			errs := cfg.Validate()
+			for _, err := range errs {
+				assert.NotEqual(t, "database.neo4j.uri", err.Field,
+					"URI %q should be valid", uri)
+			}
 		})
 	}
 }
@@ -892,6 +972,40 @@ func TestPostgresDSN(t *testing.T) {
 	assert.Equal(t, expected, cfg.DSN())
 }
 
+// TestPostgresSafeConnectionString tests the SafeConnectionString() helper method.
+func TestPostgresSafeConnectionString(t *testing.T) {
+	cfg := &config.PostgresConfig{
+		Host:     "localhost",
+		Port:     5432,
+		Database: "testdb",
+		Username: "testuser",
+		Password: "supersecretpassword",
+		SSLMode:  "require",
+	}
+
+	result := cfg.SafeConnectionString()
+	expected := "host=localhost port=5432 user=testuser password=***** dbname=testdb sslmode=require"
+	assert.Equal(t, expected, result)
+	assert.NotContains(t, result, "supersecretpassword")
+}
+
+// TestPostgresSafeDSN tests the SafeDSN() helper method.
+func TestPostgresSafeDSN(t *testing.T) {
+	cfg := &config.PostgresConfig{
+		Host:     "localhost",
+		Port:     5432,
+		Database: "testdb",
+		Username: "testuser",
+		Password: "supersecretpassword",
+		SSLMode:  "require",
+	}
+
+	result := cfg.SafeDSN()
+	expected := "postgres://testuser:*****@localhost:5432/testdb?sslmode=require"
+	assert.Equal(t, expected, result)
+	assert.NotContains(t, result, "supersecretpassword")
+}
+
 // TestConfigFileFlagOverride tests that --config flag takes precedence.
 func TestConfigFileFlagOverride(t *testing.T) {
 	clearMnemonicEnvVars(t)
@@ -955,7 +1069,7 @@ func TestBooleanEnvironmentVariables(t *testing.T) {
 			t.Setenv("MNEMONIC_LOGGING_INCLUDE_CALLER", tt.value)
 
 			v := viper.New()
-			setTestDefaults(v)
+			config.SetDefaults(v)
 			v.SetEnvPrefix("MNEMONIC")
 			v.SetEnvKeyReplacer(replaceUnderscores())
 			v.AutomaticEnv()
@@ -986,7 +1100,7 @@ func TestDurationEnvironmentVariables(t *testing.T) {
 			t.Setenv("MNEMONIC_SERVER_READ_TIMEOUT", tt.value)
 
 			v := viper.New()
-			setTestDefaults(v)
+			config.SetDefaults(v)
 			v.SetEnvPrefix("MNEMONIC")
 			v.SetEnvKeyReplacer(replaceUnderscores())
 			v.AutomaticEnv()
@@ -1037,8 +1151,8 @@ func clearMnemonicEnvVars(t *testing.T) {
 	for _, env := range os.Environ() {
 		if len(env) > 9 && env[:9] == "MNEMONIC_" {
 			key := env[:strings.Index(env, "=")]
+			// t.Setenv handles cleanup automatically when test completes
 			t.Setenv(key, "")
-			os.Unsetenv(key)
 		}
 	}
 }
@@ -1048,91 +1162,16 @@ func replaceUnderscores() *strings.Replacer {
 	return strings.NewReplacer(".", "_")
 }
 
-// setTestDefaults mirrors the setDefaults function for testing.
-func setTestDefaults(v *viper.Viper) {
-	// Server defaults
-	v.SetDefault("server.host", config.DefaultServerHost)
-	v.SetDefault("server.port", config.DefaultServerPort)
-	v.SetDefault("server.read_timeout", config.DefaultServerReadTimeout)
-	v.SetDefault("server.write_timeout", config.DefaultServerWriteTimeout)
-	v.SetDefault("server.idle_timeout", config.DefaultServerIdleTimeout)
-	v.SetDefault("server.tls.enabled", config.DefaultServerTLSEnabled)
-	v.SetDefault("server.tls.cert_file", "")
-	v.SetDefault("server.tls.key_file", "")
-
-	// PostgreSQL defaults
-	v.SetDefault("database.postgres.host", config.DefaultPostgresHost)
-	v.SetDefault("database.postgres.port", config.DefaultPostgresPort)
-	v.SetDefault("database.postgres.database", config.DefaultPostgresDatabase)
-	v.SetDefault("database.postgres.username", config.DefaultPostgresUsername)
-	v.SetDefault("database.postgres.password", "")
-	v.SetDefault("database.postgres.ssl_mode", config.DefaultPostgresSSLMode)
-	v.SetDefault("database.postgres.max_open_conns", config.DefaultPostgresMaxOpenConns)
-	v.SetDefault("database.postgres.max_idle_conns", config.DefaultPostgresMaxIdleConns)
-	v.SetDefault("database.postgres.conn_max_lifetime", config.DefaultPostgresConnMaxLifetime)
-
-	// Neo4j defaults
-	v.SetDefault("database.neo4j.uri", config.DefaultNeo4jURI)
-	v.SetDefault("database.neo4j.username", config.DefaultNeo4jUsername)
-	v.SetDefault("database.neo4j.password", "")
-	v.SetDefault("database.neo4j.database", config.DefaultNeo4jDatabase)
-	v.SetDefault("database.neo4j.max_connection_pool_size", config.DefaultNeo4jMaxConnectionPoolSize)
-	v.SetDefault("database.neo4j.connection_acquisition_timeout", config.DefaultNeo4jConnectionAcquisitionTimeout)
-
-	// OpenAI defaults
-	v.SetDefault("openai.api_key", "")
-	v.SetDefault("openai.embedding_model", config.DefaultOpenAIEmbeddingModel)
-	v.SetDefault("openai.embedding_dimensions", config.DefaultOpenAIEmbeddingDimensions)
-	v.SetDefault("openai.extraction_model", config.DefaultOpenAIExtractionModel)
-	v.SetDefault("openai.max_requests_per_minute", config.DefaultOpenAIMaxRequestsPerMinute)
-	v.SetDefault("openai.retry_attempts", config.DefaultOpenAIRetryAttempts)
-	v.SetDefault("openai.retry_delay", config.DefaultOpenAIRetryDelay)
-
-	// Rate limit defaults
-	v.SetDefault("rate_limit.enabled", config.DefaultRateLimitEnabled)
-	v.SetDefault("rate_limit.requests_per_second", config.DefaultRateLimitRequestsPerSecond)
-	v.SetDefault("rate_limit.burst_size", config.DefaultRateLimitBurstSize)
-	v.SetDefault("rate_limit.per_user.requests_per_minute", config.DefaultRateLimitPerUserRPM)
-	v.SetDefault("rate_limit.per_user.burst_size", config.DefaultRateLimitPerUserBurst)
-
-	// Routing defaults
-	v.SetDefault("routing.cache.refresh_ttl", config.DefaultRoutingCacheRefreshTTL)
-	v.SetDefault("routing.cache.startup_timeout", config.DefaultRoutingCacheStartupTimeout)
-	v.SetDefault("routing.default_agent", config.DefaultRoutingDefaultAgent)
-
-	// Enrichment defaults
-	v.SetDefault("enrichment.worker_count", config.DefaultEnrichmentWorkerCount)
-	v.SetDefault("enrichment.poll_interval", config.DefaultEnrichmentPollInterval)
-	v.SetDefault("enrichment.max_attempts", config.DefaultEnrichmentMaxAttempts)
-	v.SetDefault("enrichment.retry_delay", config.DefaultEnrichmentRetryDelay)
-	v.SetDefault("enrichment.job_timeout", config.DefaultEnrichmentJobTimeout)
-
-	// Logging defaults
-	v.SetDefault("logging.level", config.DefaultLoggingLevel)
-	v.SetDefault("logging.format", config.DefaultLoggingFormat)
-	v.SetDefault("logging.include_caller", config.DefaultLoggingIncludeCaller)
-
-	// Observability defaults
-	v.SetDefault("observability.metrics.enabled", config.DefaultMetricsEnabled)
-	v.SetDefault("observability.metrics.path", config.DefaultMetricsPath)
-	v.SetDefault("observability.metrics.port", config.DefaultMetricsPort)
-	v.SetDefault("observability.health.enabled", config.DefaultHealthEnabled)
-	v.SetDefault("observability.health.path", config.DefaultHealthPath)
-	v.SetDefault("observability.tracing.enabled", config.DefaultTracingEnabled)
-	v.SetDefault("observability.tracing.endpoint", "")
-	v.SetDefault("observability.tracing.sample_rate", config.DefaultTracingSampleRate)
-	v.SetDefault("observability.tracing.otlp_insecure", config.DefaultTracingOTLPInsecure)
-}
-
 // validConfig returns a fully valid configuration for testing.
 func validConfig() *config.MnemonicConfig {
 	return &config.MnemonicConfig{
 		Server: config.ServerConfig{
-			Host:         "0.0.0.0",
-			Port:         8080,
-			ReadTimeout:  30 * time.Second,
-			WriteTimeout: 30 * time.Second,
-			IdleTimeout:  120 * time.Second,
+			Host:            "0.0.0.0",
+			Port:            8080,
+			ReadTimeout:     30 * time.Second,
+			WriteTimeout:    30 * time.Second,
+			IdleTimeout:     120 * time.Second,
+			ShutdownTimeout: 5 * time.Second,
 			TLS: config.TLSConfig{
 				Enabled:  false,
 				CertFile: "",

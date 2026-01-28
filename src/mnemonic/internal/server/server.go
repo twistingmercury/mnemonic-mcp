@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/twistingmercury/heartbeat"
@@ -55,7 +54,7 @@ func ListenAndServeWithConfig(cfg *config.MnemonicConfig) error {
 	fmt.Print("\r") // hide that ugly ^C
 
 	log.Println("mnemonic is shutting down...")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
@@ -73,18 +72,6 @@ func CreateHTTPServer(r *gin.Engine, cfg *config.MnemonicConfig) *http.Server {
 		ReadTimeout:    cfg.Server.ReadTimeout,
 		WriteTimeout:   cfg.Server.WriteTimeout,
 		IdleTimeout:    cfg.Server.IdleTimeout,
-		MaxHeaderBytes: 1 << 20,
-	}
-}
-
-// CreateHttpServer creates a new http.Server using default configuration.
-// Deprecated: Use CreateHTTPServer with explicit configuration instead.
-func CreateHttpServer(r *gin.Engine) *http.Server {
-	return &http.Server{
-		Addr:           ":8080",
-		Handler:        r,
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
 }

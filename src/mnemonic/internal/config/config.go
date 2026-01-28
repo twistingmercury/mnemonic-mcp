@@ -25,12 +25,13 @@ type MnemonicConfig struct {
 
 // ServerConfig contains HTTP server settings.
 type ServerConfig struct {
-	Host         string        `mapstructure:"host" yaml:"host"`
-	Port         int           `mapstructure:"port" yaml:"port"`
-	ReadTimeout  time.Duration `mapstructure:"read_timeout" yaml:"read_timeout"`
-	WriteTimeout time.Duration `mapstructure:"write_timeout" yaml:"write_timeout"`
-	IdleTimeout  time.Duration `mapstructure:"idle_timeout" yaml:"idle_timeout"`
-	TLS          TLSConfig     `mapstructure:"tls" yaml:"tls"`
+	Host            string        `mapstructure:"host" yaml:"host"`
+	Port            int           `mapstructure:"port" yaml:"port"`
+	ReadTimeout     time.Duration `mapstructure:"read_timeout" yaml:"read_timeout"`
+	WriteTimeout    time.Duration `mapstructure:"write_timeout" yaml:"write_timeout"`
+	IdleTimeout     time.Duration `mapstructure:"idle_timeout" yaml:"idle_timeout"`
+	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout" yaml:"shutdown_timeout"`
+	TLS             TLSConfig     `mapstructure:"tls" yaml:"tls"`
 }
 
 // TLSConfig contains TLS settings for the server.
@@ -195,7 +196,7 @@ func LoadWithFlags(flags *pflag.FlagSet) (*MnemonicConfig, error) {
 	v := viper.New()
 
 	// Set defaults first
-	setDefaults(v)
+	SetDefaults(v)
 
 	// Determine config file path
 	configPath := findConfigFile(flags)
@@ -244,14 +245,16 @@ func LoadFromViper(v *viper.Viper) (*MnemonicConfig, error) {
 	return cfg, nil
 }
 
-// setDefaults sets all default values in the viper instance.
-func setDefaults(v *viper.Viper) {
+// SetDefaults sets all default values in the viper instance.
+// This function is exported to allow tests to use the same defaults as production code.
+func SetDefaults(v *viper.Viper) {
 	// Server defaults
 	v.SetDefault("server.host", DefaultServerHost)
 	v.SetDefault("server.port", DefaultServerPort)
 	v.SetDefault("server.read_timeout", DefaultServerReadTimeout)
 	v.SetDefault("server.write_timeout", DefaultServerWriteTimeout)
 	v.SetDefault("server.idle_timeout", DefaultServerIdleTimeout)
+	v.SetDefault("server.shutdown_timeout", DefaultServerShutdownTimeout)
 	v.SetDefault("server.tls.enabled", DefaultServerTLSEnabled)
 	v.SetDefault("server.tls.cert_file", "")
 	v.SetDefault("server.tls.key_file", "")
@@ -426,6 +429,13 @@ func (c *ServerConfig) validate() ValidationErrors {
 		})
 	}
 
+	if c.ShutdownTimeout <= 0 {
+		errs = append(errs, ValidationError{
+			Field:   "server.shutdown_timeout",
+			Message: "must be a positive duration",
+		})
+	}
+
 	// TLS validation
 	if c.TLS.Enabled {
 		if c.TLS.CertFile == "" {
@@ -460,6 +470,20 @@ func (c *DatabaseConfig) validate() ValidationErrors {
 	var errs ValidationErrors
 
 	// PostgreSQL validation
+	if c.Postgres.Host == "" {
+		errs = append(errs, ValidationError{
+			Field:   "database.postgres.host",
+			Message: "required",
+		})
+	}
+
+	if c.Postgres.Database == "" {
+		errs = append(errs, ValidationError{
+			Field:   "database.postgres.database",
+			Message: "required",
+		})
+	}
+
 	if c.Postgres.Port < 1 || c.Postgres.Port > 65535 {
 		errs = append(errs, ValidationError{
 			Field:   "database.postgres.port",
@@ -481,6 +505,13 @@ func (c *DatabaseConfig) validate() ValidationErrors {
 		})
 	}
 
+	if c.Postgres.MaxIdleConns > c.Postgres.MaxOpenConns {
+		errs = append(errs, ValidationError{
+			Field:   "database.postgres.max_idle_conns",
+			Message: fmt.Sprintf("must be less than or equal to max_open_conns (%d), got %d", c.Postgres.MaxOpenConns, c.Postgres.MaxIdleConns),
+		})
+	}
+
 	if c.Postgres.ConnMaxLifetime < 0 {
 		errs = append(errs, ValidationError{
 			Field:   "database.postgres.conn_max_lifetime",
@@ -489,6 +520,18 @@ func (c *DatabaseConfig) validate() ValidationErrors {
 	}
 
 	// Neo4j validation
+	if c.Neo4j.URI == "" {
+		errs = append(errs, ValidationError{
+			Field:   "database.neo4j.uri",
+			Message: "required",
+		})
+	} else if !strings.HasPrefix(c.Neo4j.URI, "bolt://") && !strings.HasPrefix(c.Neo4j.URI, "neo4j://") {
+		errs = append(errs, ValidationError{
+			Field:   "database.neo4j.uri",
+			Message: fmt.Sprintf("must start with bolt:// or neo4j://, got %q", c.Neo4j.URI),
+		})
+	}
+
 	if c.Neo4j.MaxConnectionPoolSize < 1 {
 		errs = append(errs, ValidationError{
 			Field:   "database.neo4j.max_connection_pool_size",
@@ -747,5 +790,23 @@ func (c *PostgresConfig) DSN() string {
 	return fmt.Sprintf(
 		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
 		c.Username, c.Password, c.Host, c.Port, c.Database, c.SSLMode,
+	)
+}
+
+// SafeConnectionString returns the PostgreSQL connection string with the password masked.
+// Use this method for logging to prevent secret exposure.
+func (c *PostgresConfig) SafeConnectionString() string {
+	return fmt.Sprintf(
+		"host=%s port=%d user=%s password=***** dbname=%s sslmode=%s",
+		c.Host, c.Port, c.Username, c.Database, c.SSLMode,
+	)
+}
+
+// SafeDSN returns the PostgreSQL DSN with the password masked.
+// Use this method for logging to prevent secret exposure.
+func (c *PostgresConfig) SafeDSN() string {
+	return fmt.Sprintf(
+		"postgres://%s:*****@%s:%d/%s?sslmode=%s",
+		c.Username, c.Host, c.Port, c.Database, c.SSLMode,
 	)
 }
