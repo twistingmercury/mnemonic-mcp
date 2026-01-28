@@ -887,6 +887,75 @@ func TestValidation_ObservabilityConfig(t *testing.T) {
 	}
 }
 
+// TestValidation_PortConflict tests cross-configuration validation for port conflicts.
+func TestValidation_PortConflict(t *testing.T) {
+	tests := []struct {
+		name        string
+		modify      func(cfg *config.MnemonicConfig)
+		expectError bool
+		errorField  string
+	}{
+		{
+			name: "metrics enabled with same port as server - conflict",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Server.Port = 8080
+				cfg.Observability.Metrics.Enabled = true
+				cfg.Observability.Metrics.Port = 8080
+			},
+			expectError: true,
+			errorField:  "observability.metrics.port",
+		},
+		{
+			name: "metrics enabled with different port - no conflict",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Server.Port = 8080
+				cfg.Observability.Metrics.Enabled = true
+				cfg.Observability.Metrics.Port = 9090
+			},
+			expectError: false,
+		},
+		{
+			name: "metrics disabled with same port - no conflict",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Server.Port = 8080
+				cfg.Observability.Metrics.Enabled = false
+				cfg.Observability.Metrics.Port = 8080
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			tt.modify(cfg)
+			errs := cfg.Validate()
+
+			if tt.expectError {
+				require.NotEmpty(t, errs, "expected validation errors")
+				// Check that the specific error field is present
+				found := false
+				for _, err := range errs {
+					if err.Field == tt.errorField {
+						found = true
+						assert.Contains(t, err.Message, "server.port")
+						break
+					}
+				}
+				assert.True(t, found, "expected error for field %q", tt.errorField)
+			} else {
+				// Verify no port conflict errors (other validation errors may exist)
+				for _, err := range errs {
+					if err.Field == "observability.metrics.port" {
+						assert.NotContains(t, err.Message, "server.port",
+							"unexpected port conflict error when none expected")
+					}
+				}
+			}
+		})
+	}
+}
+
 // TestValidation_MultipleErrors verifies multiple errors are collected.
 func TestValidation_MultipleErrors(t *testing.T) {
 	cfg := validConfig()
