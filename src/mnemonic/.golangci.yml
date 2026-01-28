@@ -2,9 +2,7 @@ version: "2"
 
 run:
   timeout: 5m
-
-issues:
-  exclude-dirs:
+  skip-dirs:
     - tests
-  exclude-files:
+  skip-files:
     - "**/*_test.go"
