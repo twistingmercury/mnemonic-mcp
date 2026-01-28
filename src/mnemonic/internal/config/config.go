@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -450,10 +449,10 @@ func (c *ServerConfig) validate() ValidationErrors {
 				Field:   "server.tls.cert_file",
 				Message: "required when TLS is enabled",
 			})
-		} else if _, err := os.Stat(c.TLS.CertFile); errors.Is(err, os.ErrNotExist) {
+		} else if _, err := os.Stat(c.TLS.CertFile); err != nil {
 			errs = append(errs, ValidationError{
 				Field:   "server.tls.cert_file",
-				Message: fmt.Sprintf("file not found: %s", c.TLS.CertFile),
+				Message: fmt.Sprintf("cannot access file: %v", err),
 			})
 		}
 
@@ -462,10 +461,10 @@ func (c *ServerConfig) validate() ValidationErrors {
 				Field:   "server.tls.key_file",
 				Message: "required when TLS is enabled",
 			})
-		} else if _, err := os.Stat(c.TLS.KeyFile); errors.Is(err, os.ErrNotExist) {
+		} else if _, err := os.Stat(c.TLS.KeyFile); err != nil {
 			errs = append(errs, ValidationError{
 				Field:   "server.tls.key_file",
-				Message: fmt.Sprintf("file not found: %s", c.TLS.KeyFile),
+				Message: fmt.Sprintf("cannot access file: %v", err),
 			})
 		}
 	}

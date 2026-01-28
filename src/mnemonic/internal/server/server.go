@@ -28,13 +28,18 @@ func ListenAndServe() error {
 
 // ListenAndServeWithConfig starts the server using the provided configuration.
 func ListenAndServeWithConfig(cfg *config.MnemonicConfig) error {
+	shutdown, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	router := gin.Default()
 
 	operations.SetupHandlers(router)
 
 	server := CreateHTTPServer(router, cfg)
 
-	go func() {
+	errChan := make(chan error, 1)
+
+	go func(ch chan error) {
 		var err error
 		if cfg.Server.TLS.Enabled {
 			err = server.ListenAndServeTLS(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
@@ -42,18 +47,18 @@ func ListenAndServeWithConfig(cfg *config.MnemonicConfig) error {
 			err = server.ListenAndServe()
 		}
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("failed to start server: %s", err.Error())
+			errChan <- fmt.Errorf("net/http server error: %w", err)
 		}
-	}()
+	}(errChan)
 
-	log.Printf("mnemonic is running on %s...", cfg.Server.Address())
+	select {
+	case err := <-errChan:
+		return err
+	case <-shutdown.Done():
+		fmt.Print("\r") // hide that ugly ^C
+		break
+	}
 
-	shutdown, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-	<-shutdown.Done()
-	fmt.Print("\r") // hide that ugly ^C
-
-	log.Println("mnemonic is shutting down...")
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 
