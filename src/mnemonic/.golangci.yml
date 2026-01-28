@@ -2,9 +2,7 @@ version: "2"
 
 run:
   timeout: 5m
-
-linters:
-  exclusions:
-    paths:
-      - tests
-      - ".*_test\\.go$"
+  skip-dirs:
+    - tests
+  skip-files:
+    - "*_test.go"
