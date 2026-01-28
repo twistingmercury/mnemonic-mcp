@@ -79,3 +79,4 @@ docs/scripts/
 
 **/rlm_state/
 **/rlm_state/*
+**/*.backup
