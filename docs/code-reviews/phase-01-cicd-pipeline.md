@@ -28,20 +28,20 @@ None identified.
 
 ### Medium Priority
 
-| Issue | File | Description | Action |
-|-------|------|-------------|--------|
-| Unvalidated branch input | `mnemonic-cd.yaml:38-42` | Branch name used directly in shell commands without validation | |
-| Broad permission | `mnemonic-ci.yaml:35` | `actions: write` may be more than needed for artifact upload | |
-| No input validation | `build.sh:17-19` | `LOCAL_BUILD` not validated as 0 or 1 | |
-| Trap scope | `build.sh:41-49` | Cleanup trap only covers `e2e_tests` function, not script level | Dismissed - docker compose only invoked within that function |
+| Issue                    | File                     | Description                                                     | Action                                                       |
+| ------------------------ | ------------------------ | --------------------------------------------------------------- | ------------------------------------------------------------ |
+| Unvalidated branch input | `mnemonic-cd.yaml:38-42` | Branch name used directly in shell commands without validation  | Fixed: 87f944e                                               |
+| Broad permission         | `mnemonic-ci.yaml:35`    | `actions: write` may be more than needed for artifact upload    | Dismissed - verified required for upload-artifact            |
+| No input validation      | `build.sh:17-19`         | `LOCAL_BUILD` not validated as 0 or 1                           | Fixed: 87f944e                                               |
+| Trap scope               | `build.sh:41-49`         | Cleanup trap only covers `e2e_tests` function, not script level | Dismissed - docker compose only invoked within that function |
 
 ### Low Priority
 
-| Issue | File | Description | Action |
-|-------|------|-------------|--------|
-| Hardcoded image name | Multiple files | Image name repeated in CI, CD, and build.sh - could use env var | |
-| README inaccuracy | `src/mnemonic/README.md:26-29` | LOCAL_BUILD description doesn't match actual behavior | |
-| Missing flag | `build.sh:46` | Add `--abort-on-container-exit` to docker compose command | |
+| Issue                | File                           | Description                                                     | Action                                      |
+| -------------------- | ------------------------------ | --------------------------------------------------------------- | ------------------------------------------- |
+| Hardcoded image name | Multiple files                 | Image name repeated in CI, CD, and build.sh - could use env var | Dismissed - name is static, will not change |
+| README inaccuracy    | `src/mnemonic/README.md:26-29` | LOCAL_BUILD description doesn't match actual behavior           | Fixed: 87f944e                              |
+| Missing flag         | `build.sh:46`                  | Add `--abort-on-container-exit` to docker compose command       | Fixed: 87f944e                              |
 
 ## Good Patterns Observed
 
