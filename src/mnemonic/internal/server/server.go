@@ -9,36 +9,57 @@ import (
 	"net/http/httptest"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/twistingmercury/heartbeat"
+	"github.com/twistingmercury/mnemonic/internal/config"
 	"github.com/twistingmercury/mnemonic/internal/handlers/operations"
 )
 
-// ListenAndServer starts the server
+// ListenAndServe starts the server using configuration loaded from config sources.
 func ListenAndServe() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	return ListenAndServeWithConfig(cfg)
+}
+
+// ListenAndServeWithConfig starts the server using the provided configuration.
+func ListenAndServeWithConfig(cfg *config.MnemonicConfig) error {
+	shutdown, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	router := gin.Default()
 
 	operations.SetupHandlers(router)
 
-	server := CreateHttpServer(router)
+	server := CreateHTTPServer(router, cfg)
 
-	go func() {
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("failed to shutdown server: %s", err.Error())
+	errChan := make(chan error, 1)
+
+	go func(ch chan error) {
+		var err error
+		if cfg.Server.TLS.Enabled {
+			err = server.ListenAndServeTLS(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
+		} else {
+			err = server.ListenAndServe()
 		}
-	}()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errChan <- fmt.Errorf("net/http server error: %w", err)
+		}
+	}(errChan)
 
-	log.Println("mnemonic is running...")
+	select {
+	case err := <-errChan:
+		return err
+	case <-shutdown.Done():
+		fmt.Print("\r") // hide that ugly ^C
+		break
+	}
 
-	shutdown, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-	<-shutdown.Done()
-	fmt.Print("\r") // hide that ugly ^C
-
-	log.Println("mnemonic is shutting down...")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
@@ -47,14 +68,15 @@ func ListenAndServe() error {
 	return nil
 }
 
-// CreateHttpServer creates a new http.Server that uses the gin.Engine for
-// its handler.
-func CreateHttpServer(r *gin.Engine) *http.Server {
+// CreateHTTPServer creates a new http.Server configured with settings from
+// the provided configuration.
+func CreateHTTPServer(r *gin.Engine, cfg *config.MnemonicConfig) *http.Server {
 	return &http.Server{
-		Addr:           ":8080",
+		Addr:           cfg.Server.Address(),
 		Handler:        r,
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
+		ReadTimeout:    cfg.Server.ReadTimeout,
+		WriteTimeout:   cfg.Server.WriteTimeout,
+		IdleTimeout:    cfg.Server.IdleTimeout,
 		MaxHeaderBytes: 1 << 20,
 	}
 }

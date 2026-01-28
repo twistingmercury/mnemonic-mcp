@@ -1,5 +1,7 @@
 # Mnemonic
 
+> **Maturity Level**: Emerging - MVP foundation in progress
+
 Mnemonic is the backend server for ACE (Agent Coordination Engine), providing deterministic routing and dynamic pattern retrieval via REST API.
 
 ## Overview
@@ -12,6 +14,20 @@ Mnemonic is a stateless Go service that manages:
 - Background enrichment of patterns with LLM-extracted metadata
 
 See the [System Architecture documentation](/docs/architecture/03-system-architecture.md#mnemonic) for detailed design.
+
+## Configuration
+
+Mnemonic uses layered configuration loading:
+
+1. **Built-in defaults** - Safe defaults for all settings
+2. **Configuration file** - YAML file searched in:
+   - `/etc/mnemonic/config.yaml`
+   - `./config.yaml` (current directory)
+3. **Environment variables** - Override any setting with `MNEMONIC_` prefix
+
+Example environment variable: `MNEMONIC_SERVER_PORT=9090`
+
+See the [Configuration Reference](/docs/design/mnemonic_service/configuration.md) for complete details on all available settings.
 
 ## Building Locally
 

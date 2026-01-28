@@ -45,8 +45,6 @@ out/
 # Visual Studio Code
 .vscode/*
 
-# Config
-config/
 *.env
 .env.local
 .env.*.local

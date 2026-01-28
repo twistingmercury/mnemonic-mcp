@@ -14,7 +14,7 @@ local:
 	LOCAL_BUILD=true go build --ldflags ${LD_FLAGS} -o .bin/mnemonic cmd/main/main.go
 
 build: ## Build Docker image locally using the full CI build script
-	./build/build.sh
+	./build/build.sh 
 	docker system prune -f
 
 analyze: ## Run linters, formatters, security scanners, etc
