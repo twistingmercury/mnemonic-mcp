@@ -5,4 +5,4 @@ run:
   skip-dirs:
     - tests
   skip-files:
-    - "**/*_test.go"
+    - "*_test.go"
