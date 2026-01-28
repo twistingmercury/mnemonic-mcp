@@ -14,6 +14,11 @@ BUILD_COMMIT="${BUILD_COMMIT:-$(git -C "${PROJ_ROOT}" rev-parse --short HEAD 2>/
 
 LOCAL_BUILD="${LOCAL_BUILD:-0}"
 
+case "${LOCAL_BUILD}" in
+    0|1) ;;
+    *) printf "ERROR: LOCAL_BUILD must be 0 or 1, got: %s\n" "${LOCAL_BUILD}" >&2; exit 1 ;;
+esac
+
 if [ "${LOCAL_BUILD}" -eq 1 ]; then
     IMAGE_TAG="${BUILD_VER}-localdev"
 fi
@@ -43,7 +48,7 @@ e2e_tests(){
     }
     trap cleanup EXIT
 
-    docker compose -f "${PROJ_ROOT}/tests/docker-compose.yaml" up --exit-code-from mnemonic_tests
+    docker compose -f "${PROJ_ROOT}/tests/docker-compose.yaml" up --abort-on-container-exit --exit-code-from mnemonic_tests
 
     trap - EXIT
     cleanup

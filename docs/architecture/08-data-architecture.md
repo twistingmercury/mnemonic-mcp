@@ -991,6 +991,7 @@ SELECT pg_reload_conf();
 **Application-Level Audit:**
 
 All write operations log:
+
 - User ID (from X-User-ID header)
 - Team ID (from X-Team-ID header)
 - Operation (create, update, delete)
@@ -1116,6 +1117,7 @@ CREATE TABLE schema_migrations (
 **Migration Safety Rules:**
 
 1. **Add columns as nullable or with defaults**
+
    ```sql
    -- Good: New column is nullable
    ALTER TABLE agents ADD COLUMN metadata JSONB;
@@ -1125,6 +1127,7 @@ CREATE TABLE schema_migrations (
    ```
 
 2. **Never rename columns directly**
+
    ```sql
    -- Bad: Breaks running application
    ALTER TABLE agents RENAME COLUMN name TO agent_name;
@@ -1136,6 +1139,7 @@ CREATE TABLE schema_migrations (
    ```
 
 3. **Add indexes concurrently**
+
    ```sql
    -- Good: Non-blocking index creation
    CREATE INDEX CONCURRENTLY idx_patterns_name ON patterns(name);
