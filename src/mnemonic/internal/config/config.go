@@ -395,6 +395,13 @@ func (c *MnemonicConfig) Validate() ValidationErrors {
 	// Observability validation
 	errs = append(errs, c.Observability.validate()...)
 
+	// Cross-configuration validation
+	if c.Observability.Metrics.Enabled && c.Server.Port == c.Observability.Metrics.Port {
+		errs = append(errs, ValidationError{
+			Field:   "observability.metrics.port",
+			Message: fmt.Sprintf("must be different from server.port (%d) to avoid port conflict", c.Server.Port),
+		})
+	}
 	return errs
 }
 
