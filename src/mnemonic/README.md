@@ -24,10 +24,9 @@ LOCAL_BUILD=1 ./build/build.sh
 
 The `LOCAL_BUILD` flag:
 
-- Runs docker compose for test dependencies (Postgres, Neo4j)
-- Executes unit and E2E tests
-- Builds the Docker image
-- Cleans up test infrastructure on exit
+- Tags the Docker image with `${BUILD_VER}-localdev` suffix instead of `latest`
+- Runs a `docker run --version` check after the build to verify the image
+- E2E tests run automatically regardless of the `LOCAL_BUILD` value
 
 ## CI/CD
 
