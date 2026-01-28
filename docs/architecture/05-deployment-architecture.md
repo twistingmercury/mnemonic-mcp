@@ -254,7 +254,7 @@ graph TB
     end
 
     subgraph "CI/CD Pipelines"
-        APP_CI[mnemonic-app-ci.yaml<br/>Build, Test, Deploy Container]
+        APP_CI[mnemonic-ci.yaml + mnemonic-cd.yaml<br/>Build, Test, Deploy Container]
         DB_CI[mnemonic-db-ci.yaml<br/>Validate, Test, Apply Migrations]
     end
 
@@ -269,6 +269,20 @@ graph TB
     DB_CI --> DB_DEPLOY
 ```
 
+**Implementation Status:**
+
+The Mnemonic application CI/CD pipeline is now operational:
+
+- **CI workflow** (`mnemonic-ci.yaml`) - Builds Docker image, runs unit and E2E tests, uploads artifact
+- **CD workflow** (`mnemonic-cd.yaml`) - Downloads artifact from CI, pushes to registry
+- **Database migrations pipeline** - Planned for Phase 2
+
+The CI/CD separation pattern ensures clean separation of concerns:
+
+- CI focuses on validation (build, test, artifact creation)
+- CD focuses on deployment (registry push)
+- Database migrations will have dedicated pipeline to avoid coupling with application deployments
+
 **Why Separate Pipelines?**
 
 | Scenario | Without Separation | With Separation |
@@ -281,8 +295,9 @@ graph TB
 
 | Pipeline | Triggers On | Does NOT Trigger On |
 | -------- | ----------- | ------------------- |
-| `mnemonic-app-ci.yaml` | `internal/**`, `cmd/**`, `go.mod` | `migrations/**` |
-| `mnemonic-db-ci.yaml` | `migrations/**` | `internal/**`, `cmd/**` |
+| `mnemonic-ci.yaml` | `src/mnemonic/**` (excludes `migrations/`) | `migrations/**` |
+| `mnemonic-cd.yaml` | Triggered by successful `mnemonic-ci.yaml` | Manual triggers only |
+| `mnemonic-db-ci.yaml` (Planned) | `migrations/**` | `src/mnemonic/**` |
 
 **Version Compatibility:**
 

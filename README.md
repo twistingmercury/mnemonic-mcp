@@ -1,6 +1,6 @@
 # ACE (Agent Coordination Engine)
 
-> **Maturity Level**: Emerging - Architecture defined, MVP implementation planned
+> **Maturity Level**: Emerging - CI/CD pipeline implemented, MVP foundation in progress
 
 ACE is an orchestration layer that provides deterministic agent routing and dynamic pattern retrieval for Claude Code. It replaces LLM-based routing with predictable, code-based logic.
 
@@ -43,7 +43,7 @@ The project is not yet ready for development setup. See the architecture documen
 
 ### Building and running
 
-Implementation has not started. The MVP plan outlines an 8-week phased approach for building the core system.
+CI/CD automation is now operational for the Mnemonic service. The MVP plan outlines an 8-week phased approach for building the core system.
 
 ### Testing
 
