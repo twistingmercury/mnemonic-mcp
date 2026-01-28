@@ -7,4 +7,4 @@ issues:
   exclude-dirs:
     - tests
   exclude-files:
-    - ".*_test\\.go$"
+    - "**/*_test.go"
