@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -25,7 +26,7 @@ func NewDatabaseMetrics(meter metric.Meter) (*DatabaseMetrics, error) {
 		metric.WithUnit("{connection}"),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("connection pool size gauge: %w", err)
 	}
 
 	connectionPoolInUse, err := meter.Int64Gauge(
@@ -34,7 +35,7 @@ func NewDatabaseMetrics(meter metric.Meter) (*DatabaseMetrics, error) {
 		metric.WithUnit("{connection}"),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("connection pool in-use gauge: %w", err)
 	}
 
 	queryLatency, err := meter.Float64Histogram(
@@ -44,7 +45,7 @@ func NewDatabaseMetrics(meter metric.Meter) (*DatabaseMetrics, error) {
 		metric.WithExplicitBucketBoundaries(1, 5, 10, 25, 50, 100, 250, 500, 1000),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query latency histogram: %w", err)
 	}
 
 	queryErrors, err := meter.Int64Counter(
@@ -53,7 +54,7 @@ func NewDatabaseMetrics(meter metric.Meter) (*DatabaseMetrics, error) {
 		metric.WithUnit("{error}"),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query errors counter: %w", err)
 	}
 
 	return &DatabaseMetrics{
@@ -66,6 +67,8 @@ func NewDatabaseMetrics(meter metric.Meter) (*DatabaseMetrics, error) {
 
 // RecordPoolStats records connection pool statistics for the specified database.
 // Call this periodically (e.g., every 30 seconds) to track pool health.
+// The database parameter should be a predefined database name (e.g., "postgres", "neo4j")
+// with bounded cardinality. Do not use user-provided or dynamic values.
 func (m *DatabaseMetrics) RecordPoolStats(ctx context.Context, database string, size, inUse int64) {
 	attrs := metric.WithAttributes(attribute.String("database", database))
 	m.connectionPoolSize.Record(ctx, size, attrs)
@@ -74,6 +77,8 @@ func (m *DatabaseMetrics) RecordPoolStats(ctx context.Context, database string, 
 
 // RecordQuery records a database query with its latency and operation type.
 // The operation parameter identifies the type of query (e.g., "select", "insert", "update").
+// Both database and operation should be predefined values with bounded cardinality.
+// Do not use user-provided or dynamic values to avoid metric explosion.
 func (m *DatabaseMetrics) RecordQuery(ctx context.Context, database, operation string, duration time.Duration) {
 	m.queryLatency.Record(ctx, float64(duration.Milliseconds()), metric.WithAttributes(
 		attribute.String("database", database),
@@ -82,6 +87,8 @@ func (m *DatabaseMetrics) RecordQuery(ctx context.Context, database, operation s
 }
 
 // RecordError records a database query error.
+// Both database and operation should be predefined values with bounded cardinality.
+// Do not use user-provided or dynamic values to avoid metric explosion.
 func (m *DatabaseMetrics) RecordError(ctx context.Context, database, operation string) {
 	m.queryErrors.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("database", database),

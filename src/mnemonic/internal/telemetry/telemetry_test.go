@@ -208,3 +208,32 @@ func TestInitializeWithInvalidLogLevel(t *testing.T) {
 	assert.Nil(t, tel)
 	assert.Contains(t, err.Error(), "invalid log level")
 }
+
+func TestMetricsRegistryCreatedAndAccessible(t *testing.T) {
+	cfg := createTestConfig()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tel, err := telemetry.Initialize(ctx, cfg)
+	require.NoError(t, err)
+	require.NotNil(t, tel)
+	defer func() {
+		_ = tel.Shutdown(ctx)
+	}()
+
+	// Verify metrics registry is created and accessible
+	registry := tel.MetricsRegistry()
+	assert.NotNil(t, registry, "MetricsRegistry should not be nil")
+
+	// Verify the registry has its sub-registries initialized
+	assert.NotNil(t, registry.Routing, "Routing metrics should be initialized")
+	assert.NotNil(t, registry.Patterns, "Patterns metrics should be initialized")
+	assert.NotNil(t, registry.Database, "Database metrics should be initialized")
+
+	// Verify metrics can be recorded (smoke test - no panic)
+	registry.Routing.RecordCacheHit(context.Background())
+	registry.Routing.RecordCacheMiss(context.Background())
+	registry.Routing.RecordRoutingDecision(context.Background(), "test-agent")
+	registry.Routing.RecordPatternMatch(context.Background(), "exact")
+}

@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -24,7 +25,7 @@ func NewRoutingMetrics(meter metric.Meter) (*RoutingMetrics, error) {
 		metric.WithUnit("{decision}"),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("routing decisions counter: %w", err)
 	}
 
 	patternMatches, err := meter.Int64Counter(
@@ -33,7 +34,7 @@ func NewRoutingMetrics(meter metric.Meter) (*RoutingMetrics, error) {
 		metric.WithUnit("{match}"),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("pattern matches counter: %w", err)
 	}
 
 	cacheHits, err := meter.Int64Counter(
@@ -42,7 +43,7 @@ func NewRoutingMetrics(meter metric.Meter) (*RoutingMetrics, error) {
 		metric.WithUnit("{hit}"),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cache hits counter: %w", err)
 	}
 
 	cacheMisses, err := meter.Int64Counter(
@@ -51,7 +52,7 @@ func NewRoutingMetrics(meter metric.Meter) (*RoutingMetrics, error) {
 		metric.WithUnit("{miss}"),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cache misses counter: %w", err)
 	}
 
 	return &RoutingMetrics{
@@ -63,6 +64,8 @@ func NewRoutingMetrics(meter metric.Meter) (*RoutingMetrics, error) {
 }
 
 // RecordRoutingDecision records that a routing decision was made for the specified agent.
+// The agentName should be one of the predefined agent types (bounded cardinality).
+// Do not use user-provided or dynamic values to avoid metric explosion.
 func (m *RoutingMetrics) RecordRoutingDecision(ctx context.Context, agentName string) {
 	m.routingDecisions.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("agent", agentName),
@@ -70,6 +73,8 @@ func (m *RoutingMetrics) RecordRoutingDecision(ctx context.Context, agentName st
 }
 
 // RecordPatternMatch records a pattern match by rule type.
+// The ruleType should be one of the predefined rule types (bounded cardinality).
+// Do not use user-provided or dynamic values to avoid metric explosion.
 func (m *RoutingMetrics) RecordPatternMatch(ctx context.Context, ruleType string) {
 	m.patternMatches.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("rule_type", ruleType),

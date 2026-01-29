@@ -39,8 +39,8 @@ func ListenAndServeWithConfig(cfg *config.MnemonicConfig) error {
 		return fmt.Errorf("failed to initialize telemetry: %w", err)
 	}
 	defer func() {
+		logger := tel.Logger() // Capture before shutdown to avoid nil pointer if shutdown fails
 		if shutdownErr := tel.Shutdown(context.Background()); shutdownErr != nil {
-			logger := tel.Logger()
 			logger.Error().Err(shutdownErr).Msg("telemetry shutdown error")
 		}
 	}()
@@ -58,6 +58,8 @@ func ListenAndServeWithConfig(cfg *config.MnemonicConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request metrics: %w", err)
 	}
+
+	logger.Debug().Msg("metrics registry initialized")
 
 	router := setupRouter(tel, requestMetrics)
 
@@ -107,8 +109,8 @@ func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMet
 	// Recovery middleware (keep this)
 	router.Use(gin.Recovery())
 
-	// Paths to skip for tracing and metrics
-	skipPaths := []string{"/health", "/ops/health", "/metrics"}
+	// Use exported DefaultSkipPaths from middleware package
+	skipPaths := middleware.DefaultSkipPaths
 
 	// Tracing middleware using otelgin
 	router.Use(middleware.TracingMiddlewareWithSkipPaths("mnemonic", skipPaths))

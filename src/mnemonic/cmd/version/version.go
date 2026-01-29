@@ -1,33 +1,38 @@
+// Package version provides CLI-specific version display functionality.
+// It delegates to internal/version for the actual version values.
 package version
 
-import "fmt"
+import (
+	"fmt"
 
-var (
-	version   = "n/a"
-	buildDate = "n/a"
-	commit    = "n/a"
+	internalversion "github.com/twistingmercury/mnemonic/internal/version"
 )
 
+// Version returns the semantic version of the build.
 func Version() string {
-	return version
+	return internalversion.Version()
 }
 
+// BuildDate returns the UTC timestamp when the build was created.
 func BuildDate() string {
-	return buildDate
+	return internalversion.BuildDate()
 }
 
+// Commit returns the short git commit hash of the build.
 func Commit() string {
-	return commit
+	return internalversion.Commit()
 }
 
+// Print returns a formatted ASCII art banner with version information
+// suitable for CLI display.
 func Print() string {
 	const mnemonic = `
-  __  __                                  _      
- |  \/  |                                (_)     
- | \  / |_ __   ___ _ __ ___   ___  _ __  _  ___ 
+  __  __                                  _
+ |  \/  |                                (_)
+ | \  / |_ __   ___ _ __ ___   ___  _ __  _  ___
  | |\/| | '_ \ / _ \ '_ ' _ \ / _ \| '_ \| |/ __|
- | |  | | | | |  __/ | | | | | (_) | | | | | (__ 
+ | |  | | | | |  __/ | | | | | (_) | | | | | (__
  |_|  |_|_| |_|\___|_| |_| |_|\___/|_| |_|_|\___|`
 
-	return fmt.Sprintf("%s\n                                   version %s\n", mnemonic, version)
+	return fmt.Sprintf("%s\n                                   version %s\n", mnemonic, internalversion.Version())
 }

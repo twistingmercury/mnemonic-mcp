@@ -6,10 +6,12 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/rs/zerolog"
-	"github.com/twistingmercury/mnemonic/cmd/version"
 	"github.com/twistingmercury/mnemonic/internal/config"
+	"github.com/twistingmercury/mnemonic/internal/metrics"
+	"github.com/twistingmercury/mnemonic/internal/version"
 	"github.com/twistingmercury/otelx"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
@@ -18,8 +20,9 @@ import (
 
 // Telemetry wraps the otelx.Telemetry with application-specific helpers.
 type Telemetry struct {
-	otel   *otelx.Telemetry
-	logger zerolog.Logger
+	otel            *otelx.Telemetry
+	logger          zerolog.Logger
+	metricsRegistry *metrics.Registry
 }
 
 // Initialize creates and configures the telemetry system using otelx.
@@ -36,9 +39,24 @@ func Initialize(ctx context.Context, cfg *config.MnemonicConfig) (*Telemetry, er
 		return nil, fmt.Errorf("failed to initialize telemetry: %w", err)
 	}
 
+	// Get meter for metrics registry, using global noop meter if metrics not enabled
+	var meter metric.Meter
+	if tel.MeterProvider != nil {
+		meter = tel.MeterProvider.Meter("mnemonic")
+	} else {
+		meter = otel.Meter("mnemonic")
+	}
+
+	// Create metrics registry for handler instrumentation
+	registry, err := metrics.NewRegistry(meter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create metrics registry: %w", err)
+	}
+
 	return &Telemetry{
-		otel:   tel,
-		logger: tel.Logger,
+		otel:            tel,
+		logger:          tel.Logger,
+		metricsRegistry: registry,
 	}, nil
 }
 
@@ -54,7 +72,7 @@ func buildOptions(cfg *config.MnemonicConfig) ([]otelx.Option, error) {
 		otelx.WithService(
 			"mnemonic",
 			version.Version(),
-			getEnvironment(cfg),
+			getEnvironment(),
 		),
 		otelx.WithLogLevel(logLevel),
 	}
@@ -90,9 +108,12 @@ func parseLogLevel(level string) (zerolog.Level, error) {
 	return l, nil
 }
 
-// getEnvironment determines the environment from configuration.
-func getEnvironment(_ *config.MnemonicConfig) string {
-	// Could be extended to check MNEMONIC_ENV or other sources
+// getEnvironment determines the environment from the MNEMONIC_ENV environment variable.
+// Returns "development" if the environment variable is not set.
+func getEnvironment() string {
+	if env := os.Getenv("MNEMONIC_ENV"); env != "" {
+		return env
+	}
 	return "development"
 }
 
@@ -104,6 +125,11 @@ func (t *Telemetry) Shutdown(ctx context.Context) error {
 // Logger returns the zerolog logger with trace correlation support.
 func (t *Telemetry) Logger() zerolog.Logger {
 	return t.logger
+}
+
+// MetricsRegistry returns the metrics registry for handler instrumentation.
+func (t *Telemetry) MetricsRegistry() *metrics.Registry {
+	return t.metricsRegistry
 }
 
 // Tracer returns an OpenTelemetry tracer for creating spans.

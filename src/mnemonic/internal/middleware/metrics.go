@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"time"
@@ -58,35 +59,7 @@ func NewRequestMetrics(meter metric.Meter) (*RequestMetrics, error) {
 // It tracks request count, duration, and in-flight requests with attributes
 // for method, route, and status code.
 func (m *RequestMetrics) Middleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		start := time.Now()
-
-		// Track in-flight requests
-		m.requestInFlight.Add(c.Request.Context(), 1)
-		defer m.requestInFlight.Add(c.Request.Context(), -1)
-
-		// Process request
-		c.Next()
-
-		// Record metrics after request completes
-		duration := float64(time.Since(start).Milliseconds())
-
-		// Get the route pattern (e.g., "/api/v1/agents/:id")
-		// Use "unknown" if no route pattern available to avoid high-cardinality metrics
-		route := c.FullPath()
-		if route == "" {
-			route = "unknown"
-		}
-
-		attrs := []attribute.KeyValue{
-			attribute.String("http.method", c.Request.Method),
-			attribute.String("http.route", route),
-			attribute.String("http.status_code", strconv.Itoa(c.Writer.Status())),
-		}
-
-		m.requestCount.Add(c.Request.Context(), 1, metric.WithAttributes(attrs...))
-		m.requestDuration.Record(c.Request.Context(), duration, metric.WithAttributes(attrs...))
-	}
+	return m.MiddlewareWithSkipPaths(nil)
 }
 
 // MiddlewareWithSkipPaths returns metrics middleware that skips specified paths.
@@ -105,10 +78,13 @@ func (m *RequestMetrics) MiddlewareWithSkipPaths(skipPaths []string) gin.Handler
 		}
 
 		start := time.Now()
+		ctx := c.Request.Context()
 
 		// Track in-flight requests
-		m.requestInFlight.Add(c.Request.Context(), 1)
-		defer m.requestInFlight.Add(c.Request.Context(), -1)
+		// Use the request context for increment but context.Background() for decrement
+		// because the request context may be cancelled after c.Next() completes
+		m.requestInFlight.Add(ctx, 1)
+		defer m.requestInFlight.Add(context.Background(), -1)
 
 		// Process request
 		c.Next()
@@ -128,7 +104,9 @@ func (m *RequestMetrics) MiddlewareWithSkipPaths(skipPaths []string) gin.Handler
 			attribute.String("http.status_code", strconv.Itoa(c.Writer.Status())),
 		}
 
-		m.requestCount.Add(c.Request.Context(), 1, metric.WithAttributes(attrs...))
-		m.requestDuration.Record(c.Request.Context(), duration, metric.WithAttributes(attrs...))
+		// Use context.Background() for post-request metric recording
+		// because the request context may be cancelled after c.Next() completes
+		m.requestCount.Add(context.Background(), 1, metric.WithAttributes(attrs...))
+		m.requestDuration.Record(context.Background(), duration, metric.WithAttributes(attrs...))
 	}
 }

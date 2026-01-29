@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Distributed tracing support via otelgin middleware
 - Structured logging with trace correlation via otelx
 - Request metrics: count, duration histograms, in-flight counters
+- Version package (`internal/version`) for build metadata, eliminating upward dependencies
 
 ### Changed
 
@@ -31,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Push logic moved from build script to CD workflow
 - Server now initializes telemetry and registers observability middleware
 - Configuration validation includes log level validation (fail-fast on invalid level)
+- Moved MetricsRegistry from server package to telemetry package for proper dependency direction
+- Refactored cmd/version to delegate to internal/version, fixing internal->cmd dependency violation
 
 ### Fixed
 

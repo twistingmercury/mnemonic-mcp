@@ -79,6 +79,23 @@ Each entry includes:
 - **Implementation**: Not implemented in Phase 3
 - **Justification**: Database instrumentation is Phase 1E per design checklist. Will be implemented with repository layer.
 
+### 2026-01-28: Architectural Fixes
+
+**Design Document**: `observability-implementation.md`
+
+#### 11. MetricsRegistry Location
+
+- **Original**: Not specified in design
+- **Initial Implementation**: Package-level variable in server.go
+- **Final Implementation**: Field in Telemetry struct, accessed via tel.MetricsRegistry()
+- **Justification**: Server package is for HTTP lifecycle, not dependency management. Telemetry owns observability concerns.
+
+#### 12. Version Package Location
+
+- **Original**: cmd/version (build metadata in command layer)
+- **Implementation**: Created internal/version, cmd/version delegates to it
+- **Justification**: Internal packages should not import from cmd packages. Version info is build metadata needed by internal packages (telemetry, handlers).
+
 ---
 
 Copyright (c) 2026 Jeremy K. Johnson. All rights reserved.
