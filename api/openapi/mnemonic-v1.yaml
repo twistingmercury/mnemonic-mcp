@@ -2243,7 +2243,7 @@ paths:
           $ref: "#/components/responses/InternalError"
 
   # ==================== Operational Endpoints ====================
-  /health:
+  /ops/health:
     get:
       tags:
         - Operations
@@ -2281,7 +2281,7 @@ paths:
                   neo4j: "error: connection refused"
                 reason: neo4j connection failed
 
-  /version:
+  /ops/version:
     get:
       tags:
         - Operations

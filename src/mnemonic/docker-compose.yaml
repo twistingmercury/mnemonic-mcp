@@ -81,6 +81,11 @@ services:
     restart: on-failure
     networks:
       - mnemonic-network
+    healthcheck:
+      test: ["CMD", "/mnemonic", "--health"]
+      interval: 2s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres-data:

@@ -19,6 +19,8 @@
 | ------------------------------------------------------ | ------------------------------------------------------------------------------ |
 | Obsolete `version: '3.8'` field in docker-compose.yaml | FIXED: Removed version field - Compose V2+ uses latest spec automatically      |
 | `OPENAI_API_KEY` missing `MNEMONIC_` prefix            | FIXED: Changed to `MNEMONIC_OPENAI_API_KEY` in all files (Viper convention)    |
+| Missing healthcheck for Mnemonic service               | FIXED: Added healthcheck using `/ops/health` endpoint                          |
+| OpenAPI spec used `/health` and `/version` paths       | FIXED: Updated to `/ops/health` and `/ops/version` to match implementation     |
 
 ## Next Steps
 
