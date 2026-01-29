@@ -277,7 +277,7 @@ SET v.version = 3,
 ### Migration Script Structure
 
 ```cypher
-// migrations/neo4j/003_add_concept_type_index.cypher
+// src/migrations/neo4j/003_add_concept_type_index.cypher
 // Migration 003: Add index on Concept type property
 //
 // Prerequisites: Migration 002 completed
