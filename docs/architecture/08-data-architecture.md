@@ -1090,16 +1090,17 @@ recovery_target_time = '2024-01-15 14:30:00 UTC'
 **Directory Structure:**
 
 ```text
-migrations/
-├── postgres/
-│   ├── 001_create_agents.up.sql
-│   ├── 001_create_agents.down.sql
-│   ├── 002_create_patterns.up.sql
-│   ├── 002_create_patterns.down.sql
-│   └── ...
-└── neo4j/
-    ├── 001_create_constraints.cypher
-    └── 002_create_indexes.cypher
+src/
+└── migrations/
+    ├── postgres/
+    │   ├── 001_create_agents.up.sql
+    │   ├── 001_create_agents.down.sql
+    │   ├── 002_create_patterns.up.sql
+    │   ├── 002_create_patterns.down.sql
+    │   └── ...
+    └── neo4j/
+        ├── 001_create_constraints.cypher
+        └── 002_create_indexes.cypher
 ```
 
 **Version Tracking:**
@@ -1158,13 +1159,13 @@ ALTER TABLE patterns DROP COLUMN IF EXISTS version;
 
 ```bash
 # Check current version
-migrate -path migrations/postgres -database "$DB_URL" version
+migrate -path src/migrations/postgres -database "$DB_URL" version
 
 # Rollback one version
-migrate -path migrations/postgres -database "$DB_URL" down 1
+migrate -path src/migrations/postgres -database "$DB_URL" down 1
 
 # Rollback to specific version
-migrate -path migrations/postgres -database "$DB_URL" goto 5
+migrate -path src/migrations/postgres -database "$DB_URL" goto 5
 ```
 
 **Rollback Safety:**
