@@ -1075,6 +1075,161 @@ func TestPostgresSafeDSN(t *testing.T) {
 	assert.NotContains(t, result, "supersecretpassword")
 }
 
+// TestNeo4jConnectionURI tests the ConnectionURI() helper method.
+func TestNeo4jConnectionURI(t *testing.T) {
+	tests := []struct {
+		name     string
+		uri      string
+		expected string
+	}{
+		{
+			name:     "bolt scheme",
+			uri:      "bolt://localhost:7687",
+			expected: "bolt://localhost:7687",
+		},
+		{
+			name:     "neo4j scheme",
+			uri:      "neo4j://neo4j-cluster:7687",
+			expected: "neo4j://neo4j-cluster:7687",
+		},
+		{
+			name:     "bolt+s scheme",
+			uri:      "bolt+s://secure-host:7687",
+			expected: "bolt+s://secure-host:7687",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Neo4jConfig{
+				URI: tt.uri,
+			}
+			assert.Equal(t, tt.expected, cfg.ConnectionURI())
+		})
+	}
+}
+
+// TestNeo4jSafeURI tests the SafeURI() helper method.
+func TestNeo4jSafeURI(t *testing.T) {
+	tests := []struct {
+		name          string
+		uri           string
+		expected      string
+		shouldNotHave string
+	}{
+		{
+			name:     "no embedded credentials",
+			uri:      "bolt://localhost:7687",
+			expected: "bolt://localhost:7687",
+		},
+		{
+			name:     "neo4j scheme no credentials",
+			uri:      "neo4j://neo4j-cluster:7687",
+			expected: "neo4j://neo4j-cluster:7687",
+		},
+		{
+			name:          "embedded username and password",
+			uri:           "bolt://myuser:secretpass@localhost:7687",
+			expected:      "bolt://myuser:*****@localhost:7687",
+			shouldNotHave: "secretpass",
+		},
+		{
+			name:          "neo4j scheme with credentials",
+			uri:           "neo4j://admin:supersecret@cluster.example.com:7687",
+			expected:      "neo4j://admin:*****@cluster.example.com:7687",
+			shouldNotHave: "supersecret",
+		},
+		{
+			name:     "username only no password",
+			uri:      "bolt://myuser@localhost:7687",
+			expected: "bolt://myuser@localhost:7687",
+		},
+		{
+			name:          "bolt+s with credentials",
+			uri:           "bolt+s://user:pass123@secure-host:7687",
+			expected:      "bolt+s://user:*****@secure-host:7687",
+			shouldNotHave: "pass123",
+		},
+		{
+			name:          "complex password with special chars",
+			uri:           "bolt://user:p@ss:word!@localhost:7687",
+			expected:      "bolt://user:*****@localhost:7687",
+			shouldNotHave: "p@ss:word!",
+		},
+		{
+			name:     "invalid uri no scheme",
+			uri:      "localhost:7687",
+			expected: "localhost:7687",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Neo4jConfig{
+				URI: tt.uri,
+			}
+			result := cfg.SafeURI()
+			assert.Equal(t, tt.expected, result)
+			if tt.shouldNotHave != "" {
+				assert.NotContains(t, result, tt.shouldNotHave)
+			}
+		})
+	}
+}
+
+// TestNeo4jCredentials tests the Credentials() helper method.
+func TestNeo4jCredentials(t *testing.T) {
+	tests := []struct {
+		name             string
+		username         string
+		password         string
+		expectedUsername string
+		expectedPassword string
+	}{
+		{
+			name:             "standard credentials",
+			username:         "neo4j",
+			password:         "secretpassword",
+			expectedUsername: "neo4j",
+			expectedPassword: "secretpassword",
+		},
+		{
+			name:             "empty password",
+			username:         "neo4j",
+			password:         "",
+			expectedUsername: "neo4j",
+			expectedPassword: "",
+		},
+		{
+			name:             "custom username",
+			username:         "admin",
+			password:         "admin123",
+			expectedUsername: "admin",
+			expectedPassword: "admin123",
+		},
+		{
+			name:             "special characters in password",
+			username:         "user",
+			password:         "p@ss:word!#$%",
+			expectedUsername: "user",
+			expectedPassword: "p@ss:word!#$%",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Neo4jConfig{
+				URI:      "bolt://localhost:7687",
+				Username: tt.username,
+				Password: tt.password,
+			}
+			username, password := cfg.Credentials()
+			assert.Equal(t, tt.expectedUsername, username)
+			assert.Equal(t, tt.expectedPassword, password)
+		})
+	}
+}
+
 // TestConfigFileFlagOverride tests that --config flag takes precedence.
 func TestConfigFileFlagOverride(t *testing.T) {
 	clearMnemonicEnvVars(t)

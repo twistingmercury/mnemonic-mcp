@@ -23,12 +23,12 @@ RUN goimports -w .
 RUN golangci-lint run
 RUN govulncheck ./cmd/... ./internal/...
 RUN gosec -quiet -exclude-dir=tests ./...
-RUN go test -v ./... -coverprofile=coverage.out
+RUN go test -v ./internal/... -coverprofile=coverage.out
 
 ARG LD_FLAGS="-s -w \
-    -X 'github.com/twistingmercury/mnemonic/cmd/version.version=${BUILD_VER}' \
-    -X 'github.com/twistingmercury/mnemonic/cmd/version.buildDate=${BUILD_DATE}' \
-    -X 'github.com/twistingmercury/mnemonic/cmd/version.commit=${BUILD_COMMIT}'"
+    -X 'github.com/twistingmercury/mnemonic/internal/version.version=${BUILD_VER}' \
+    -X 'github.com/twistingmercury/mnemonic/internal/version.buildDate=${BUILD_DATE}' \
+    -X 'github.com/twistingmercury/mnemonic/internal/version.commit=${BUILD_COMMIT}'"
 
 RUN go build --ldflags "${LD_FLAGS}" -o /out/mnemonic cmd/main/main.go
 

@@ -2,6 +2,8 @@
 
 [Back to Architecture Overview](../../architecture/00-overview.md) | [Back to Project README](../../../README.md)
 
+**Note:** This document reflects the actual Phase 3 implementation. See [Design Change Log](design-changelog.md) for details on how implementation differs from original design.
+
 ## Table of Contents
 
 - [Overview](#overview)
@@ -106,112 +108,47 @@ The `otelgin` package provides the tracing middleware that otelx does not includ
 
 ### Configuration Package
 
-Create `internal/config/config.go` to manage observability configuration:
+Observability configuration is integrated into the main `MnemonicConfig` structure following the Phase 2 unified configuration pattern. The observability settings are nested under the `Observability` section.
+
+**Actual Implementation:**
+
+Configuration structure from `internal/config/config.go`:
 
 ```go
-package config
+type MnemonicConfig struct {
+    Server        ServerConfig
+    Logging       LoggingConfig
+    Observability ObservabilityConfig
+}
 
-import (
-    "os"
-    "strconv"
-
-    "github.com/rs/zerolog"
-)
-
-// ObservabilityConfig holds all observability-related configuration.
 type ObservabilityConfig struct {
-    // Service identity
-    ServiceName    string
-    ServiceVersion string
-    Environment    string
-
-    // Logging
-    LogLevel zerolog.Level
-
-    // Metrics
-    MetricsEnabled bool
-    MetricsPort    int
-    MetricsPath    string
-
-    // Health
-    HealthEnabled bool
-    HealthPath    string
-
-    // Tracing
-    TracingEnabled  bool
-    OTLPEndpoint    string
-    OTLPInsecure    bool
-    TraceSampleRate float64
+    Metrics MetricsConfig
+    Tracing TracingConfig
 }
 
-// DefaultObservabilityConfig returns configuration with sensible defaults.
-func DefaultObservabilityConfig() ObservabilityConfig {
-    return ObservabilityConfig{
-        ServiceName:     "mnemonic",
-        ServiceVersion:  version.Version(),
-        Environment:     getEnvOrDefault("MNEMONIC_ENV", "development"),
-        LogLevel:        parseLogLevel(getEnvOrDefault("MNEMONIC_LOGGING_LEVEL", "info")),
-        MetricsEnabled:  getEnvBool("MNEMONIC_OBSERVABILITY_METRICS_ENABLED", true),
-        MetricsPort:     getEnvInt("MNEMONIC_OBSERVABILITY_METRICS_PORT", 9090),
-        MetricsPath:     getEnvOrDefault("MNEMONIC_OBSERVABILITY_METRICS_PATH", "/metrics"),
-        HealthEnabled:   getEnvBool("MNEMONIC_OBSERVABILITY_HEALTH_ENABLED", true),
-        HealthPath:      getEnvOrDefault("MNEMONIC_OBSERVABILITY_HEALTH_PATH", "/health"),
-        TracingEnabled:  getEnvBool("MNEMONIC_OBSERVABILITY_TRACING_ENABLED", false),
-        OTLPEndpoint:    getEnvOrDefault("MNEMONIC_OBSERVABILITY_TRACING_ENDPOINT", ""),
-        OTLPInsecure:    getEnvBool("MNEMONIC_OBSERVABILITY_TRACING_OTLP_INSECURE", true),
-        TraceSampleRate: getEnvFloat("MNEMONIC_OBSERVABILITY_TRACING_SAMPLE_RATE", 0.1),
-    }
+type MetricsConfig struct {
+    Enabled bool
+    Port    int
+    Path    string
 }
 
-func getEnvOrDefault(key, defaultVal string) string {
-    if val := os.Getenv(key); val != "" {
-        return val
-    }
-    return defaultVal
+type TracingConfig struct {
+    Enabled      bool
+    Endpoint     string
+    OTLPInsecure bool
+    SampleRate   float64
 }
 
-func getEnvBool(key string, defaultVal bool) bool {
-    if val := os.Getenv(key); val != "" {
-        b, err := strconv.ParseBool(val)
-        if err == nil {
-            return b
-        }
-    }
-    return defaultVal
-}
-
-func getEnvInt(key string, defaultVal int) int {
-    if val := os.Getenv(key); val != "" {
-        i, err := strconv.Atoi(val)
-        if err == nil {
-            return i
-        }
-    }
-    return defaultVal
-}
-
-func getEnvFloat(key string, defaultVal float64) float64 {
-    if val := os.Getenv(key); val != "" {
-        f, err := strconv.ParseFloat(val, 64)
-        if err == nil {
-            return f
-        }
-    }
-    return defaultVal
-}
-
-func parseLogLevel(level string) zerolog.Level {
-    l, err := zerolog.ParseLevel(level)
-    if err != nil {
-        return zerolog.InfoLevel
-    }
-    return l
+type LoggingConfig struct {
+    Level string // Parsed to zerolog.Level in telemetry package
 }
 ```
 
+The configuration is loaded via the Phase 2 `config.Load()` function which handles environment variables and defaults.
+
 ### Telemetry Initialization
 
-Create `internal/telemetry/telemetry.go`:
+**Actual Implementation** from `internal/telemetry/telemetry.go`:
 
 ```go
 package telemetry
@@ -220,19 +157,27 @@ import (
     "context"
     "fmt"
 
-    "github.com/twistingmercury/otelx"
+    "github.com/rs/zerolog"
+    "github.com/twistingmercury/mnemonic/cmd/version"
     "github.com/twistingmercury/mnemonic/internal/config"
+    "github.com/twistingmercury/otelx"
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/metric"
+    "go.opentelemetry.io/otel/trace"
 )
 
 // Telemetry wraps the otelx.Telemetry with application-specific helpers.
 type Telemetry struct {
-    *otelx.Telemetry
-    cfg config.ObservabilityConfig
+    otel   *otelx.Telemetry
+    logger zerolog.Logger
 }
 
 // Initialize creates and configures the telemetry system using otelx.
-func Initialize(ctx context.Context, cfg config.ObservabilityConfig) (*Telemetry, error) {
-    opts := buildOptions(cfg)
+func Initialize(ctx context.Context, cfg *config.MnemonicConfig) (*Telemetry, error) {
+    opts, err := buildOptions(cfg)
+    if err != nil {
+        return nil, fmt.Errorf("failed to build telemetry options: %w", err)
+    }
 
     tel, err := otelx.Initialize(ctx, opts...)
     if err != nil {
@@ -240,112 +185,143 @@ func Initialize(ctx context.Context, cfg config.ObservabilityConfig) (*Telemetry
     }
 
     return &Telemetry{
-        Telemetry: tel,
-        cfg:       cfg,
+        otel:   tel,
+        logger: tel.Logger,
     }, nil
 }
 
-func buildOptions(cfg config.ObservabilityConfig) []otelx.Option {
+func buildOptions(cfg *config.MnemonicConfig) ([]otelx.Option, error) {
+    logLevel, err := parseLogLevel(cfg.Logging.Level)
+    if err != nil {
+        return nil, err
+    }
+
     opts := []otelx.Option{
-        otelx.WithService(cfg.ServiceName, cfg.ServiceVersion, cfg.Environment),
-        otelx.WithLogLevel(cfg.LogLevel),
+        otelx.WithService(
+            "mnemonic",
+            version.Version(),
+            getEnvironment(cfg),
+        ),
+        otelx.WithLogLevel(logLevel),
     }
 
-    // Metrics configuration
-    if cfg.MetricsEnabled {
-        opts = append(opts, otelx.WithMetrics(cfg.MetricsPort))
-        if cfg.MetricsPath != "/metrics" {
-            opts = append(opts, otelx.WithMetricsPath(cfg.MetricsPath))
-        }
-    } else {
-        opts = append(opts, otelx.WithoutMetrics())
+    // Metrics configuration - otelx uses opt-in pattern
+    if cfg.Observability.Metrics.Enabled {
+        opts = append(opts, otelx.WithMetrics(cfg.Observability.Metrics.Port))
+        opts = append(opts, otelx.WithMetricsPath(cfg.Observability.Metrics.Path))
     }
 
-    // Tracing configuration
-    if cfg.TracingEnabled {
+    // Tracing configuration - otelx uses opt-in pattern
+    if cfg.Observability.Tracing.Enabled {
         opts = append(opts, otelx.WithTracing())
-        opts = append(opts, otelx.WithTraceSampleRate(cfg.TraceSampleRate))
-        opts = append(opts, otelx.WithOTLPEndpoint(cfg.OTLPEndpoint))
-        if cfg.OTLPInsecure {
+        opts = append(opts, otelx.WithTraceSampleRate(cfg.Observability.Tracing.SampleRate))
+        if cfg.Observability.Tracing.Endpoint != "" {
+            opts = append(opts, otelx.WithOTLPEndpoint(cfg.Observability.Tracing.Endpoint))
+        }
+        if cfg.Observability.Tracing.OTLPInsecure {
             opts = append(opts, otelx.WithOTLPInsecure())
         }
-    } else {
-        opts = append(opts, otelx.WithoutTracing())
     }
 
-    return opts
+    return opts, nil
 }
 
 // Shutdown gracefully shuts down telemetry, flushing pending data.
 func (t *Telemetry) Shutdown(ctx context.Context) error {
-    return t.Telemetry.Shutdown(ctx)
+    return t.otel.Shutdown(ctx)
+}
+
+// Logger returns the zerolog logger with trace correlation support.
+func (t *Telemetry) Logger() zerolog.Logger {
+    return t.logger
+}
+
+// Tracer returns an OpenTelemetry tracer for creating spans.
+func (t *Telemetry) Tracer(name string) trace.Tracer {
+    if t.otel.TracerProvider != nil {
+        return t.otel.TracerProvider.Tracer(name)
+    }
+    return otel.Tracer(name)
+}
+
+// Meter returns an OpenTelemetry meter for creating metrics.
+func (t *Telemetry) Meter(name string) metric.Meter {
+    if t.otel.MeterProvider != nil {
+        return t.otel.MeterProvider.Meter(name)
+    }
+    return otel.Meter(name)
+}
+
+// TracerProvider returns the underlying trace provider.
+func (t *Telemetry) TracerProvider() trace.TracerProvider {
+    if t.otel.TracerProvider != nil {
+        return t.otel.TracerProvider
+    }
+    return otel.GetTracerProvider()
+}
+
+// MeterProvider returns the underlying meter provider.
+func (t *Telemetry) MeterProvider() metric.MeterProvider {
+    if t.otel.MeterProvider != nil {
+        return t.otel.MeterProvider
+    }
+    return otel.GetMeterProvider()
+}
+
+// Otelx returns the underlying otelx.Telemetry instance.
+func (t *Telemetry) Otelx() *otelx.Telemetry {
+    return t.otel
 }
 ```
 
-### Main Function Updates
+### Server Lifecycle and Telemetry
 
-Update `cmd/main/main.go`:
+**Actual Implementation:**
+
+In Phase 3, telemetry initialization is owned by the `server` package, not `main.go`. This follows the Phase 2 pattern where the server package owns configuration loading and lifecycle management.
+
+From `internal/server/server.go`:
 
 ```go
-package main
-
-import (
-    "context"
-    "log"
-    "os"
-
-    "github.com/spf13/pflag"
-    "github.com/twistingmercury/mnemonic/cmd/version"
-    "github.com/twistingmercury/mnemonic/internal/config"
-    "github.com/twistingmercury/mnemonic/internal/server"
-    "github.com/twistingmercury/mnemonic/internal/telemetry"
-)
-
-var verFlag = pflag.Bool("version", false, "Displays current version information for mnemonic")
-var healthFlag = pflag.Bool("health", false, "Get the current health of the service")
-
-func main() {
-    pflag.Parse()
-
-    if *verFlag {
-        println(version.Print())
-        os.Exit(0)
-    }
-
-    if *healthFlag {
-        err := server.CheckHealth()
-        if err != nil {
-            log.Fatal(err)
-        }
-        os.Exit(0)
-    }
+// ListenAndServeWithConfig starts the server using the provided configuration.
+func ListenAndServeWithConfig(cfg *config.MnemonicConfig) error {
+    shutdown, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+    defer stop()
 
     // Initialize telemetry
-    ctx := context.Background()
-    cfg := config.DefaultObservabilityConfig()
-
-    tel, err := telemetry.Initialize(ctx, cfg)
+    tel, err := telemetry.Initialize(shutdown, cfg)
     if err != nil {
-        log.Fatalf("failed to initialize telemetry: %v", err)
+        return fmt.Errorf("failed to initialize telemetry: %w", err)
     }
     defer func() {
-        if err := tel.Shutdown(ctx); err != nil {
-            log.Printf("telemetry shutdown error: %v", err)
+        if shutdownErr := tel.Shutdown(context.Background()); shutdownErr != nil {
+            logger := tel.Logger()
+            logger.Error().Err(shutdownErr).Msg("telemetry shutdown error")
         }
     }()
 
-    tel.Logger.Info().
-        Str("version", cfg.ServiceVersion).
-        Str("environment", cfg.Environment).
+    logger := tel.Logger()
+    logger.Info().
+        Str("host", cfg.Server.Host).
+        Int("port", cfg.Server.Port).
+        Bool("metrics_enabled", cfg.Observability.Metrics.Enabled).
+        Bool("tracing_enabled", cfg.Observability.Tracing.Enabled).
         Msg("mnemonic starting")
 
-    if err := server.ListenAndServe(tel); err != nil {
-        tel.Logger.Error().Err(err).Msg("server exited with error")
+    // Create request metrics middleware
+    requestMetrics, err := middleware.NewRequestMetrics(tel.Meter("mnemonic/http"))
+    if err != nil {
+        return fmt.Errorf("failed to create request metrics: %w", err)
     }
 
-    tel.Logger.Info().Msg("mnemonic shutdown complete")
+    router := setupRouter(tel, requestMetrics)
+    operations.SetupHandlers(router)
+
+    // Server startup and graceful shutdown...
 }
 ```
+
+The `main.go` remains simple and delegates to the server package.
 
 ## Distributed Tracing Implementation
 
@@ -368,31 +344,53 @@ POST /v1/api/route (45ms)
 
 ### Tracing Middleware
 
-Since otelx does not provide HTTP tracing middleware, use `otelgin` from the OpenTelemetry contrib packages:
-
-Create `internal/middleware/tracing.go`:
+**Actual Implementation** from `internal/middleware/tracing.go`:
 
 ```go
 package middleware
 
 import (
     "net/http"
+    "slices"
 
     "github.com/gin-gonic/gin"
     "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
+// skipPaths defines paths to exclude from tracing to reduce noise.
+var defaultSkipPaths = []string{
+    "/health",
+    "/ops/health",
+    "/metrics",
+}
+
 // TracingMiddleware returns Gin middleware that creates spans for HTTP requests.
-// It uses W3C Trace Context for trace propagation.
+// It uses W3C Trace Context for trace propagation and automatically instruments
+// incoming requests with OpenTelemetry spans.
 func TracingMiddleware(serviceName string) gin.HandlerFunc {
     return otelgin.Middleware(serviceName,
         otelgin.WithFilter(func(req *http.Request) bool {
-            // Skip tracing for health checks to reduce noise
-            return req.URL.Path != "/health"
+            // Skip tracing for health checks and metrics to reduce noise
+            return !slices.Contains(defaultSkipPaths, req.URL.Path)
+        }),
+    )
+}
+
+// TracingMiddlewareWithSkipPaths returns Gin middleware with custom skip paths.
+// This allows callers to specify which paths should not be traced.
+func TracingMiddlewareWithSkipPaths(serviceName string, skipPaths []string) gin.HandlerFunc {
+    return otelgin.Middleware(serviceName,
+        otelgin.WithFilter(func(req *http.Request) bool {
+            return !slices.Contains(skipPaths, req.URL.Path)
         }),
     )
 }
 ```
+
+The implementation provides two functions for flexibility:
+
+- `TracingMiddleware()` with default skip paths
+- `TracingMiddlewareWithSkipPaths()` for custom skip path configuration
 
 ### Creating Child Spans in Handlers
 
@@ -491,9 +489,7 @@ Based on the architecture document, implement these metric categories:
 
 ### Request Metrics Middleware
 
-Since otelx does not provide request metrics middleware, create custom middleware:
-
-Create `internal/middleware/metrics.go`:
+**Actual Implementation** from `internal/middleware/metrics.go`:
 
 ```go
 package middleware
@@ -870,34 +866,54 @@ func NewRegistry(meter metric.Meter) (*Registry, error) {
 
 ### Using otelx Gin Middleware
 
-otelx provides `middleware/gin.LoggingMiddleware` for request logging with trace correlation:
+**Actual Implementation:**
 
-Update `internal/server/server.go`:
+otelx provides `middleware/gin.LoggingMiddleware` for request logging with trace correlation. From `internal/server/server.go`:
 
 ```go
 package server
 
 import (
     "github.com/gin-gonic/gin"
-    otelgin "github.com/twistingmercury/otelx/middleware/gin"
+    "github.com/twistingmercury/mnemonic/internal/middleware"
     "github.com/twistingmercury/mnemonic/internal/telemetry"
+    otelxgin "github.com/twistingmercury/otelx/middleware/gin"
 )
 
-func setupRouter(tel *telemetry.Telemetry) *gin.Engine {
-    router := gin.New() // Use gin.New() instead of gin.Default() to avoid duplicate logging
+// setupRouter creates and configures the Gin router with middleware.
+func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMetrics) *gin.Engine {
+    // Use gin.New() instead of gin.Default() to avoid duplicate logging
+    router := gin.New()
 
     // Recovery middleware (keep this)
     router.Use(gin.Recovery())
 
+    // Paths to skip for tracing and metrics
+    skipPaths := []string{"/health", "/ops/health", "/metrics"}
+
+    // Tracing middleware using otelgin
+    router.Use(middleware.TracingMiddlewareWithSkipPaths("mnemonic", skipPaths))
+
     // otelx logging middleware with trace correlation
-    router.Use(otelgin.LoggingMiddleware(tel.Telemetry,
-        otelgin.WithSkipPaths([]string{"/health"}),
-        otelgin.WithRequestHeaders([]string{"X-Request-ID", "X-Correlation-ID"}),
+    router.Use(otelxgin.LoggingMiddleware(tel.Otelx(),
+        otelxgin.WithSkipPaths("/health", "/ops/health", "/metrics"),
+        otelxgin.WithRequestHeaders("X-Request-ID", "X-Correlation-ID"),
     ))
+
+    // Request metrics middleware
+    router.Use(requestMetrics.MiddlewareWithSkipPaths(skipPaths))
 
     return router
 }
 ```
+
+**Key Differences:**
+
+- Import alias `otelxgin` distinguishes from contrib `otelgin`
+- `WithSkipPaths()` uses variadic parameters, not slices
+- Additional skip paths for `/ops/health` and `/metrics`
+- `WithRequestHeaders()` uses variadic parameters
+- Middleware registration includes tracing and metrics
 
 ### Handler Logging
 
@@ -963,9 +979,13 @@ All log entries automatically include (via otelx):
 
 > **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic) | [Observability Architecture - Key Takeaways](../../architecture/07-observability-architecture.md#key-takeaways)
 
-### Handler Dependencies
+### Handler Dependencies (Future Phase)
 
-Create a dependencies struct to inject telemetry into handlers:
+**Status:** Not implemented in Phase 3.
+
+This section is deferred to Phase 1D per the implementation checklist. Handler instrumentation will be implemented when handlers require metrics and tracing.
+
+**Planned Implementation:**
 
 Create `internal/handlers/deps.go`:
 
@@ -1121,7 +1141,13 @@ func SetupHandlers(r *gin.Engine, deps *handlers.Dependencies) {
 
 > **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic) | [Observability Architecture - Metrics (Prometheus)](../../architecture/07-observability-architecture.md#metrics-prometheus)
 
-### Postgres/PGVector Instrumentation
+### Postgres/PGVector Instrumentation (Future Phase)
+
+**Status:** Not implemented in Phase 3.
+
+This section is deferred to Phase 1E per the implementation checklist. Database instrumentation will be implemented with the repository layer.
+
+**Planned Implementation:**
 
 Create `internal/repository/postgres/instrumented.go`:
 
@@ -1240,7 +1266,13 @@ func (p *InstrumentedPool) RecordPoolStats(ctx context.Context) {
 }
 ```
 
-### Neo4j Instrumentation
+### Neo4j Instrumentation (Future Phase)
+
+**Status:** Not implemented in Phase 3.
+
+This section is deferred to Phase 1E per the implementation checklist. Database instrumentation will be implemented with the repository layer.
+
+**Planned Implementation:**
 
 Create `internal/repository/neo4j/instrumented.go`:
 
