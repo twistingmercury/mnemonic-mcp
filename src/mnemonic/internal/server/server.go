@@ -5,12 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"os/signal"
 	"syscall"
 
 	"github.com/gin-gonic/gin"
-	"github.com/twistingmercury/heartbeat"
 	"github.com/twistingmercury/mnemonic/internal/config"
 	"github.com/twistingmercury/mnemonic/internal/handlers/operations"
 	"github.com/twistingmercury/mnemonic/internal/middleware"
@@ -18,18 +16,18 @@ import (
 	otelxgin "github.com/twistingmercury/otelx/middleware/gin"
 )
 
-// ListenAndServe starts the server using configuration loaded from config sources.
-func ListenAndServe() error {
-	cfg, err := config.Load()
-	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
-	}
+// // ListenAndServe starts the server using configuration loaded from config sources.
+// func ListenAndServe() error {
+// 	cfg, err := config.Load()
+// 	if err != nil {
+// 		return fmt.Errorf("failed to load configuration: %w", err)
+// 	}
 
-	return ListenAndServeWithConfig(cfg)
-}
+// 	return ListenAndServeWithConfig(cfg)
+// }
 
 // ListenAndServeWithConfig starts the server using the provided configuration.
-func ListenAndServeWithConfig(cfg *config.MnemonicConfig) error {
+func ListenAndServe(cfg *config.MnemonicConfig) error {
 	shutdown, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -138,25 +136,4 @@ func CreateHTTPServer(r *gin.Engine, cfg *config.MnemonicConfig) *http.Server {
 		IdleTimeout:    cfg.Server.IdleTimeout,
 		MaxHeaderBytes: 1 << 20,
 	}
-}
-
-func CheckHealth() error {
-	//--> THIS IS A HACK UNTIL I CAN UPDATE THE HEARTBEAT PACKAGE!!!
-	mode := gin.Mode()
-	defer gin.SetMode(mode)
-	gin.SetMode(gin.TestMode)
-
-	statCheck := heartbeat.Handler("mnemonic", operations.DefineDependencies()...)
-
-	writer := httptest.NewRecorder()
-	hackContext, _ := gin.CreateTestContext(writer)
-	hackContext.Request = httptest.NewRequest("GET", "/ops/health", nil)
-
-	statCheck(hackContext)
-
-	if writer.Code != http.StatusOK {
-		return fmt.Errorf("unhealthy: %s", writer.Body.String())
-	}
-	return nil
-	//<-- END HACK
 }

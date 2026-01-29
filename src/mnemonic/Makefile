@@ -24,7 +24,7 @@ analyze: ## Run linters, formatters, security scanners, etc
 	gosec -quiet -exclude-dir=tests ./...
 
 unit-test: ## Run the unit tests
-	go test ./... -coverprofile=coverage.out
+	go test ./internal/... -coverprofile=coverage.out
 	go tool cover -html=coverage.out
 
 image: ## Build the image locally

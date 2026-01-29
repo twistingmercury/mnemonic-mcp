@@ -816,3 +816,56 @@ func (c *PostgresConfig) SafeDSN() string {
 		c.Username, c.Host, c.Port, c.Database, c.SSLMode,
 	)
 }
+
+// ConnectionURI returns the Neo4j URI for API consistency with PostgresConfig.
+func (c *Neo4jConfig) ConnectionURI() string {
+	return c.URI
+}
+
+// SafeURI returns the Neo4j URI with any embedded credentials masked for logging.
+// If the URI contains embedded credentials (user:pass@host), the password is masked.
+// Use this method for logging to prevent secret exposure.
+func (c *Neo4jConfig) SafeURI() string {
+	// Check for embedded credentials in the URI (e.g., bolt://user:pass@host:port)
+	// Format: scheme://[user[:password]@]host[:port]
+	uri := c.URI
+
+	// Find the scheme separator
+	schemeEnd := strings.Index(uri, "://")
+	if schemeEnd == -1 {
+		return uri
+	}
+
+	// Get the part after the scheme
+	rest := uri[schemeEnd+3:]
+
+	// Find the LAST @ symbol which separates credentials from host
+	// This handles passwords that contain @ symbols
+	atIndex := strings.LastIndex(rest, "@")
+	if atIndex == -1 {
+		// No embedded credentials
+		return uri
+	}
+
+	// Extract the credentials part (before the last @)
+	credentials := rest[:atIndex]
+
+	// Find the FIRST colon which separates username from password
+	colonIndex := strings.Index(credentials, ":")
+	if colonIndex == -1 {
+		// Only username, no password to mask
+		return uri
+	}
+
+	// Build the safe URI with masked password
+	scheme := uri[:schemeEnd+3]
+	username := credentials[:colonIndex]
+	hostPart := rest[atIndex+1:]
+
+	return fmt.Sprintf("%s%s:*****@%s", scheme, username, hostPart)
+}
+
+// Credentials returns the username and password for use with neo4j.BasicAuth().
+func (c *Neo4jConfig) Credentials() (username, password string) {
+	return c.Username, c.Password
+}
