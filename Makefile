@@ -1,6 +1,15 @@
-.PHONY: mnemonic ace help
+.PHONY: mnemonic ace help install-agents load-patterns enrich
 
 default: help
+
+install-agents: ## Intalls the agent definitions locally to ~/.claude/agents for development purposes
+	scripts/install-agents.sh
+
+load-patterns: ## loads the agent patterns into Cognee for local development purposes
+	scripts/load-patterns.sh
+
+enrich: ## Runs the cognify process for patterns that were loaded into cognee.
+	scripts/cognify-patterns.sh
 
 mnemonic: ## Run the build.sh script to build the mnemonic server
 	./src/mnemonic/build/build.sh
