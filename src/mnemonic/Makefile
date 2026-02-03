@@ -27,6 +27,9 @@ unit-test: ## Run the unit tests
 	go test ./internal/... -coverprofile=coverage.out
 	go tool cover -html=coverage.out
 
+db-tests: ## Run integrations tests for the repository package
+	./internal/repository/tests/run-agent-integration-tests.sh
+
 image: ## Build the image locally
 	docker build --rm \
         --file "build/Dockerfile" \

@@ -7,8 +7,6 @@ REPO_DIR="$(cd "${THIS_DIR}/.." && pwd)"
 SRC_DIR="$(cd "${REPO_DIR}/../../.." && pwd)"
 MODULE_ROOT="$(cd "${REPO_DIR}/../.." && pwd)"
 
-
-
 MAX_RETRIES="${MAX_RETRIES:-30}"
 RETRY_INTERVAL="${RETRY_INTERVAL:-2}"
 PG_USR_NAME="${PG_USR_NAME:-mnemonic}"
@@ -48,8 +46,6 @@ start_test_infra() {
 
     return 1
 }
-
-
 
 cleanup() {
     printf "Cleaning up test infrastructure...\n" >&2
