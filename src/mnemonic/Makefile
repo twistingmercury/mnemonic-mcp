@@ -1,4 +1,4 @@
-.PHONY: local build unit-test analyze help db-tests
+.PHONY: local build unit-test analyze help db-tests db-tests-agent db-tests-pattern
 
 GIT_COMMIT := $(shell git rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
 GIT_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "dev")
@@ -27,8 +27,13 @@ unit-test: ## Run the unit tests
 	go test ./internal/... -coverprofile=coverage.out
 	go tool cover -html=coverage.out
 
-db-tests: ## Run integrations tests for the repository package
+db-tests: db-tests-agent db-tests-pattern ## Run all database integration tests
+
+db-tests-agent: ## Run agent repository integration tests
 	./internal/repository/tests/run-agent-integration-tests.sh
+
+db-tests-pattern: ## Run pattern repository integration tests
+	./internal/repository/tests/run-pattern-integration-tests.sh
 
 image: ## Build the image locally
 	docker build --rm \
