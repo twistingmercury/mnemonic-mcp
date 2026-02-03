@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Structured logging with trace correlation via otelx
 - Request metrics: count, duration histograms, in-flight counters
 - Version package (`internal/version`) for build metadata, eliminating upward dependencies
+- Agent repository package (`internal/repository`) with PostgreSQL implementation
+- Agent schema migrations (002_create_agents.up.sql and 002_create_agents.down.sql)
+- Repository error types: ErrAgentExists, ErrAgentNotFound, ErrAgentInUse
+- List options for pagination support in repository queries
+- Comprehensive unit tests for agent repository with pgxmock
 
 ### Changed
 

@@ -8,12 +8,20 @@ Mnemonic is the backend server for ACE (Agent Coordination Engine), providing de
 
 Mnemonic is a stateless Go service that manages:
 
-- Agent definitions and system prompts
+- Agent definitions and system prompts (via AgentRepository with PostgreSQL storage)
 - Routing rules for prompt-to-agent matching
 - Pattern storage with semantic search (via PGVector and Neo4j)
 - Background enrichment of patterns with LLM-extracted metadata
 
 See the [System Architecture documentation](/docs/architecture/03-system-architecture.md#mnemonic) for detailed design.
+
+### Current Implementation Status
+
+Phase 5 of the MVP implementation is complete:
+
+- **Database Layer**: PostgreSQL schema for agents with migrations
+- **Repository Layer**: AgentRepository interface with pgx implementation and comprehensive error handling
+- **Testing**: Full unit test coverage for agent repository operations
 
 ## Configuration
 
