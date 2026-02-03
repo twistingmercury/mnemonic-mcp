@@ -1,4 +1,4 @@
--- src/migrations/postgres/001_extensions_and_functions.up.sql
+-- src/migrations/postgres/up/001_extensions_and_functions.sql
 -- Enables required PostgreSQL extensions.
 -- Part of Mnemonic MVP Phase 1
 --

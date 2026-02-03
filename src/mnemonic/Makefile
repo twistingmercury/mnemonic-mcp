@@ -1,4 +1,4 @@
-.PHONY: local build unit-test analyze help
+.PHONY: local build unit-test analyze help db-tests
 
 GIT_COMMIT := $(shell git rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
 GIT_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "dev")
@@ -26,6 +26,9 @@ analyze: ## Run linters, formatters, security scanners, etc
 unit-test: ## Run the unit tests
 	go test ./internal/... -coverprofile=coverage.out
 	go tool cover -html=coverage.out
+
+db-tests: ## Run integrations tests for the repository package
+	./internal/repository/tests/run-agent-integration-tests.sh
 
 image: ## Build the image locally
 	docker build --rm \
