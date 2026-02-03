@@ -1,4 +1,4 @@
--- src/migrations/postgres/001_extensions_and_functions.down.sql
+-- src/migrations/postgres/down/001_extensions_and_functions.sql
 -- Reverses: Enables required PostgreSQL extensions.
 -- WARNING: Dropping extensions may fail if objects depend on them.
 

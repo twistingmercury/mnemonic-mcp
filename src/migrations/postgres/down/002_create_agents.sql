@@ -1,4 +1,4 @@
--- src/migrations/postgres/002_create_agents.down.sql
+-- src/migrations/postgres/down/002_create_agents.sql
 -- Reverses: Creates the agents table for storing agent definitions.
 --
 -- Note: This will fail if other tables have foreign keys referencing agents.
