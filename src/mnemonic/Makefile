@@ -1,4 +1,4 @@
-.PHONY: local build unit-test analyze help
+.PHONY: local build unit-test analyze help db-tests
 
 GIT_COMMIT := $(shell git rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
 GIT_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "dev")
