@@ -34,13 +34,6 @@ type Repository interface {
 	Exists(ctx context.Context, name string) (bool, error)
 }
 
-// PostgreSQL error codes for constraint violations.
-const (
-	pgErrCodeUniqueViolation     = "23505"
-	pgErrCodeForeignKeyViolation = "23503"
-	pgErrCodeCheckViolation      = "23514"
-)
-
 // pgxRepository is a PostgreSQL implementation of Repository using pgx.
 type pgxRepository struct {
 	db repository.DBTX
@@ -85,9 +78,9 @@ func (r *pgxRepository) Create(ctx context.Context, agent *Agent) error {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
-			case pgErrCodeUniqueViolation:
+			case repository.PgErrCodeUniqueViolation:
 				return ErrAgentExists
-			case pgErrCodeCheckViolation:
+			case repository.PgErrCodeCheckViolation:
 				// Return the constraint violation message for better debugging
 				return err
 			}
@@ -174,7 +167,7 @@ func (r *pgxRepository) Update(ctx context.Context, agent *Agent) error {
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == pgErrCodeCheckViolation {
+		if errors.As(err, &pgErr) && pgErr.Code == repository.PgErrCodeCheckViolation {
 			return err
 		}
 		return err
@@ -195,7 +188,7 @@ func (r *pgxRepository) Delete(ctx context.Context, name string) error {
 	result, err := r.db.Exec(ctx, query, name)
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == pgErrCodeForeignKeyViolation {
+		if errors.As(err, &pgErr) && pgErr.Code == repository.PgErrCodeForeignKeyViolation {
 			return ErrAgentInUse
 		}
 		return err
