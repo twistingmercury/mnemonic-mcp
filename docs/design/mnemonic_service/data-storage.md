@@ -72,7 +72,7 @@ Database migrations and application code are versioned and deployed independentl
 All PostgreSQL migrations follow the golang-migrate convention:
 
 ```text
-src/
+src/mnemonic/
 └── migrations/
     └── postgres/
         ├── 001_extensions_and_functions.up.sql
@@ -95,13 +95,13 @@ src/
 
 ```bash
 # Apply all pending migrations
-migrate -path src/migrations/postgres -database "$DATABASE_URL" up
+migrate -path src/mnemonic/migrations/postgres -database "$DATABASE_URL" up
 
 # Rollback last migration
-migrate -path src/migrations/postgres -database "$DATABASE_URL" down 1
+migrate -path src/mnemonic/migrations/postgres -database "$DATABASE_URL" down 1
 
 # Check current version
-migrate -path src/migrations/postgres -database "$DATABASE_URL" version
+migrate -path src/mnemonic/migrations/postgres -database "$DATABASE_URL" version
 ```
 
 ### Migration 001: Extensions and Functions
@@ -109,7 +109,7 @@ migrate -path src/migrations/postgres -database "$DATABASE_URL" version
 **Purpose:** Enable required PostgreSQL extensions and create reusable utility functions.
 
 ```sql
--- src/migrations/postgres/001_extensions_and_functions.up.sql
+-- src/mnemonic/migrations/postgres/001_extensions_and_functions.up.sql
 -- Enables required extensions and creates utility functions
 -- Part of Mnemonic MVP Phase 1
 
@@ -133,7 +133,7 @@ comment on function update_updated_at() is
 ```
 
 ```sql
--- src/migrations/postgres/001_extensions_and_functions.down.sql
+-- src/mnemonic/migrations/postgres/001_extensions_and_functions.down.sql
 -- Reverses: Enables required extensions and creates utility functions
 -- WARNING: Dropping extensions may fail if objects depend on them
 
@@ -149,7 +149,7 @@ drop function if exists update_updated_at() cascade;
 **Purpose:** Create the agents table for storing agent definitions.
 
 ```sql
--- src/migrations/postgres/002_create_agents.up.sql
+-- src/mnemonic/migrations/postgres/002_create_agents.up.sql
 -- Creates the agents table for storing agent definitions
 -- Part of Mnemonic MVP Phase 1
 
@@ -203,7 +203,7 @@ comment on column agents.routing_keywords is 'Denormalized keywords for fast rou
 ```
 
 ```sql
--- src/migrations/postgres/002_create_agents.down.sql
+-- src/mnemonic/migrations/postgres/002_create_agents.down.sql
 -- Reverses: Creates the agents table for storing agent definitions
 
 drop trigger if exists trg_agents_updated_at on agents;
@@ -215,7 +215,7 @@ drop table if exists agents;
 **Purpose:** Create the patterns table with PGVector embedding column for semantic search.
 
 ```sql
--- src/migrations/postgres/003_create_patterns.up.sql
+-- src/mnemonic/migrations/postgres/003_create_patterns.up.sql
 -- Creates the patterns table with vector embeddings
 -- Part of Mnemonic MVP Phase 1
 
@@ -268,7 +268,7 @@ comment on column patterns.tags is 'JSON array of categorization tags';
 ```
 
 ```sql
--- src/migrations/postgres/003_create_patterns.down.sql
+-- src/mnemonic/migrations/postgres/003_create_patterns.down.sql
 -- Reverses: Creates the patterns table with vector embeddings
 
 drop trigger if exists trg_patterns_updated_at on patterns;
@@ -280,7 +280,7 @@ drop table if exists patterns;
 **Purpose:** Create the many-to-many association table between patterns and agents with relevance scores.
 
 ```sql
--- src/migrations/postgres/004_create_pattern_agent_associations.up.sql
+-- src/mnemonic/migrations/postgres/004_create_pattern_agent_associations.up.sql
 -- Creates the pattern-agent association table
 -- Part of Mnemonic MVP Phase 1
 
@@ -320,7 +320,7 @@ comment on column pattern_agent_associations.relevance is
 ```
 
 ```sql
--- src/migrations/postgres/004_create_pattern_agent_associations.down.sql
+-- src/mnemonic/migrations/postgres/004_create_pattern_agent_associations.down.sql
 -- Reverses: Creates the pattern-agent association table
 
 drop index if exists idx_pattern_agent_assoc_agent;
@@ -333,7 +333,7 @@ drop table if exists pattern_agent_associations;
 **Purpose:** Create the routing rules table for prompt-to-agent matching.
 
 ```sql
--- src/migrations/postgres/005_create_routing_rules.up.sql
+-- src/mnemonic/migrations/postgres/005_create_routing_rules.up.sql
 -- Creates the routing rules table
 -- Part of Mnemonic MVP Phase 1
 
@@ -404,7 +404,7 @@ comment on column routing_rules.match_config is 'Type-specific configuration as 
 ```
 
 ```sql
--- src/migrations/postgres/005_create_routing_rules.down.sql
+-- src/mnemonic/migrations/postgres/005_create_routing_rules.down.sql
 -- Reverses: Creates the routing rules table
 
 drop trigger if exists trg_routing_rules_updated_at on routing_rules;
@@ -417,7 +417,7 @@ drop table if exists routing_rules;
 **Purpose:** Create the enrichment jobs queue table for background pattern processing.
 
 ```sql
--- src/migrations/postgres/006_create_enrichment_jobs.up.sql
+-- src/mnemonic/migrations/postgres/006_create_enrichment_jobs.up.sql
 -- Creates the enrichment jobs queue table
 -- Part of Mnemonic MVP Phase 1
 
@@ -476,7 +476,7 @@ comment on column enrichment_jobs.scheduled_for is 'When the job should be proce
 ```
 
 ```sql
--- src/migrations/postgres/006_create_enrichment_jobs.down.sql
+-- src/mnemonic/migrations/postgres/006_create_enrichment_jobs.down.sql
 -- Reverses: Creates the enrichment jobs queue table
 
 drop trigger if exists trg_enrichment_jobs_updated_at on enrichment_jobs;
@@ -489,7 +489,7 @@ drop table if exists enrichment_jobs;
 **Purpose:** Create performance-optimized indexes for common query patterns.
 
 ```sql
--- src/migrations/postgres/007_create_performance_indexes.up.sql
+-- src/mnemonic/migrations/postgres/007_create_performance_indexes.up.sql
 -- Creates performance indexes for common query patterns
 -- Part of Mnemonic MVP Phase 1
 
@@ -539,7 +539,7 @@ comment on index idx_enrichment_jobs_pending is
 ```
 
 ```sql
--- src/migrations/postgres/007_create_performance_indexes.down.sql
+-- src/mnemonic/migrations/postgres/007_create_performance_indexes.down.sql
 -- Reverses: Creates performance indexes for common query patterns
 
 drop index if exists idx_patterns_search;
@@ -683,7 +683,7 @@ analyze patterns;
 Create these constraints during initial Neo4j setup:
 
 ```cypher
-// src/migrations/neo4j/001_create_constraints.cypher
+// src/mnemonic/migrations/neo4j/001_create_constraints.cypher
 // Creates uniqueness constraints for node labels
 // Part of Mnemonic MVP Phase 1
 
@@ -750,13 +750,13 @@ If constraints are missing, run the constraint creation script manually:
 
 ```bash
 # Using cypher-shell
-cypher-shell -u neo4j -p <password> -f src/migrations/neo4j/001_create_constraints.cypher
+cypher-shell -u neo4j -p <password> -f src/mnemonic/migrations/neo4j/001_create_constraints.cypher
 ```
 
 ### Index Configuration
 
 ```cypher
-// src/migrations/neo4j/002_create_indexes.cypher
+// src/mnemonic/migrations/neo4j/002_create_indexes.cypher
 // Creates indexes for common query patterns
 // Part of Mnemonic MVP Phase 1
 

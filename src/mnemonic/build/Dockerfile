@@ -38,14 +38,18 @@ RUN go build --ldflags "${LD_FLAGS}" -o /out/mnemonic cmd/main/main.go
 #------------------------------------------------------------
 FROM scratch AS final
 
+ARG BUILD_VER=dev
+ARG BUILD_DATE=unknown
+ARG BUILD_COMMIT=unknown
+
 LABEL org.opencontainers.image.title="mnemonic" \
     org.opencontainers.image.description="Backend server providing routing and pattern retrieval via REST API for ACE CLI" \
     org.opencontainers.image.source="https://github.com/twistingmercury/ace/tree/develop/src/mnemonic" \
     org.opencontainers.image.licenses="MIT" \
     org.opencontainers.image.authors="Jeremy K. Johnson" \
     org.opencontainers.image.created="${BUILD_DATE}" \
-    org.opencontainers.image.revision="${VCS_REF}" \
-    org.opencontainers.image.version="${VERSION}"
+    org.opencontainers.image.revision="${BUILD_COMMIT}" \
+    org.opencontainers.image.version="${BUILD_VER}"
 
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /out/mnemonic /mnemonic
