@@ -106,7 +106,11 @@ e2e_tests(){
     }
     trap cleanup EXIT
 
-    docker compose -f "${PROJ_ROOT}/tests/docker-compose.yaml" up -d --abort-on-container-exit --exit-code-from mnemonic_tests
+    if [ "${LOCAL_BUILD}" -eq 1 ]; then
+        docker compose -f "${PROJ_ROOT}/tests/docker-compose.yaml" up -d
+    else
+        docker compose -f "${PROJ_ROOT}/tests/docker-compose.yaml" up --abort-on-container-exit --exit-code-from mnemonic_tests
+    fi
 
     trap - EXIT
     cleanup
