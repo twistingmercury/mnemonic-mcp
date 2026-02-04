@@ -1090,7 +1090,7 @@ recovery_target_time = '2024-01-15 14:30:00 UTC'
 **Directory Structure:**
 
 ```text
-src/
+src/mnemonic/
 └── migrations/
     ├── postgres/
     │   ├── 001_create_agents.up.sql
@@ -1159,13 +1159,13 @@ ALTER TABLE patterns DROP COLUMN IF EXISTS version;
 
 ```bash
 # Check current version
-migrate -path src/migrations/postgres -database "$DB_URL" version
+migrate -path src/mnemonic/migrations/postgres -database "$DB_URL" version
 
 # Rollback one version
-migrate -path src/migrations/postgres -database "$DB_URL" down 1
+migrate -path src/mnemonic/migrations/postgres -database "$DB_URL" down 1
 
 # Rollback to specific version
-migrate -path src/migrations/postgres -database "$DB_URL" goto 5
+migrate -path src/mnemonic/migrations/postgres -database "$DB_URL" goto 5
 ```
 
 **Rollback Safety:**
