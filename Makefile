@@ -16,7 +16,7 @@ mnemonic: ## Run the build.sh script to build the mnemonic server
 	docker system prune -f
 
 ace: ## Run the build.sh script to build the ACE cli tool
-	@echo "not implemented"
+	@echo "make command ace not implemented"
 
 agent-rules: ## Run the install-global-agent-rules.sh to help guide Claude on how to use the agents
 	scripts/install-global-agent-rules.sh
