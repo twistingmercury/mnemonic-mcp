@@ -125,7 +125,7 @@ No releases published yet. See [CHANGELOG.md](CHANGELOG.md) for development prog
 
 ### Background
 
-- [Project Blog](https://twistingmercury.github.io/team-agentic-setup/) - Development journey, design rationale, and updates
+- [Project Blog](https://twistingmercury.github.io) - Development journey, design rationale, and updates
 
 ### Architecture
 
