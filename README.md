@@ -1,3 +1,5 @@
+[![Mnemonic CD](https://github.com/twistingmercury/ace/actions/workflows/mnemonic-cd.yaml/badge.svg)](https://github.com/twistingmercury/ace/actions/workflows/mnemonic-cd.yaml)
+
 # ACE (Agent Coordination Engine)
 
 > **Maturity Level**: Emerging - CI/CD operational, Mnemonic repositories under development
