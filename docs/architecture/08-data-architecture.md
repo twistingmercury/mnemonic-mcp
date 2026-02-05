@@ -1303,6 +1303,6 @@ LIMIT 5;
 See also:
 
 - [System Architecture](03-system-architecture.md) for component details
-- [Pattern Processing](../design/mnemonic_service/pattern-processing.md) for enrichment pipeline
-- [Routing Engine](../design/mnemonic_service/routing-engine.md) for rule evaluation
+- [Pattern Processing](../design/pattern-processing.md) for enrichment pipeline
+- [Routing Engine](../design/routing-engine.md) for rule evaluation
 - [Deployment Architecture](05-deployment-architecture.md) for scaling patterns

@@ -21,8 +21,8 @@ The ACE CLI will be developed in a separate repository once Mnemonic reaches MVP
 
 ### Mnemonic Server
 
-- REST API endpoints (`/v1/api/route`, `/v1/api/patterns`, `/v1/api/agents`) -> [API Specification](../design/mnemonic_service/api-specification.md)
-- Deterministic routing engine with priority-ordered rules -> [Routing Engine](../design/mnemonic_service/routing-engine.md)
+- REST API endpoints (`/v1/api/route`, `/v1/api/patterns`, `/v1/api/agents`) -> [API Specification](../design/api-specification.md)
+- Deterministic routing engine with priority-ordered rules -> [Routing Engine](../design/routing-engine.md)
 - Four match types: keyword, regex, pattern (semantic), default
 - In-memory rule caching (restart required to reload)
 - Latency targets documented in routing engine design
@@ -36,14 +36,14 @@ The ACE CLI will be developed in a separate repository once Mnemonic reaches MVP
 
 ### Pattern Enrichment
 
-- Postgres-backed job queue with background worker -> [Pattern Processing](../design/mnemonic_service/pattern-processing.md)
+- Postgres-backed job queue with background worker -> [Pattern Processing](../design/pattern-processing.md)
 - OpenAI text-embedding-3-small for embeddings
 - OpenAI gpt-4o-mini for concept extraction
 - Neo4j sync is best-effort (failures logged, processing continues)
 
 ### Observability (Stage 1)
 
-- OpenTelemetry instrumentation via `otelx` package -> [Observability Implementation](../design/mnemonic_service/observability-implementation.md)
+- OpenTelemetry instrumentation via `otelx` package -> [Observability Implementation](../design/observability-implementation.md)
 - Zerolog with automatic trace correlation
 - Prometheus metrics emission via OTLP
 - W3C Trace Context propagation
@@ -109,7 +109,7 @@ Functional requirements and quality attributes are defined in [Requirements](../
 
 | Issue                  | Resolution                                                                                     |
 | ---------------------- | ---------------------------------------------------------------------------------------------- |
-| Rate limiting default  | Changed to `enabled: false` in [configuration.md](../design/mnemonic_service/configuration.md) |
+| Rate limiting default  | Changed to `enabled: false` in [configuration.md](../design/configuration.md) |
 | Cache refresh settings | Comments clarify settings are IGNORED in MVP                                                   |
 | Neo4j constraints      | Startup logs warnings if missing, does not fail                                                |
 | CLI telemetry          | Entire design is Post-MVP                                                                      |
