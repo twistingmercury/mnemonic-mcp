@@ -43,26 +43,31 @@ When running via Docker Compose:
 
 | Service   | Endpoint                  | Purpose                    |
 |-----------|---------------------------|----------------------------|
-| Mnemonic  | http://localhost:8080     | REST API                   |
-| Mnemonic  | http://localhost:9090     | Metrics (Prometheus)       |
-| Neo4j     | http://localhost:7475     | Neo4j Browser              |
+| Mnemonic  | <http://localhost:8080>     | REST API                   |
+| Mnemonic  | <http://localhost:9090>     | Metrics (Prometheus)       |
+| Neo4j     | <http://localhost:7475>     | Neo4j Browser              |
 | Neo4j     | bolt://localhost:7688     | Neo4j Bolt protocol        |
 | Postgres  | postgresql://localhost:5433| PostgreSQL connection     |
 
-**Note:** Ports are offset from defaults (5433 instead of 5432, 7475/7688 instead of 7474/7687) to avoid conflicts with other local services.
+**Note:** Ports are offset from defaults (5433 instead of 5432,
+7475/7688 instead of 7474/7687) to avoid conflicts with other local
+services.
 
 ## Database Credentials (Development)
 
 **PostgreSQL:**
+
 - Database: `mnemonic`
 - Username: `mnemonic`
 - Password: `mnemonic_dev`
 
 **Neo4j:**
+
 - Username: `neo4j`
 - Password: `mnemonic_dev`
 
-**Note:** These credentials are for local development only. Never use these in production.
+**Note:** These credentials are for local development only. Never use
+these in production.
 
 ## Building Manually
 
@@ -84,18 +89,21 @@ docker run -p 8080:8080 \
 ## Troubleshooting
 
 **Mnemonic fails to start:**
+
 - Check database health: `docker compose ps`
 - View logs: `docker compose logs postgres neo4j`
 - Ensure databases are healthy before Mnemonic starts
 
 **Cannot connect to databases:**
+
 - Verify network: `docker compose ps`
 - Check environment variables: `docker compose config`
 - Restart services: `docker compose restart`
 
 **OpenAI API errors:**
+
 - Verify API key is set in `.env`
-- Check key validity at https://platform.openai.com/api-keys
+- Check key validity at <https://platform.openai.com/api-keys>
 - View Mnemonic logs: `docker compose logs mnemonic`
 
 ## Health Checks

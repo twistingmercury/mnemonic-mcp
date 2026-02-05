@@ -47,7 +47,7 @@ Enrichment is triggered automatically when a pattern is created or updated. The 
 
 ```mermaid
 sequenceDiagram
-    participant Client as Client (ACE CLI)
+    participant Client as Client (REST API)
     participant API as Mnemonic API
     participant PG as Postgres
     participant Worker as Background Worker

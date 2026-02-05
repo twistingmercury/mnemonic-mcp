@@ -36,7 +36,7 @@
 
 ## Spec Alignment
 
-Implementation matches `docs/design/mnemonic_service/data-storage.md`:
+Implementation matches `docs/design/data-storage.md`:
 
 - routing_rules table structure ✓
   - All columns: id, name, priority, agent_name, match_type, match_config, enabled, created_at, updated_at ✓

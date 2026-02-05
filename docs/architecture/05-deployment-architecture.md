@@ -7,7 +7,7 @@
 - [Deployment Overview](#deployment-overview)
 - [Deployment Topology](#deployment-topology)
 - [Component Deployment](#component-deployment)
-  - [ACE CLI](#ace-cli)
+  - [ACE CLI (Future - Separate Repository)](#ace-cli-future---separate-repository)
   - [Mnemonic](#mnemonic)
 - [Infrastructure Requirements](#infrastructure-requirements)
 - [Operational Considerations](#operational-considerations)
@@ -91,26 +91,22 @@ graph TB
 
 ## Component Deployment
 
-### ACE CLI
+### ACE CLI (Future - Separate Repository)
 
-**Deployment Location:** User workstations
+**Note:** The ACE CLI will be developed in a separate repository once Mnemonic reaches MVP status.
 
-**Characteristics:**
+**Planned Deployment Location:** User workstations
 
-- Installed per-user or per-machine
+**Planned Characteristics:**
+
+- Will be installed per-user or per-machine
 - No persistent state (stateless between invocations)
-- Requires network access to Mnemonic
-- Requires Claude Code installation (Phase 1)
+- Will require network access to Mnemonic
+- Will require Claude Code installation (Phase 1)
 
 **Distribution:**
 
-Post-MVP: Distribution mechanism to be designed after initial release.
-
-| Aspect        | Detail                                         |
-| ------------- | ---------------------------------------------- |
-| Method        | Post-MVP: To be designed after initial release |
-| Updates       | Post-MVP: To be designed after initial release |
-| Configuration | Post-MVP: To be designed after initial release |
+Post-MVP: Distribution mechanism to be designed after CLI initial release.
 
 ### Mnemonic
 

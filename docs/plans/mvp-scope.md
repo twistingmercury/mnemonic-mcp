@@ -8,18 +8,21 @@ ACE MVP delivers Phase 1 Claude Code integration with centralized routing and pa
 
 ## MVP Scope - What's Included
 
-### ACE CLI
+### ACE CLI (Future - Separate Repository)
 
-- Routing requests and pattern retrieval -> [CLI Configuration](../design/ace_cli/configuration.md)
+The ACE CLI will be developed in a separate repository once Mnemonic reaches MVP status. Planned high-level capabilities include:
+
+- Routing requests and pattern retrieval via Mnemonic API
 - Claude Code invocation with enriched context -> [Architecture Overview - Phase 1](../architecture/00-overview.md#phase-1-claude-code-integration)
-- YAML configuration with precedence: defaults -> file -> env -> flags
-- API key authentication to Mnemonic
-- Client-side routing cache (5m TTL)
+- Configuration management
+- Authentication to Mnemonic
+
+**Note:** Detailed CLI specifications (configuration precedence, caching behavior, etc.) will be documented in the CLI repository. For MVP testing, Mnemonic's REST API can be accessed using curl, Postman, or other HTTP clients.
 
 ### Mnemonic Server
 
-- REST API endpoints (`/v1/api/route`, `/v1/api/patterns`, `/v1/api/agents`) -> [API Specification](../design/mnemonic_service/api-specification.md)
-- Deterministic routing engine with priority-ordered rules -> [Routing Engine](../design/mnemonic_service/routing-engine.md)
+- REST API endpoints (`/v1/api/route`, `/v1/api/patterns`, `/v1/api/agents`) -> [API Specification](../design/api-specification.md)
+- Deterministic routing engine with priority-ordered rules -> [Routing Engine](../design/routing-engine.md)
 - Four match types: keyword, regex, pattern (semantic), default
 - In-memory rule caching (restart required to reload)
 - Latency targets documented in routing engine design
@@ -33,14 +36,14 @@ ACE MVP delivers Phase 1 Claude Code integration with centralized routing and pa
 
 ### Pattern Enrichment
 
-- Postgres-backed job queue with background worker -> [Pattern Processing](../design/mnemonic_service/pattern-processing.md)
+- Postgres-backed job queue with background worker -> [Pattern Processing](../design/pattern-processing.md)
 - OpenAI text-embedding-3-small for embeddings
 - OpenAI gpt-4o-mini for concept extraction
 - Neo4j sync is best-effort (failures logged, processing continues)
 
 ### Observability (Stage 1)
 
-- OpenTelemetry instrumentation via `otelx` package -> [Observability Implementation](../design/mnemonic_service/observability-implementation.md)
+- OpenTelemetry instrumentation via `otelx` package -> [Observability Implementation](../design/observability-implementation.md)
 - Zerolog with automatic trace correlation
 - Prometheus metrics emission via OTLP
 - W3C Trace Context propagation
@@ -89,7 +92,6 @@ ACE MVP delivers Phase 1 Claude Code integration with centralized routing and pa
 | Neo4j sync is best-effort       | Graph may be temporarily inconsistent | Failures logged, processing continues     |
 | No rate limiting enforcement    | Potential resource exhaustion         | Operational monitoring                    |
 | Single pod deployment           | Limited availability                  | Horizontal scaling available but untested |
-| Client caching (5m TTL)         | Stale routing decisions possible      | Reduce TTL or disable cache if needed     |
 | No backup procedures            | Data loss risk                        | Manual database backups                   |
 
 ## Success Criteria
@@ -98,16 +100,16 @@ Functional requirements and quality attributes are defined in [Requirements](../
 
 **Key metrics:**
 
-- CLI routes requests through Mnemonic to appropriate handlers
-- Patterns are accessible to all team members
-- Claude Code invocation works with enriched context
+- Mnemonic correctly routes requests to appropriate agents via REST API
+- Patterns are retrievable via REST API
 - Routing decisions are deterministic and reproducible
+- Enriched context (agent + patterns) can be consumed by external clients
 
 ## Resolved Inconsistencies
 
 | Issue                  | Resolution                                                                                     |
 | ---------------------- | ---------------------------------------------------------------------------------------------- |
-| Rate limiting default  | Changed to `enabled: false` in [configuration.md](../design/mnemonic_service/configuration.md) |
+| Rate limiting default  | Changed to `enabled: false` in [configuration.md](../design/configuration.md) |
 | Cache refresh settings | Comments clarify settings are IGNORED in MVP                                                   |
 | Neo4j constraints      | Startup logs warnings if missing, does not fail                                                |
 | CLI telemetry          | Entire design is Post-MVP                                                                      |

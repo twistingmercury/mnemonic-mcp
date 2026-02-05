@@ -11,7 +11,7 @@
 - `src/mnemonic/internal/config/validation.go`
 - `src/mnemonic/internal/config/validation_test.go`
 - `src/mnemonic/cmd/mnemonic/main.go`
-- `docs/design/mnemonic_service/configuration.md`
+- `docs/design/configuration.md`
 
 ## Findings
 

@@ -104,14 +104,14 @@ classDiagram
         +float64 PatternRelevanceThreshold
     }
 
-    note for RouteOptions "Per-request overrides for pattern retrieval.\nIf not specified, defaults from CLI config are used.\nSee configuration.md for default values."
+    note for RouteOptions "Per-request overrides for pattern retrieval.\nIf not specified, defaults from server config are used.\nSee configuration.md for default values."
 
     Router ..> RouteRequest : uses
     RouteRequest *-- RouteContext : contains
     RouteRequest *-- RouteOptions : contains
 ```
 
-**RouteOptions precedence:** The `RouteOptions` fields (`IncludePatterns`, `MaxPatterns`, `PatternRelevanceThreshold`) allow per-request overrides of the default values configured in the ACE CLI configuration file. If these fields are not specified in a request, the CLI configuration defaults are used. See [Configuration - Routing Preferences](configuration.md#ace-cli-configuration) for default values.
+**RouteOptions precedence:** The `RouteOptions` fields (`IncludePatterns`, `MaxPatterns`, `PatternRelevanceThreshold`) allow per-request overrides of the server-side default values. If these fields are not specified in a request, the Mnemonic server configuration defaults are used.
 
 **Router.Route behavior:**
 

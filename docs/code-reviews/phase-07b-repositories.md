@@ -54,7 +54,7 @@
 
 ## Spec Alignment
 
-Implementation matches `docs/design/mnemonic_service/data-storage.md`:
+Implementation matches `docs/design/data-storage.md`:
 
 ### RoutingRuleRepository
 

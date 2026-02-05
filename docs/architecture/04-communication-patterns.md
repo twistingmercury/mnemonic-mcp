@@ -45,7 +45,7 @@ Mnemonic exposes the following REST endpoints for ACE:
 | `/v1/api/agents`        | GET    | List available agents                 |
 | `/v1/api/agents/{name}` | GET    | Get agent details                     |
 
-> **Note:** This table shows primary endpoints. See the [API Specification](../design/mnemonic_service/api-specification.md) for the complete endpoint reference including patterns and routing-rules CRUD operations.
+> **Note:** This table shows primary endpoints. See the [API Specification](../design/api-specification.md) for the complete endpoint reference including patterns and routing-rules CRUD operations.
 
 ### Request Flow
 

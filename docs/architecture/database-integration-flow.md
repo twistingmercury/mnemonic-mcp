@@ -702,13 +702,13 @@ This is a post-MVP feature. The database-level operations work; admin tooling ad
 **Next Steps:**
 
 - Review [Data Architecture](08-data-architecture.md) for detailed schemas and configurations
-- Review [Pattern Processing](../design/mnemonic_service/pattern-processing.md) for enrichment pipeline implementation
-- Review [Routing Engine](../design/mnemonic_service/routing-engine.md) for routing algorithm details
+- Review [Pattern Processing](../design/pattern-processing.md) for enrichment pipeline implementation
+- Review [Routing Engine](../design/routing-engine.md) for routing algorithm details
 
 ---
 
 See also:
 
 - [System Architecture](03-system-architecture.md) for component overview
-- [API Specification](../design/mnemonic_service/api-specification.md) for REST API details
+- [API Specification](../design/api-specification.md) for REST API details
 - [Deployment Architecture](05-deployment-architecture.md) for scaling patterns

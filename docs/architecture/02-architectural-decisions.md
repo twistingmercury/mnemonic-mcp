@@ -9,7 +9,7 @@
 - [ADR-002: Routing Location](#adr-002-routing-location)
 - [ADR-003: Claude Code Integration Strategy](#adr-003-claude-code-integration-strategy)
 - [ADR-004: Unified Backend with REST API](#adr-004-unified-backend-with-rest-api)
-- [ADR-005: Monorepo Structure](#adr-005-monorepo-structure)
+- [ADR-005: Separate Repositories for CLI and Backend](#adr-005-separate-repositories-for-cli-and-backend)
 - [ADR-006: Phased Evolution Path](#adr-006-phased-evolution-path)
 - [Decision Summary](#decision-summary)
 
@@ -245,7 +245,7 @@ While MVP scope limits Mnemonic to serving ACE only, the architecture accommodat
 
 The current architecture does not preclude these additions, but they are explicitly out of scope for MVP to keep initial complexity manageable.
 
-## ADR-005: Monorepo Structure
+## ADR-005: Separate Repositories for CLI and Backend
 
 ### Context
 
@@ -258,62 +258,58 @@ Options considered:
 
 Key considerations:
 
-- Atomic changes across CLI and server
-- Shared tooling and infrastructure
-- Dependency management simplicity
-- CI/CD flexibility
+- Independent development lifecycles
+- Focus repository scope on backend service
+- Deployment and release independence
+- CI/CD simplicity
 
 ### Decision
 
-**ACE is a monorepo containing two binaries built from a single Go module.**
+**Mnemonic backend and ACE CLI are developed in separate repositories.**
 
-| Directory         | Purpose                                                                  |
-| ----------------- | ------------------------------------------------------------------------ |
-| **src/ace/**      | CLI client that orchestrates routing decisions and Claude Code execution |
-| **src/mnemonic/** | Backend server providing routing and pattern retrieval via REST API      |
+This repository contains only Mnemonic, the backend service providing routing and pattern retrieval via REST API. The ACE CLI will be developed in a separate repository once Mnemonic reaches sufficient maturity.
+
+| Repository | Purpose                                                             |
+| ---------- | ------------------------------------------------------------------- |
+| **mnemonic** (this repo) | Backend server providing routing and pattern retrieval via REST API |
+| **ace-cli** (future) | CLI client that orchestrates routing decisions and Claude Code execution |
 
 ```mermaid
 graph TB
-    subgraph "ace monorepo"
-        subgraph "src/ace/"
-            ACE_CLI[CLI]
-            ACE_CLIENT[Mnemonic Client]
-            ACE_EXEC[Execution Engine]
-        end
-
+    subgraph "mnemonic repository (this repo)"
         subgraph "src/mnemonic/"
             MN_API[REST API]
             MN_ROUTE[Routing Engine]
             MN_PATTERN[Pattern Enrichment Service]
         end
+    end
 
-        SHARED[Shared Go Module]
+    subgraph "ace-cli repository (future)"
+        ACE_CLI[CLI]
+        ACE_CLIENT[Mnemonic Client]
+        ACE_EXEC[Execution Engine]
     end
 
     ACE_CLI --> ACE_CLIENT
     ACE_CLIENT -->|"REST"| MN_API
-    ACE_CLI --> SHARED
-    MN_API --> SHARED
 ```
-
-GitHub Actions path filters enable independent CI/CD pipelines while maintaining the benefits of a unified codebase.
 
 ### Consequences
 
 **Positive:**
 
-- Atomic commits across CLI and server ensure consistency
-- Shared tooling (linting, testing infrastructure, build scripts)
-- Simpler dependency management with single Go module
-- Single versioning story for coordinated releases
-- Path-filtered CI/CD allows independent builds when needed
-- Easier refactoring when interfaces change
+- Backend development can proceed independently of CLI
+- Simpler CI/CD with single component per repository
+- Clear separation of concerns and ownership
+- Backend can be used by multiple clients in the future
+- Focused repository scope reduces complexity
 
 **Negative:**
 
-- Repository size grows with both components
-- CI/CD requires path filtering configuration
-- All contributors have access to entire codebase
+- API changes require coordination across repositories
+- Cannot make atomic commits across CLI and server
+- Versioning requires careful API compatibility management
+- Integration testing requires multi-repository setup
 
 ## ADR-006: Phased Evolution Path
 
@@ -385,7 +381,7 @@ graph TB
 | ADR-002  | Server-side routing       | Enable team collaboration and central management     |
 | ADR-003  | Direct CLI invocation     | Minimize wrapper complexity                          |
 | ADR-004  | Unified backend with REST | Simplicity, excellent tooling, easy debugging        |
-| ADR-005  | Monorepo structure        | Atomic changes, shared tooling, simpler dependencies |
+| ADR-005  | Separate repositories     | Independent development, focused scope, simpler CI/CD |
 | ADR-006  | Phased evolution          | Deliver value early, design for future               |
 
 **Next:** [System Architecture](03-system-architecture.md)
