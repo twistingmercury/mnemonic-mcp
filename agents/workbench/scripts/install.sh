@@ -14,7 +14,7 @@ export TIMESTAMP="${TIMESTAMP:-$(date +%Y%m%d-%H%M%S)}"
 . "${PROJ_ROOT}/lib/print.sh"
 
 main(){
-    print::info "Starting legacy-tas installation..."
+    print::info "Starting agent workbench installation..."
 
     print::info "Step 1/6: Starting memory infrastructure..."
     if ! "${SCRIPT_DIR}/00-start-memory-infra.sh"; then

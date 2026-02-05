@@ -17,7 +17,7 @@ printf "Logging to: %s\n" "${LOG_FILE}"
 
 CLAUDE_ROOT="${CLAUDE_ROOT:-${HOME}/.claude}"
 GLOBAL_CONF="${CLAUDE_ROOT}/CLAUDE.md"
-AGENT_RULES_SOURCE="${PROJ_ROOT}/../agents/global-agent-rules.txt"
+AGENT_RULES_SOURCE="${PROJ_ROOT}/../global-agent-rules.txt"
 
 source "${SCRIPT_DIR}/../lib/print.sh"
 

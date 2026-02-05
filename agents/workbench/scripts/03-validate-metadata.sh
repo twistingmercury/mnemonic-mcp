@@ -23,7 +23,7 @@ printf "Logging to: %s\n" "${LOG_FILE}"
 . "${SCRIPT_DIR}/../lib/print.sh"
 
 # Configuration
-PATTERNS_DIR="${PATTERNS_DIR:-${SCRIPT_DIR}/../../agent-patterns}"
+PATTERNS_DIR="${PATTERNS_DIR:-${SCRIPT_DIR}/../../patterns}"
 
 # No dependency check - yq and jq are prerequisites (see README)
 

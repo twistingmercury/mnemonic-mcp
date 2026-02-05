@@ -3,7 +3,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJ_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+WRKBNCH_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Logging setup
 TIMESTAMP="${TIMESTAMP:-$(date +%Y%m%d-%H%M%S)}"
@@ -15,7 +15,7 @@ exec > >(tee -a "${LOG_FILE}") 2>&1
 
 printf "Logging to: %s\n" "${LOG_FILE}"
 
-AGENT_SOURCE="${PROJ_ROOT}/../agents/definitions"
+AGENT_SOURCE="${WRKBNCH_DIR}/../definitions"
 AGENTS_DIR="${AGENTS_DIR:-${HOME}/.claude/agents/}"
 PROJECT_MARKER="team-agentic-setup"
 

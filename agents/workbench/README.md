@@ -1,6 +1,6 @@
-# Legacy TAS (Team Agentic Setup)
+# Agent Workbench
 
-> This directory contains the things you need to use Cognee as a local memory store. It's useful for testing out agent definitions and patterns. This, in essense it basically the old TAS system. The rest of this document is basically the readme for the old setup. So if you just want to use the agents and patterns being developed, this will let you do that.
+> This directory contains the things you need to use Cognee as a local memory store. It's useful for testing out agent definitions and patterns locally before deploying to the broader ACE infrastructure.
 
 - **Cognee MCP Server** - For Claude Code integration via MCP protocol (port 4000)
 - **Cognee REST API** - For HTTP/REST API access from any application (port 8000)
@@ -9,7 +9,7 @@
 
 ## Prerequisites
 
-Before running the Legacy TAS setup, ensure you have the following tools and resources available.
+Before running the Agent Workbench setup, ensure you have the following tools and resources available.
 
 ### Required Tools
 
@@ -89,7 +89,7 @@ This is required for Cognee to process data into knowledge graphs.
 > ⚠️ NOTE: THIS PROCESS WILL TAKE A GOOD 10 ~ 15 MINUTES DEPENDING ON YOUR MACHINE
 
 ```bash
-cd /Users/doublej/dev/ace/legacy-tas
+cd /Users/doublej/dev/ace/agents/workbench
 ./install.sh
 ```
 
@@ -407,7 +407,7 @@ The `install.sh` script automatically handles pattern loading and processing. Th
 #### Step 1: Load patterns into dataset
 
 ```bash
-cd /path/to/ace/legacy-tas
+cd /path/to/ace/agents/workbench
 ./scripts/04-load-patterns.sh
 ```
 
