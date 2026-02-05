@@ -5,7 +5,17 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJ_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-AGENT_SOURCE="${PROJ_ROOT}/agents/definitions"
+# Logging setup
+TIMESTAMP="${TIMESTAMP:-$(date +%Y%m%d-%H%M%S)}"
+LOG_DIR="${SCRIPT_DIR}/logs/${TIMESTAMP}"
+LOG_FILE="${LOG_DIR}/01-install-agents.log"
+
+mkdir -p "${LOG_DIR}"
+exec > >(tee -a "${LOG_FILE}") 2>&1
+
+printf "Logging to: %s\n" "${LOG_FILE}"
+
+AGENT_SOURCE="${PROJ_ROOT}/../agents/definitions"
 AGENTS_DIR="${AGENTS_DIR:-${HOME}/.claude/agents/}"
 PROJECT_MARKER="team-agentic-setup"
 

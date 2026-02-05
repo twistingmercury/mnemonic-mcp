@@ -4,11 +4,22 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJ_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Logging setup
+TIMESTAMP="${TIMESTAMP:-$(date +%Y%m%d-%H%M%S)}"
+LOG_DIR="${SCRIPT_DIR}/logs/${TIMESTAMP}"
+LOG_FILE="${LOG_DIR}/02-install-global-agent-rules.log"
+
+mkdir -p "${LOG_DIR}"
+exec > >(tee -a "${LOG_FILE}") 2>&1
+
+printf "Logging to: %s\n" "${LOG_FILE}"
+
 CLAUDE_ROOT="${CLAUDE_ROOT:-${HOME}/.claude}"
 GLOBAL_CONF="${CLAUDE_ROOT}/CLAUDE.md"
-AGENT_RULES_SOURCE="${PROJ_ROOT}/agents/global-agent-rules.txt"
+AGENT_RULES_SOURCE="${PROJ_ROOT}/../agents/global-agent-rules.txt"
 
-source "${SCRIPT_DIR}/lib/print.sh"
+source "${SCRIPT_DIR}/../lib/print.sh"
 
 ## Not every Claude Code install may have a global Claude.md file.
 ## So when that situation is encountered, we'll need to create it for the user.

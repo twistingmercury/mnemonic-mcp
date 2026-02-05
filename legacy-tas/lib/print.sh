@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # Print info message
 print::info() {
     printf "[INFO] %s\n" "${1}"
