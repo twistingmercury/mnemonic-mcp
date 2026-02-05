@@ -10,7 +10,7 @@ PROJ_ROOT="${PROJ_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 
 # Global variable declarations
 API_URL="${API_URL:-http://localhost:8000}"
-PATTERNS_DIR="${PATTERNS_DIR:-${PROJ_ROOT}/../agent-patterns}"
+PATTERNS_DIR="${PATTERNS_DIR:-${PROJ_ROOT}/../patterns}"
 TIMESTAMP="${TIMESTAMP:-$(date +%Y%m%d-%H%M%S)}"
 LOG_DIR="${SCRIPT_DIR}/logs/${TIMESTAMP}"
 LOG_FILE="${LOG_DIR}/04-load-patterns.log"

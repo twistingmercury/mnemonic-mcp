@@ -107,7 +107,7 @@ All shell scripts must adhere to these quality standards:
 
 For complete POSIX compliance guidelines and examples, see:
 
-**Pattern Reference**: `agent-patterns/shell-script-patterns/posix-compliance-pattern.md`
+**Pattern Reference**: `agents/patterns/shell-script-patterns/posix-compliance-pattern.md`
 
 Key requirements:
 
@@ -122,7 +122,7 @@ Key requirements:
 
 For complete variable naming conventions and quoting rules with examples, see:
 
-**Pattern Reference**: `agent-patterns/shell-script-patterns/variable-naming-quoting-pattern.md`
+**Pattern Reference**: `agents/patterns/shell-script-patterns/variable-naming-quoting-pattern.md`
 
 Key requirements:
 
@@ -148,7 +148,7 @@ Key requirements:
 
 For complete readability guidelines and refactoring examples, see:
 
-**Pattern Reference**: `agent-patterns/shell-script-patterns/readability-pattern.md`
+**Pattern Reference**: `agents/patterns/shell-script-patterns/readability-pattern.md`
 
 Key principle:
 
@@ -162,7 +162,7 @@ Key principle:
 
 For complete never-nester pattern with refactoring examples, see:
 
-**Pattern Reference**: `agent-patterns/shell-script-patterns/never-nester-pattern.md`
+**Pattern Reference**: `agents/patterns/shell-script-patterns/never-nester-pattern.md`
 
 Key technique:
 
@@ -196,7 +196,7 @@ shellcheck scripts/*.sh
 
 For the complete standard script template with detailed section breakdowns and examples, see:
 
-**Pattern Reference**: `agent-patterns/shell-script-patterns/shell-script-pattern.md`
+**Pattern Reference**: `agents/patterns/shell-script-patterns/shell-script-pattern.md`
 
 This pattern covers:
 
@@ -210,7 +210,7 @@ This pattern covers:
 
 For the complete library script template with namespace conventions and examples, see:
 
-**Pattern Reference**: `agent-patterns/shell-script-patterns/library-script-pattern.md`
+**Pattern Reference**: `agents/patterns/shell-script-patterns/library-script-pattern.md`
 
 This pattern covers:
 
@@ -264,7 +264,7 @@ This will provide:
 
 For complete SOLID principles applied to shell scripting with detailed examples for each principle, see:
 
-**Pattern Reference**: `agent-patterns/shell-script-patterns/solid-principles-shell-pattern.md`
+**Pattern Reference**: `agents/patterns/shell-script-patterns/solid-principles-shell-pattern.md`
 
 Key principles:
 
@@ -385,7 +385,7 @@ Provide:
 
 For complete cross-platform compatibility patterns and workarounds, see:
 
-**Pattern Reference**: `agent-patterns/shell-script-patterns/cross-platform-pattern.md`
+**Pattern Reference**: `agents/patterns/shell-script-patterns/cross-platform-pattern.md`
 
 Key differences to handle:
 
@@ -400,15 +400,15 @@ Key differences to handle:
 
 For complete implementations of frequently-needed patterns, see:
 
-- **Temporary Directory Management**: `agent-patterns/shell-script-patterns/common-patterns/temp-directory-pattern.md`
+- **Temporary Directory Management**: `agents/patterns/shell-script-patterns/common-patterns/temp-directory-pattern.md`
   - Cross-platform mktemp usage
   - Cleanup helper functions
 
-- **File Locking**: `agent-patterns/shell-script-patterns/common-patterns/file-locking-pattern.md`
+- **File Locking**: `agents/patterns/shell-script-patterns/common-patterns/file-locking-pattern.md`
   - Lock file acquisition with timeout
   - PID-based locking
 
-- **Retry Logic**: `agent-patterns/shell-script-patterns/common-patterns/retry-logic-pattern.md`
+- **Retry Logic**: `agents/patterns/shell-script-patterns/common-patterns/retry-logic-pattern.md`
   - Configurable retry attempts
   - Backoff strategies
 

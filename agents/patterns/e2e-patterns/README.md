@@ -221,7 +221,7 @@ To add or update patterns:
 6. **Load patterns into Cognee** using Cognee MCP tools during agent operations
 7. **Commit to version control**:
    ```bash
-   git add agent-patterns/e2e-patterns/
+   git add agents/patterns/e2e-patterns/
    git commit -m "Add/update E2E testing pattern"
    ```
 
