@@ -45,9 +45,9 @@ graph TB
 
 ### ACE CLI
 
-The CLI is the primary user interface and orchestrates local execution.
+The ACE CLI (to be developed in a separate repository) will be the primary user interface and orchestrate local execution.
 
-**Responsibilities:**
+**Planned Responsibilities:**
 
 - Accept user prompts and commands
 - Request routing decisions from Mnemonic
@@ -57,14 +57,14 @@ The CLI is the primary user interface and orchestrates local execution.
 
 **Key Characteristics:**
 
-- Runs on user workstation
+- Will run on user workstation
 - Stateless between invocations (state lives in Mnemonic)
-- Handles authentication to external services
-- Manages local execution environment
+- Will handle authentication to external services
+- Will manage local execution environment
 
 ```mermaid
 graph TB
-    subgraph "ACE CLI Internal Structure"
+    subgraph "ACE CLI Internal Structure (Future)"
         INPUT[Input Handler]
         AUTH[Auth Manager]
         ROUTE[Routing Client]
@@ -79,6 +79,8 @@ graph TB
     PROMPT --> EXEC
     EXEC --> OUTPUT
 ```
+
+**Note:** The ACE CLI will be developed in a separate repository once Mnemonic reaches sufficient maturity. For now, Mnemonic can be tested using REST API clients like curl or Postman.
 
 ### Mnemonic
 

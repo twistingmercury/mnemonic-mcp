@@ -17,57 +17,61 @@
 
 ## Introduction
 
-ACE (Agent Coordination Engine) is an orchestration layer built on top of Claude Code. It provides deterministic routing, dynamic patterns from Mnemonic, and flexible execution strategies while preserving the capabilities of Claude Code.
+ACE (Agent Coordination Engine) is an orchestration layer built on top
+of Claude Code. This repository contains Mnemonic, the backend service
+that provides deterministic routing and dynamic pattern retrieval. The
+ACE CLI will be developed in a separate repository.
 
 ## Core Concept
 
-ACE is **not a replacement** for Claude Code. Instead, it serves as an orchestration layer that provides:
+Mnemonic provides the backend capabilities for ACE orchestration:
 
 - **Deterministic routing** via code-based logic (not LLM-driven)
 - **Dynamic patterns** retrieved from Mnemonic's knowledge graph
-- **Local execution** through Claude Code (Phase 1) or direct Anthropic API calls (Phase 2)
+- **REST API interface** for external clients to consume routing and
+  pattern retrieval
 
 ```mermaid
 graph TB
-    subgraph "User Workstation"
+    subgraph "Future Client (Separate Repo)"
         CLI[ACE CLI]
-        CC[Claude Code]
     end
 
-    subgraph "Server Infrastructure"
+    subgraph "Mnemonic Service (This Repo)"
         MN[Mnemonic Server]
         PG[(Postgres + PGVector)]
         NEO[(Neo4j)]
     end
 
-    CLI -->|"1. REST: Route + Patterns"| MN
+    CLI -->|"REST: Route + Patterns"| MN
     MN <--> PG
     MN <--> NEO
-    MN -->|"2. Agent + Patterns"| CLI
-    CLI -->|"3. Execute with context"| CC
-    CC -->|"4. Results"| CLI
+    MN -->|"Agent + Patterns"| CLI
 ```
 
 ## Repository Structure
 
-ACE is a monorepo containing two binaries built from a single Go module:
+This repository contains Mnemonic, the backend service for ACE:
 
-| Binary       | Purpose                                                             |
+| Component    | Purpose                                                             |
 | ------------ | ------------------------------------------------------------------- |
 | **mnemonic** | Backend server providing routing and pattern retrieval via REST API |
-| **ace**      | CLI client that orchestrates routing decisions and execution        |
 
-The monorepo structure enables atomic commits across CLI and server, shared tooling (linting, testing infrastructure), and simpler dependency management. GitHub Actions path filters enable independent CI/CD pipelines for each binary.
+The ACE CLI will be developed in a separate repository once Mnemonic
+reaches MVP status.
 
 ## System Model
 
-The ACE architecture follows a CLI-centric model where:
+The ACE architecture separates concerns:
 
-1. **ACE CLI** runs on the user's workstation and serves as the primary interface
-2. **Mnemonic** provides centralized routing logic and pattern retrieval via REST API
-3. **Claude Code** (or Anthropic API) handles actual LLM interactions and tool execution
+1. **Mnemonic** (this repository) provides centralized routing logic and
+   pattern retrieval via REST API
+2. **ACE CLI** (future separate repository) will consume Mnemonic's API
+   and handle execution orchestration
+3. **Execution** will remain local on the user's workstation
 
-This separation keeps routing deterministic and server-side while execution remains local.
+This separation keeps routing deterministic and server-side while
+execution remains local.
 
 ## Phased Approach
 
@@ -182,8 +186,7 @@ sequenceDiagram
 | [06-security-architecture.md](06-security-architecture.md)         | Phase 3 authentication and authorization |
 | [07-observability-architecture.md](07-observability-architecture.md) | Monitoring, logging, and tracing       |
 | [08-data-architecture.md](08-data-architecture.md)                 | Database schemas and data management   |
-| [project-structure.md](project-structure.md)                       | Repository layout and organization     |
-| [mnemonic-integration-concept.md](mnemonic-integration-concept.md) | ACE + Mnemonic integration details     |
+| [mnemonic-integration-concept.md](../mnemonic-integration-concept.md) | ACE + Mnemonic integration details     |
 
 ## Design Documents
 
@@ -201,12 +204,6 @@ Architecture documents describe **what** the system does and **why** decisions w
 ### Available Design Documents
 
 The following design documents provide implementation details:
-
-**ACE CLI:**
-
-| Document                                                                    | Description             | Status   |
-| --------------------------------------------------------------------------- | ----------------------- | -------- |
-| [configuration.md](../design/ace_cli/configuration.md)                      | CLI configuration       | Complete |
 
 **Mnemonic Service:**
 

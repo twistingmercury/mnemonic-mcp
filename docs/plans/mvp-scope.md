@@ -8,13 +8,16 @@ ACE MVP delivers Phase 1 Claude Code integration with centralized routing and pa
 
 ## MVP Scope - What's Included
 
-### ACE CLI
+### ACE CLI (Future - Separate Repository)
 
-- Routing requests and pattern retrieval -> [CLI Configuration](../design/ace_cli/configuration.md)
+The ACE CLI will be developed in a separate repository once Mnemonic reaches MVP status. Planned high-level capabilities include:
+
+- Routing requests and pattern retrieval via Mnemonic API
 - Claude Code invocation with enriched context -> [Architecture Overview - Phase 1](../architecture/00-overview.md#phase-1-claude-code-integration)
-- YAML configuration with precedence: defaults -> file -> env -> flags
-- API key authentication to Mnemonic
-- Client-side routing cache (5m TTL)
+- Configuration management
+- Authentication to Mnemonic
+
+**Note:** Detailed CLI specifications (configuration precedence, caching behavior, etc.) will be documented in the CLI repository. For MVP testing, Mnemonic's REST API can be accessed using curl, Postman, or other HTTP clients.
 
 ### Mnemonic Server
 
@@ -89,7 +92,6 @@ ACE MVP delivers Phase 1 Claude Code integration with centralized routing and pa
 | Neo4j sync is best-effort       | Graph may be temporarily inconsistent | Failures logged, processing continues     |
 | No rate limiting enforcement    | Potential resource exhaustion         | Operational monitoring                    |
 | Single pod deployment           | Limited availability                  | Horizontal scaling available but untested |
-| Client caching (5m TTL)         | Stale routing decisions possible      | Reduce TTL or disable cache if needed     |
 | No backup procedures            | Data loss risk                        | Manual database backups                   |
 
 ## Success Criteria
@@ -98,10 +100,10 @@ Functional requirements and quality attributes are defined in [Requirements](../
 
 **Key metrics:**
 
-- CLI routes requests through Mnemonic to appropriate handlers
-- Patterns are accessible to all team members
-- Claude Code invocation works with enriched context
+- Mnemonic correctly routes requests to appropriate agents via REST API
+- Patterns are retrievable via REST API
 - Routing decisions are deterministic and reproducible
+- Enriched context (agent + patterns) can be consumed by external clients
 
 ## Resolved Inconsistencies
 

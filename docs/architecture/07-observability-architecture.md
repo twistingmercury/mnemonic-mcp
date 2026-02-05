@@ -21,12 +21,13 @@ Observability enables understanding system behavior through external outputs. Fo
 
 **Scope:**
 
-| Component           | Observability Scope                                 |
-| ------------------- | --------------------------------------------------- |
-| Mnemonic            | Full observability (metrics, logs, traces)          |
-| Postgres + PGVector | Database metrics and query logging                  |
-| Neo4j               | Query metrics and performance                       |
-| ACE CLI             | Post-MVP: Aggregated usage telemetry to be designed |
+| Component           | Observability Scope                        |
+| ------------------- | ------------------------------------------ |
+| Mnemonic            | Full observability (metrics, logs, traces) |
+| Postgres + PGVector | Database metrics and query logging         |
+| Neo4j               | Query metrics and performance              |
+
+**Note:** The ACE CLI will be developed in a separate repository with its own observability strategy to be designed.
 
 **Key Characteristic:** Mnemonic is a lightweight service (no LLM inference), so observability focuses on routing performance, pattern retrieval efficiency, and database health rather than compute-intensive operations.
 

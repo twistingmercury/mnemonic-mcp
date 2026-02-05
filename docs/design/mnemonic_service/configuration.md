@@ -39,7 +39,7 @@ The Mnemonic server uses a layered configuration system that supports multiple s
 | --------- | ------------- | --------------------------- | -------------------------- |
 | Mnemonic  | `MNEMONIC_`   | `/etc/mnemonic/config.yaml` | Server deployment settings |
 
-For ACE CLI configuration, see [ACE CLI Configuration](../ace_cli/configuration.md).
+The ACE CLI will be developed in a separate repository and will have its own configuration documentation.
 
 ## Configuration Loading Order
 
@@ -151,9 +151,7 @@ rate_limit:
 routing:
   cache:
     # NOTE: This is SERVER-SIDE caching within Mnemonic. It determines how often
-    # Mnemonic refreshes its internal rule cache from the database. This is different
-    # from ACE CLI's cache.ttl (CLIENT-SIDE), which controls how long the CLI caches
-    # routing decisions before re-querying Mnemonic.
+    # Mnemonic refreshes its internal rule cache from the database.
     #
     # MVP LIMITATION: These settings exist for forward compatibility but are IGNORED
     # in MVP. Rules are loaded once at startup and cached indefinitely. Restart the
@@ -645,7 +643,6 @@ classDiagram
 - [Architecture Overview](../../architecture/00-overview.md) - System context
 - [System Architecture](../../architecture/03-system-architecture.md) - Component layout
 - [Deployment Architecture](../../architecture/05-deployment-architecture.md) - Deployment environments
-- [ACE CLI Configuration](../ace_cli/configuration.md) - Client-side configuration
 - [Pattern Processing](pattern-processing.md) - OpenAI configuration for enrichment
 - [Routing Engine](routing-engine.md) - Routing cache configuration
 - [Observability Implementation](observability-implementation.md) - otelx integration details

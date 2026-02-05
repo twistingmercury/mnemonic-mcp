@@ -1,98 +1,103 @@
-# ACE + Mnemonic Integration Concept
+# Mnemonic Client Integration Concept
 
-[Back to Architecture Overview](architecture/00-overview.md) | [Back to Project README](../README.md)
+[Back to Architecture Overview](architecture/00-overview.md) |
+[Back to Project README](../README.md)
 
 ## Unified Architecture: Mnemonic as the Backend
 
-In this model, Mnemonic serves as the single backend service with ACE-specific endpoints.
-ACE CLI orchestrates calls to Mnemonic and Claude Code.
+In this model, Mnemonic serves as the single backend service providing routing,
+pattern retrieval, and agent management capabilities. Client applications
+orchestrate calls to Mnemonic and AI services like Claude Code or the
+Anthropic API directly.
 
-### Phase 1: With Claude Code
+> **What is a "Client"?** Any application that consumes Mnemonic's API: a CLI
+> tool (like ACE CLI), a web application, an IDE extension, an automated
+> business process, or a custom integration script.
+
+### Phase 1: Claude Code Custom Commands
+
+In Phase 1, Claude Code is the client. Users invoke custom commands (skills) like
+`/review`, `/document`, `/design`, `/test`, etc. These commands query Mnemonic
+for routing and patterns, then execute with enriched context.
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant CLI as ACE CLI
-    participant MN as Mnemonic Server
     participant CC as Claude Code
+    participant MN as Mnemonic Server
 
-    User->>CLI: "Write a Go function to sum numbers"
+    User->>CC: /review (or /document, /design, /test, etc.)
 
-    Note over CLI,MN: Step 1: Get routing decision
-    CLI->>MN: POST /v1/api/route
-    MN->>MN: Evaluate routing rules (code-based)
-    MN-->>CLI: { agent: "go-software-agent", confidence: 1.0 }
+    Note over CC,MN: Step 1: Get routing decision + patterns
+    CC->>MN: POST /v1/api/route
+    MN->>MN: Evaluate routing rules
+    MN->>MN: Query knowledge graph for patterns
+    MN-->>CC: { agent: "code-review-agent",<br/>patterns: [...] }
 
-    Note over CLI,MN: Step 2: Get relevant patterns
-    CLI->>MN: GET /v1/api/patterns?agent="go-software-agent"&context="sum function"
-    MN->>MN: Query knowledge graph
-    MN-->>CLI: { patterns: [...], system_prompt: "..." }
-
-    Note over CLI,CC: Step 3: Execute via Claude Code
-    CLI->>CLI: Assemble Claude Code invocation
-    CLI->>CC: claude --agent go-software-agent<br/>--agents '{patterns...}'<br/>-p "Write a Go function to sum numbers"
+    Note over CC: Step 2: Execute with enriched context
+    CC->>CC: Apply patterns to system prompt
     CC->>CC: Execute with Anthropic API
-    CC->>CC: Tool calls: Write("math.go", content)
-    CC-->>CLI: { success: true, files_modified: ["math.go"] }
+    CC->>CC: Tool calls as needed
 
-    CLI-->>User: Done! Created math.go
+    CC-->>User: Review complete!
 ```
 
-### Phase 2: Direct Anthropic API (Future)
+### Phase 2: Other Clients (Web Apps, CLI Tools, etc.)
+
+Other clients (web applications, the ACE CLI, business processes) can integrate
+with Mnemonic and call the Anthropic API directly for custom workflows.
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant CLI as ACE CLI
+    participant Client as Client (Web/CLI/Async Process, etc.)
     participant MN as Mnemonic Server
     participant ANT as Anthropic API
 
-    User->>CLI: "Write a Go function to sum numbers"
+    User->>Client: "Write a Go function to sum numbers"
 
-    Note over CLI,MN: Step 1: Get routing decision
-    CLI->>MN: POST /v1/api/route
-    MN-->>CLI: { agent: "go-software-agent" }
+    Note over Client,MN: Step 1: Get routing decision + patterns
+    Client->>MN: POST /v1/api/route
+    MN-->>Client: { agent: "go-software-agent",<br/>patterns: [...] }
 
-    Note over CLI,MN: Step 2: Get relevant patterns
-    CLI->>MN: GET /v1/api/patterns?agent="go-software-agent"&context="sum function"
-    MN-->>CLI: { patterns: [...], system_prompt: "..." }
+    Note over Client,ANT: Step 2: Direct API call
+    Client->>ANT: POST /v1/messages<br/>{ model, system, messages }
+    ANT-->>Client: { tool_use: "write_file",<br/>path: "math.go" }
 
-    Note over CLI,ANT: Step 3: Direct API call
-    CLI->>ANT: POST /v1/messages<br/>{ model, system, messages, tools }
-    ANT-->>CLI: { tool_use: "write_file", path: "math.go", content: "..." }
+    Note over Client: Step 3: Local tool execution
+    Client->>Client: Execute write_file("math.go", content)
 
-    Note over CLI: Step 4: Local tool execution
-    CLI->>CLI: Execute write_file("math.go", content)
-
-    CLI-->>User: Done! Created math.go
+    Client-->>User: Done! Created math.go
 ```
 
 ## Mnemonic API Endpoints
 
-### ACE-Specific Endpoints
+### Client Integration Endpoints
 
-| Endpoint                         | Purpose                                          |
-| -------------------------------- | ------------------------------------------------ |
-| `POST /v1/api/route`             | Determine which agent handles a prompt           |
-| `GET /v1/api/patterns`           | Retrieve patterns for a specific agent + context |
-| `GET /v1/api/agents`             | List available agents and their capabilities     |
-| `PUT /v1/api/routing-rules/{id}` | Update routing rules (admin)                     |
+| Endpoint                         | Purpose                                |
+| -------------------------------- | -------------------------------------- |
+| `POST /v1/api/route`             | Determine which agent handles a prompt |
+| `GET /v1/api/patterns`           | Retrieve patterns for agent + context  |
+| `GET /v1/api/agents`             | List available agents and capabilities |
+| `PUT /v1/api/routing-rules/{id}` | Update routing rules (admin)           |
 
 ## What Lives Where
 
-| Component                  | Location              | Responsibility                          |
-| -------------------------- | --------------------- | --------------------------------------- |
-| **Routing rules**          | Mnemonic              | Stored as queryable knowledge           |
-| **Patterns**               | Mnemonic              | Stored in knowledge graph               |
-| **Agent definitions**      | Mnemonic              | Stored as structured data               |
-| **Routing logic**          | Mnemonic              | Code-based evaluation                   |
-| **Prompt assembly**        | ACE CLI               | Combines route + patterns + user prompt |
-| **Claude Code invocation** | ACE CLI               | Builds and executes command             |
-| **Tool execution**         | ACE CLI / Claude Code | Local filesystem operations             |
+| Component                 | Location            | Responsibility                   |
+| ------------------------- | ------------------- | -------------------------------- |
+| **Routing rules**         | Mnemonic            | Queryable knowledge storage      |
+| **Patterns**              | Mnemonic            | Knowledge graph storage          |
+| **Agent definitions**     | Mnemonic            | Structured data storage          |
+| **Routing logic**         | Mnemonic            | Code-based evaluation            |
+| **Prompt assembly**       | Client              | Combines route, patterns, prompt |
+| **AI service invocation** | Client              | Builds and executes commands     |
+| **Tool execution**        | Client / AI Service | Local filesystem operations      |
 
 ## Benefits of This Model
 
-1. **Single backend**: Only Mnemonic to deploy/manage
-2. **ACE CLI is lightweight**: Just orchestration, no server logic
-3. **Clean separation**: Knowledge storage (Mnemonic) vs orchestration (CLI)
+1. **Single backend**: Only Mnemonic to deploy and manage
+2. **Lightweight clients**: Just orchestration, no server logic required
+3. **Clean separation**: Knowledge storage (Mnemonic) vs orchestration
 4. **Routing as data**: Rules stored alongside patterns, version controlled
+5. **Flexible integration**: Clients can use Claude Code or Anthropic API
+6. **Reusable patterns**: Multiple clients share the same knowledge base
