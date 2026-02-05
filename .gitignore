@@ -9,7 +9,7 @@ ehthumbs.db
 Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
-
+**/ideas/
 # Linux
 *~
 .directory
