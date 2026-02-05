@@ -1,4 +1,4 @@
-.PHONY: local build unit-test analyze help db-tests db-tests-agent db-tests-pattern
+.PHONY: local build tests-unit analyze help tests-db tests-db-agent tests-db-pattern tests-migrations tests-e2e
 
 GIT_COMMIT := $(shell git rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
 GIT_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "dev")
@@ -23,17 +23,23 @@ analyze: ## Run linters, formatters, security scanners, etc
 	govulncheck ./cmd/... ./internal/...
 	gosec -quiet -exclude-dir=tests ./...
 
-unit-test: ## Run the unit tests
-	go test ./internal/... -coverprofile=coverage.out
-	go tool cover -html=coverage.out
+tests-db: db-tests-agent db-tests-pattern ## Run all database integration tests
 
-db-tests: db-tests-agent db-tests-pattern ## Run all database integration tests
-
-db-tests-agent: ## Run agent repository integration tests
+tests-db-agent: ## Run agent repository integration tests
 	./internal/repository/tests/run-agent-integration-tests.sh
 
-db-tests-pattern: ## Run pattern repository integration tests
+tests-db-pattern: ## Run pattern repository integration tests
 	./internal/repository/tests/run-pattern-integration-tests.sh
+	
+tests-e2e: ## Runs the end-to-end tests
+	echo "make tests-e2e not implemented"
+
+tests-migrations: ## Run the BATS tests that ensure migrations work as expected.
+	./migrations/tests/test-runner.sh
+
+tests-unit: ## Run the unit tests
+	go test ./internal/... -coverprofile=coverage.out
+	go tool cover -html=coverage.out
 
 image: ## Build the image locally
 	docker build --rm \
@@ -47,4 +53,4 @@ image: ## Build the image locally
 	docker run --rm mnemonic:${GIT_COMMIT}-local --version
 
 help: ## Show this help
-	@awk 'BEGIN {FS = ":.*##"; printf "\nAvailable targets:\n"} /^[a-zA-Z0-9_-]+:.*##/ { printf "  %-12s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nAvailable targets:\n"} /^[a-zA-Z0-9_-]+:.*##/ { printf "  %-18s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
