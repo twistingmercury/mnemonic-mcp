@@ -6,13 +6,24 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Logging setup
+TIMESTAMP="${TIMESTAMP:-$(date +%Y%m%d-%H%M%S)}"
+LOG_DIR="${SCRIPT_DIR}/logs/${TIMESTAMP}"
+LOG_FILE="${LOG_DIR}/03-validate-metadata.log"
+
+mkdir -p "${LOG_DIR}"
+exec > >(tee -a "${LOG_FILE}") 2>&1
+
+printf "Logging to: %s\n" "${LOG_FILE}"
+
 # Source print library
 # shellcheck source=lib/print.sh
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-. "${SCRIPT_DIR}/lib/print.sh"
+. "${SCRIPT_DIR}/../lib/print.sh"
 
 # Configuration
-PATTERNS_DIR="${PATTERNS_DIR:-${SCRIPT_DIR}/../agent-patterns}"
+PATTERNS_DIR="${PATTERNS_DIR:-${SCRIPT_DIR}/../../agent-patterns}"
 
 # No dependency check - yq and jq are prerequisites (see README)
 

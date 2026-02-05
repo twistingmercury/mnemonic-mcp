@@ -3,10 +3,10 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJ_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-COGNEE_DIR="${PROJ_ROOT}/memory-mcp-server"
-TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-LOG_DIR="${COGNEE_DIR}/logs"
-LOG_FILE="${LOG_DIR}/setup-cognee-${TIMESTAMP}.log"
+COGNEE_DIR="${PROJ_ROOT}"
+TIMESTAMP="${TIMESTAMP:-$(date +%Y%m%d-%H%M%S)}"
+LOG_DIR="${SCRIPT_DIR}/logs/${TIMESTAMP}"
+LOG_FILE="${LOG_DIR}/00-start-memory-infra.log"
 
 mkdir -p "${LOG_DIR}"
 
