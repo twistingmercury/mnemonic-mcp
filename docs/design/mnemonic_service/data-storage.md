@@ -1099,6 +1099,9 @@ type RoutingRuleRepository interface {
 
     // SetEnabled updates the enabled state of a rule.
     SetEnabled(ctx context.Context, id uuid.UUID, enabled bool) error
+
+    // Exists checks if a routing rule with the given ID exists.
+    Exists(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
 // RoutingRule represents a routing rule definition.
@@ -1195,6 +1198,10 @@ type EnrichmentJobRepository interface {
 
     // DeleteFailed removes failed jobs older than the retention period.
     DeleteFailed(ctx context.Context, retention time.Duration) (int64, error)
+
+    // List retrieves enrichment jobs with filtering and pagination.
+    // Returns the jobs, total count, and any error.
+    List(ctx context.Context, filter JobFilter, opts ListOptions) ([]*EnrichmentJob, int64, error)
 }
 
 // EnrichmentJob represents a background enrichment task.
@@ -1210,6 +1217,12 @@ type EnrichmentJob struct {
     CompletedAt *time.Time `db:"completed_at"`
     CreatedAt   time.Time  `db:"created_at"`
     UpdatedAt   time.Time  `db:"updated_at"`
+}
+
+// JobFilter defines filtering options for job queries.
+type JobFilter struct {
+    Status    *string    // Filter by job status (pending, processing, completed, failed)
+    PatternID *uuid.UUID // Filter by the associated pattern ID
 }
 ```
 
