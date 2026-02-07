@@ -111,7 +111,7 @@ migrate -path src/mnemonic/migrations/postgres -database "$DATABASE_URL" version
 ```sql
 -- src/mnemonic/migrations/postgres/001_extensions_and_functions.up.sql
 -- Enables required extensions and creates utility functions
--- Part of Mnemonic MVP Phase 1
+-- Part of Mnemonic MVP
 
 -- Enable UUID generation (if not using gen_random_uuid)
 create extension if not exists "uuid-ossp";
@@ -151,7 +151,7 @@ drop function if exists update_updated_at() cascade;
 ```sql
 -- src/mnemonic/migrations/postgres/002_create_agents.up.sql
 -- Creates the agents table for storing agent definitions
--- Part of Mnemonic MVP Phase 1
+-- Part of Mnemonic MVP
 
 create table if not exists agents (
     -- Primary key: lowercase-with-hyphens format, URL-safe
@@ -217,7 +217,7 @@ drop table if exists agents;
 ```sql
 -- src/mnemonic/migrations/postgres/003_create_patterns.up.sql
 -- Creates the patterns table with vector embeddings
--- Part of Mnemonic MVP Phase 1
+-- Part of Mnemonic MVP
 
 create table if not exists patterns (
     -- UUID primary key for stable references (patterns may be renamed)
@@ -282,7 +282,7 @@ drop table if exists patterns;
 ```sql
 -- src/mnemonic/migrations/postgres/004_create_pattern_agent_associations.up.sql
 -- Creates the pattern-agent association table
--- Part of Mnemonic MVP Phase 1
+-- Part of Mnemonic MVP
 
 create table if not exists pattern_agent_associations (
     -- Composite primary key
@@ -335,7 +335,7 @@ drop table if exists pattern_agent_associations;
 ```sql
 -- src/mnemonic/migrations/postgres/005_create_routing_rules.up.sql
 -- Creates the routing rules table
--- Part of Mnemonic MVP Phase 1
+-- Part of Mnemonic MVP
 
 create table if not exists routing_rules (
     -- UUID primary key (rules may be renamed)
@@ -419,7 +419,7 @@ drop table if exists routing_rules;
 ```sql
 -- src/mnemonic/migrations/postgres/006_create_enrichment_jobs.up.sql
 -- Creates the enrichment jobs queue table
--- Part of Mnemonic MVP Phase 1
+-- Part of Mnemonic MVP
 
 create table if not exists enrichment_jobs (
     -- UUID primary key
@@ -491,7 +491,7 @@ drop table if exists enrichment_jobs;
 ```sql
 -- src/mnemonic/migrations/postgres/007_create_performance_indexes.up.sql
 -- Creates performance indexes for common query patterns
--- Part of Mnemonic MVP Phase 1
+-- Part of Mnemonic MVP
 
 -- Routing rules: enabled rules by priority (most common query)
 create index idx_routing_rules_enabled_priority
@@ -680,12 +680,16 @@ analyze patterns;
 
 ### Schema Constraints
 
-Create these constraints during initial Neo4j setup:
+Create these constraints during initial Neo4j setup.
+
+**Uniqueness Constraints (Community Edition + Enterprise Edition):**
+
+These constraints are compatible with all Neo4j editions and are created by `001_create_constraints.cypher`:
 
 ```cypher
 // src/mnemonic/migrations/neo4j/001_create_constraints.cypher
 // Creates uniqueness constraints for node labels
-// Part of Mnemonic MVP Phase 1
+// Part of Mnemonic MVP
 
 // Pattern nodes: UUID from Postgres
 CREATE CONSTRAINT pattern_id_unique IF NOT EXISTS
@@ -698,6 +702,16 @@ FOR (a:Agent) REQUIRE a.name IS UNIQUE;
 // Concept nodes: normalized lowercase name
 CREATE CONSTRAINT concept_name_unique IF NOT EXISTS
 FOR (c:Concept) REQUIRE c.name IS UNIQUE;
+```
+
+**Existence Constraints (Enterprise Edition Only):**
+
+These constraints require Neo4j Enterprise Edition and are created by `002_create_existence_constraints.cypher`. Community Edition users should skip this migration. The application layer enforces property completeness regardless of whether these database-level constraints are present.
+
+```cypher
+// src/mnemonic/migrations/neo4j/002_create_existence_constraints.cypher
+// Requires Neo4j Enterprise Edition
+// Part of Mnemonic MVP
 
 // Existence constraints (properties must exist)
 CREATE CONSTRAINT pattern_name_exists IF NOT EXISTS
@@ -724,41 +738,50 @@ Mnemonic validates Neo4j schema constraints at startup to ensure the database is
 
 **Constraints Checked:**
 
-The following constraint names are validated at startup:
+The constraints checked depend on the Neo4j edition:
+
+**Community Edition (3 constraints):**
 
 - `pattern_id_unique` - Uniqueness on Pattern.id
 - `agent_name_unique` - Uniqueness on Agent.name
 - `concept_name_unique` - Uniqueness on Concept.name
+
+**Enterprise Edition (6 constraints):**
+
+- All Community Edition constraints above, plus:
 - `pattern_name_exists` - Existence of Pattern.name
 - `agent_name_exists` - Existence of Agent.name
 - `concept_name_exists` - Existence of Concept.name
 
-**Example Log Output:**
+**Example Log Output (Community Edition):**
 
 ```text
-# All constraints present
-INFO  neo4j schema validation complete: all 6 constraints present
+# All constraints present (Community Edition)
+INFO  neo4j schema validation complete: all 3 constraints present
 
 # Missing constraints
 WARN  neo4j schema validation: missing constraints: pattern_id_unique, concept_name_unique
-WARN  create missing constraints using: src/migrations/neo4j/001_create_constraints.cypher
+WARN  create missing constraints using: src/mnemonic/migrations/neo4j/001_create_constraints.cypher
 ```
 
 **Manual Constraint Creation:**
 
-If constraints are missing, run the constraint creation script manually:
+If constraints are missing, run the appropriate migration scripts manually:
 
 ```bash
-# Using cypher-shell
+# Using cypher-shell (Community + Enterprise)
 cypher-shell -u neo4j -p <password> -f src/mnemonic/migrations/neo4j/001_create_constraints.cypher
+
+# Enterprise Edition only (optional)
+cypher-shell -u neo4j -p <password> -f src/mnemonic/migrations/neo4j/002_create_existence_constraints.cypher
 ```
 
 ### Index Configuration
 
 ```cypher
-// src/mnemonic/migrations/neo4j/002_create_indexes.cypher
+// src/mnemonic/migrations/neo4j/003_create_indexes.cypher
 // Creates indexes for common query patterns
-// Part of Mnemonic MVP Phase 1
+// Part of Mnemonic MVP
 
 // Pattern lookup by name
 CREATE INDEX pattern_name_index IF NOT EXISTS
@@ -768,7 +791,7 @@ FOR (p:Pattern) ON (p.name);
 CREATE INDEX concept_type_index IF NOT EXISTS
 FOR (c:Concept) ON (c.type);
 
-// Full-text search on pattern content (if needed)
+// Full-text search on pattern content
 CREATE FULLTEXT INDEX pattern_content_fulltext IF NOT EXISTS
 FOR (p:Pattern) ON EACH [p.name, p.description];
 

@@ -1,6 +1,6 @@
 -- src/migrations/postgres/up/003_create_patterns.sql
 -- Creates the patterns table with PGVector embedding support.
--- Part of Mnemonic MVP Phase 6
+-- Part of Mnemonic MVP
 --
 -- Dependencies: 001_extensions_and_functions (for vector extension)
 --

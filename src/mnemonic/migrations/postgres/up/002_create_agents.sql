@@ -1,6 +1,6 @@
 -- src/migrations/postgres/up/002_create_agents.sql
 -- Creates the agents table for storing agent definitions.
--- Part of Mnemonic MVP Phase 5A
+-- Part of Mnemonic MVP
 --
 -- Dependencies: 001_extensions_and_functions (for extensions)
 --
