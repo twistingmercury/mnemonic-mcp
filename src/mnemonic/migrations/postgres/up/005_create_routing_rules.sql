@@ -1,6 +1,6 @@
 -- src/mnemonic/migrations/postgres/up/005_create_routing_rules.sql
 -- Creates the routing_rules table for prompt-to-agent matching.
--- Part of Mnemonic MVP Phase 7A
+-- Part of Mnemonic MVP
 --
 -- Dependencies: 002_create_agents (for agents table)
 --

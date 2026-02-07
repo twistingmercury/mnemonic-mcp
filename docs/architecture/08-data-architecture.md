@@ -532,7 +532,7 @@ LIMIT $3;  -- max_patterns
 **Constraints and Indexes:**
 
 ```cypher
-// Uniqueness constraints
+// Uniqueness constraints (Community + Enterprise)
 CREATE CONSTRAINT pattern_id_unique IF NOT EXISTS
 FOR (p:Pattern) REQUIRE p.id IS UNIQUE;
 
@@ -542,12 +542,24 @@ FOR (a:Agent) REQUIRE a.name IS UNIQUE;
 CREATE CONSTRAINT concept_name_unique IF NOT EXISTS
 FOR (c:Concept) REQUIRE c.name IS UNIQUE;
 
-// Lookup indexes
+// Existence constraints (Enterprise Edition only)
+// Note: Community Edition does not support existence constraints (IS NOT NULL).
+// The application layer enforces property completeness regardless.
+// See docs/design/data-storage.md for details on the CE/Enterprise split.
+
+// Property indexes
 CREATE INDEX pattern_name_index IF NOT EXISTS
 FOR (p:Pattern) ON (p.name);
 
 CREATE INDEX concept_type_index IF NOT EXISTS
 FOR (c:Concept) ON (c.type);
+
+// Full-text search indexes
+CREATE FULLTEXT INDEX pattern_content_fulltext IF NOT EXISTS
+FOR (p:Pattern) ON EACH [p.name, p.description];
+
+CREATE FULLTEXT INDEX concept_name_fulltext IF NOT EXISTS
+FOR (c:Concept) ON EACH [c.name];
 ```
 
 **Graph Data Flow:**
@@ -1100,7 +1112,8 @@ src/mnemonic/
     │   └── ...
     └── neo4j/
         ├── 001_create_constraints.cypher
-        └── 002_create_indexes.cypher
+        ├── 002_create_existence_constraints.cypher
+        └── 003_create_indexes.cypher
 ```
 
 **Version Tracking:**

@@ -1,6 +1,6 @@
 -- src/migrations/postgres/up/004_create_pattern_agent_associations.sql
 -- Creates the pattern-agent association table for many-to-many relationships.
--- Part of Mnemonic MVP Phase 6
+-- Part of Mnemonic MVP
 --
 -- Dependencies:
 --   - 002_create_agents (for agents table)

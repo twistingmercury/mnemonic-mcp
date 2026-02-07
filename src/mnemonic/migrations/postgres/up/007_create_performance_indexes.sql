@@ -1,6 +1,6 @@
 -- src/mnemonic/migrations/postgres/up/007_create_performance_indexes.sql
 -- Creates performance-optimized indexes for common query patterns.
--- Part of Mnemonic MVP Phase 7A
+-- Part of Mnemonic MVP
 --
 -- Dependencies:
 --   - 003_create_patterns (for patterns table)
