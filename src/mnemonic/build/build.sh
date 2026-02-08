@@ -20,6 +20,8 @@ RETRY_INTERVAL="${RETRY_INTERVAL:-2}"
 PG_HOST="${PG_HOST:-localhost}"
 PG_PORT="${PG_PORT:-5433}"
 PG_USER="${PG_USER:-mnemonic}"
+NEO4J_USER="${NEO4J_USER:-neo4j}"
+NEO4J_PASSWORD="${NEO4J_PASSWORD:-mnemonic_dev}"
 
 case "${LOCAL_BUILD}" in
     0|1) ;;
@@ -32,13 +34,13 @@ fi
 
 cleanup_db_infra() {
     printf "Cleaning up database infrastructure...\n" >&2
-    docker compose -f "${PROJ_ROOT}/migrations/docker-compose.yaml" down -v --remove-orphans > /dev/null 2>&1 || true
+    docker compose -f "${SRC_ROOT}/migrations/docker-compose.yaml" down -v --remove-orphans > /dev/null 2>&1 || true
 }
 
 start_db_infra() {
     printf "\n=== Starting database infrastructure ===\n"
 
-    if ! docker compose -f "${PROJ_ROOT}/migrations/docker-compose.yaml" up -d; then
+    if ! docker compose -f "${SRC_ROOT}/migrations/docker-compose.yaml" up -d; then
         printf "ERROR: Failed to start database infrastructure\n" >&2
         return 1
     fi
@@ -47,7 +49,7 @@ start_db_infra() {
     for i in $(seq 1 "${MAX_RETRIES}"); do
         if pg_isready -h "${PG_HOST}" -p "${PG_PORT}" -U "${PG_USER}" > /dev/null 2>&1; then
             printf "PostgreSQL is ready (attempt %d/%d)\n" "${i}" "${MAX_RETRIES}"
-            return 0
+            break
         fi
 
         if [ "${i}" -eq "${MAX_RETRIES}" ]; then
@@ -56,6 +58,29 @@ start_db_infra() {
         fi
 
         printf "Waiting for PostgreSQL... (%d/%d)\n" "${i}" "${MAX_RETRIES}"
+        sleep "${RETRY_INTERVAL}"
+    done
+
+    printf "\nWaiting for Neo4j to be ready...\n"
+    neo4j_container=$(docker compose -f "${SRC_ROOT}/migrations/docker-compose.yaml" ps -q neo4j 2>/dev/null)
+
+    if [ -z "${neo4j_container}" ]; then
+        printf "ERROR: Neo4j container not found\n" >&2
+        return 1
+    fi
+
+    for i in $(seq 1 "${MAX_RETRIES}"); do
+        if docker exec "${neo4j_container}" cypher-shell -u "${NEO4J_USER}" -p "${NEO4J_PASSWORD}" "RETURN 1" > /dev/null 2>&1; then
+            printf "Neo4j is ready (attempt %d/%d)\n" "${i}" "${MAX_RETRIES}"
+            return 0
+        fi
+
+        if [ "${i}" -eq "${MAX_RETRIES}" ]; then
+            printf "ERROR: Neo4j failed to become ready after %d attempts\n" "${MAX_RETRIES}" >&2
+            return 1
+        fi
+
+        printf "Waiting for Neo4j... (%d/%d)\n" "${i}" "${MAX_RETRIES}"
         sleep "${RETRY_INTERVAL}"
     done
 
@@ -76,6 +101,13 @@ run_integration_tests() {
         printf "ERROR: Pattern integration tests failed\n" >&2
         return 1
     fi
+
+    printf "\nRunning graph repository integration tests...\n"
+    if ! (cd "${PROJ_ROOT}" && go test -tags=integration ./internal/repository/graph/... -v); then
+        printf "ERROR: Graph integration tests failed\n" >&2
+        return 1
+    fi
+
 
     printf "\n=== Integration tests passed ===\n"
     return 0
