@@ -41,13 +41,3 @@
 | `AgentAssociation` duplicated across graph and pattern packages - intentional for decoupling but undocumented.                          |            |
 | Delete-all-then-recreate pattern for SyncConcepts/SetPatternAgentRelevance won't scale for large concept sets. Acceptable at MVP scale. |            |
 
-## Positive Observations
-
-- Design coherence is sound - CypherRunner/SessionExecutor/SessionFactory abstraction well-justified and minimal
-- Cypher queries match design spec exactly - all 11 queries verified against `data-storage.md`
-- Excellent testability architecture with three-layer mock strategy
-- `export_test.go` pattern correctly used
-- Error wrapping consistency with `fmt.Errorf("doing X: %w", err)`
-- Table-driven tests with `t.Parallel()` matching project convention
-- Two-step transaction pattern ensures atomicity
-- 86.4% test coverage (uncovered code is Neo4j adapter layer requiring live database)
