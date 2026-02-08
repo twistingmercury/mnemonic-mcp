@@ -82,7 +82,7 @@ run_tests(){
     fi
 
     printf "\nRunning BATS tests...\n"
-    if ! bats "${BATS_DIR}"/*.bats; then
+    if ! bats "${BATS_DIR}/migrations.bats"; then
         printf "ERROR: BATS tests failed\n" >&2
         return 1
     fi

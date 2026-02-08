@@ -1,4 +1,4 @@
--- src/mnemonic/migrations/postgres/up/006_create_enrichment_jobs.sql
+-- src/migrations/postgres/up/006_create_enrichment_jobs.sql
 -- Creates the enrichment_jobs table for background pattern processing.
 -- Part of Mnemonic MVP
 --

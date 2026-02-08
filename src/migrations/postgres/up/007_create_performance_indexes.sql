@@ -1,4 +1,4 @@
--- src/mnemonic/migrations/postgres/up/007_create_performance_indexes.sql
+-- src/migrations/postgres/up/007_create_performance_indexes.sql
 -- Creates performance-optimized indexes for common query patterns.
 -- Part of Mnemonic MVP
 --

@@ -1,4 +1,4 @@
--- src/mnemonic/migrations/postgres/down/006_create_enrichment_jobs.sql
+-- src/migrations/postgres/down/006_create_enrichment_jobs.sql
 -- Reverses: Creates the enrichment_jobs table for background pattern processing.
 --
 -- This migration drops the enrichment_jobs table and its indexes.

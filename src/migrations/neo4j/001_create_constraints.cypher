@@ -1,4 +1,4 @@
-// src/mnemonic/migrations/neo4j/001_create_constraints.cypher
+// src/migrations/neo4j/001_create_constraints.cypher
 // Creates uniqueness constraints for Neo4j node labels.
 // Part of Mnemonic MVP
 //
@@ -22,7 +22,7 @@
 //   pattern_id_unique, agent_name_unique, concept_name_unique
 //
 // Manual application:
-//   cypher-shell -u neo4j -p <password> -f src/mnemonic/migrations/neo4j/001_create_constraints.cypher
+//   cypher-shell -u neo4j -p <password> -f src/migrations/neo4j/001_create_constraints.cypher
 
 // =============================================================================
 // UNIQUENESS CONSTRAINTS

@@ -1,4 +1,4 @@
-// src/mnemonic/migrations/neo4j/003_create_indexes.cypher
+// src/migrations/neo4j/003_create_indexes.cypher
 // Creates indexes for common Neo4j query patterns.
 // Part of Mnemonic MVP
 //
@@ -14,7 +14,7 @@
 // All indexes use IF NOT EXISTS for idempotent execution.
 //
 // Manual application:
-//   cypher-shell -u neo4j -p <password> -f src/mnemonic/migrations/neo4j/003_create_indexes.cypher
+//   cypher-shell -u neo4j -p <password> -f src/migrations/neo4j/003_create_indexes.cypher
 
 // =============================================================================
 // PROPERTY INDEXES

@@ -1,4 +1,4 @@
--- src/mnemonic/migrations/postgres/up/005_create_routing_rules.sql
+-- src/migrations/postgres/up/005_create_routing_rules.sql
 -- Creates the routing_rules table for prompt-to-agent matching.
 -- Part of Mnemonic MVP
 --
