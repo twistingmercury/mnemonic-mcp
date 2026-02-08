@@ -6,6 +6,7 @@ THIS_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "${THIS_DIR}/.." && pwd)"
 MODULE_ROOT="$(cd "${REPO_DIR}/../.." && pwd)"
 MNEMONIC_DIR="$(cd "${MODULE_ROOT}" && pwd)"
+SRC_DIR="$(cd "${MNEMONIC_DIR}/.." && pwd)"
 
 MAX_RETRIES="${MAX_RETRIES:-30}"
 RETRY_INTERVAL="${RETRY_INTERVAL:-2}"
@@ -18,12 +19,13 @@ printf "THIS_DIR     : %s\n" "$THIS_DIR"
 printf "REPO_DIR     : %s\n" "$REPO_DIR"
 printf "MODULE_ROOT  : %s\n" "$MODULE_ROOT"
 printf "MNEMONIC_DIR : %s\n" "$MNEMONIC_DIR"
+printf "SRC_DIR      : %s\n" "$SRC_DIR"
 
 start_test_infra() {
     printf "Starting test infrastructure...\n" >&2
 
     # Migrations run automatically via docker-entrypoint-initdb.d when container starts
-    if ! docker compose -f "${MNEMONIC_DIR}/migrations/docker-compose.yaml" up -d; then
+    if ! docker compose -f "${SRC_DIR}/migrations/docker-compose.yaml" up -d; then
         printf "ERROR: Failed to start docker compose services\n" >&2
         return 1
     fi
@@ -49,7 +51,7 @@ start_test_infra() {
 
 cleanup() {
     printf "Cleaning up test infrastructure...\n" >&2
-    docker compose -f "${MNEMONIC_DIR}/migrations/docker-compose.yaml" down -v --remove-orphans
+    docker compose -f "${SRC_DIR}/migrations/docker-compose.yaml" down -v --remove-orphans
 }
 
 main() {

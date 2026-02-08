@@ -1,4 +1,4 @@
-// src/mnemonic/migrations/neo4j/002_create_existence_constraints.cypher
+// src/migrations/neo4j/002_create_existence_constraints.cypher
 // Creates existence constraints for Neo4j.
 // Part of Mnemonic MVP
 //
@@ -15,7 +15,7 @@
 // All statements use IF NOT EXISTS for idempotent execution.
 //
 // Manual application:
-//   cypher-shell -u neo4j -p <password> -f src/mnemonic/migrations/neo4j/002_create_existence_constraints.cypher
+//   cypher-shell -u neo4j -p <password> -f src/migrations/neo4j/002_create_existence_constraints.cypher
 
 // =============================================================================
 // EXISTENCE CONSTRAINTS (Enterprise Edition only)

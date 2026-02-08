@@ -1,4 +1,4 @@
--- src/mnemonic/migrations/postgres/down/007_create_performance_indexes.sql
+-- src/migrations/postgres/down/007_create_performance_indexes.sql
 -- Reverses: Creates performance-optimized indexes for common query patterns.
 --
 -- This migration drops only the indexes created in 007_create_performance_indexes.up.sql.
