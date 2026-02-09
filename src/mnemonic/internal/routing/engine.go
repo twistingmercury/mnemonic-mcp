@@ -21,7 +21,7 @@ type Engine struct {
 	cache        *RuleCache
 	registry     *MatcherRegistry
 	defaultAgent string
-	metrics      *metrics.RoutingMetrics
+	metrics      *metrics.Routing
 	logger       zerolog.Logger
 	tracer       trace.Tracer
 }
@@ -32,7 +32,7 @@ func NewEngine(
 	cache *RuleCache,
 	registry *MatcherRegistry,
 	defaultAgent string,
-	routingMetrics *metrics.RoutingMetrics,
+	routingMetrics *metrics.Routing,
 	logger zerolog.Logger,
 ) *Engine {
 	return &Engine{

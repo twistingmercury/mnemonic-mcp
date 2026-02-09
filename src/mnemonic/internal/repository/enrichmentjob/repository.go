@@ -16,19 +16,19 @@ import (
 // Repository defines data access operations for enrichment jobs.
 type Repository interface {
 	// Create stores a new enrichment job.
-	Create(ctx context.Context, job *EnrichmentJob) error
+	Create(ctx context.Context, job *Job) error
 
-	// Get retrieves an enrichment job by ID. Returns ErrJobNotFound if not found.
-	Get(ctx context.Context, id uuid.UUID) (*EnrichmentJob, error)
+	// Get retrieves an enrichment job by ID. Returns ErrNotFound if not found.
+	Get(ctx context.Context, id uuid.UUID) (*Job, error)
 
 	// GetByPatternID retrieves the latest job for a pattern.
-	// Returns ErrJobNotFound if no job exists for the pattern.
-	GetByPatternID(ctx context.Context, patternID uuid.UUID) (*EnrichmentJob, error)
+	// Returns ErrNotFound if no job exists for the pattern.
+	GetByPatternID(ctx context.Context, patternID uuid.UUID) (*Job, error)
 
 	// ClaimPending atomically claims a pending job for processing.
 	// Uses FOR UPDATE SKIP LOCKED for safe concurrent processing.
 	// Returns nil, nil if no pending jobs are available.
-	ClaimPending(ctx context.Context) (*EnrichmentJob, error)
+	ClaimPending(ctx context.Context) (*Job, error)
 
 	// MarkProcessing updates job status to processing with start time.
 	MarkProcessing(ctx context.Context, id uuid.UUID) error
@@ -47,7 +47,7 @@ type Repository interface {
 
 	// List retrieves enrichment jobs with filtering and pagination.
 	// Returns the jobs, total count, and any error.
-	List(ctx context.Context, filter JobFilter, opts repository.ListOptions) ([]*EnrichmentJob, int64, error)
+	List(ctx context.Context, filter Filter, opts repository.ListOptions) ([]*Job, int64, error)
 
 	// DeleteCompleted removes completed jobs older than the retention period.
 	DeleteCompleted(ctx context.Context, retention time.Duration) (int64, error)
@@ -69,7 +69,7 @@ func NewRepository(db repository.DBTX) Repository {
 // Create stores a new enrichment job in the database.
 // Uses SQL now() for timestamps to ensure consistency with database time.
 // Uses COALESCE to handle scheduled_for - if not provided, defaults to now().
-func (r *pgxRepository) Create(ctx context.Context, job *EnrichmentJob) error {
+func (r *pgxRepository) Create(ctx context.Context, job *Job) error {
 	// Generate UUID if not provided
 	if job.ID == uuid.Nil {
 		job.ID = uuid.New()
@@ -129,7 +129,7 @@ func (r *pgxRepository) Create(ctx context.Context, job *EnrichmentJob) error {
 }
 
 // Get retrieves an enrichment job by ID from the database.
-func (r *pgxRepository) Get(ctx context.Context, id uuid.UUID) (*EnrichmentJob, error) {
+func (r *pgxRepository) Get(ctx context.Context, id uuid.UUID) (*Job, error) {
 	query := `
 		SELECT id, pattern_id, status, attempts, max_attempts,
 			   last_error, scheduled_for, started_at, completed_at,
@@ -142,7 +142,7 @@ func (r *pgxRepository) Get(ctx context.Context, id uuid.UUID) (*EnrichmentJob, 
 }
 
 // GetByPatternID retrieves the latest job for a pattern.
-func (r *pgxRepository) GetByPatternID(ctx context.Context, patternID uuid.UUID) (*EnrichmentJob, error) {
+func (r *pgxRepository) GetByPatternID(ctx context.Context, patternID uuid.UUID) (*Job, error) {
 	query := `
 		SELECT id, pattern_id, status, attempts, max_attempts,
 			   last_error, scheduled_for, started_at, completed_at,
@@ -156,9 +156,9 @@ func (r *pgxRepository) GetByPatternID(ctx context.Context, patternID uuid.UUID)
 	return r.scanJob(ctx, query, patternID)
 }
 
-// scanJob is a helper that executes a query and scans the result into an EnrichmentJob.
-func (r *pgxRepository) scanJob(ctx context.Context, query string, args ...any) (*EnrichmentJob, error) {
-	var job EnrichmentJob
+// scanJob is a helper that executes a query and scans the result into a Job.
+func (r *pgxRepository) scanJob(ctx context.Context, query string, args ...any) (*Job, error) {
+	var job Job
 
 	err := r.db.QueryRow(ctx, query, args...).Scan(
 		&job.ID,
@@ -175,7 +175,7 @@ func (r *pgxRepository) scanJob(ctx context.Context, query string, args ...any) 
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrJobNotFound
+			return nil, ErrNotFound
 		}
 		return nil, err
 	}
@@ -186,7 +186,7 @@ func (r *pgxRepository) scanJob(ctx context.Context, query string, args ...any) 
 // ClaimPending atomically claims a pending job for processing.
 // Uses FOR UPDATE SKIP LOCKED for safe concurrent processing across multiple workers.
 // Uses SQL now() for timestamps to ensure consistency with database time.
-func (r *pgxRepository) ClaimPending(ctx context.Context) (*EnrichmentJob, error) {
+func (r *pgxRepository) ClaimPending(ctx context.Context) (*Job, error) {
 	// Use FOR UPDATE SKIP LOCKED to safely claim a job without blocking
 	// other workers. This query:
 	// 1. Finds pending jobs that are ready to process (scheduled_for <= now)
@@ -208,7 +208,7 @@ func (r *pgxRepository) ClaimPending(ctx context.Context) (*EnrichmentJob, error
 				  created_at, updated_at
 	`
 
-	var job EnrichmentJob
+	var job Job
 	err := r.db.QueryRow(ctx, query,
 		string(StatusProcessing),
 		string(StatusPending),
@@ -253,7 +253,7 @@ func (r *pgxRepository) MarkProcessing(ctx context.Context, id uuid.UUID) error 
 	}
 
 	if result.RowsAffected() == 0 {
-		return ErrJobNotFound
+		return ErrNotFound
 	}
 
 	return nil
@@ -277,7 +277,7 @@ func (r *pgxRepository) MarkCompleted(ctx context.Context, id uuid.UUID) error {
 	}
 
 	if result.RowsAffected() == 0 {
-		return ErrJobNotFound
+		return ErrNotFound
 	}
 
 	return nil
@@ -330,7 +330,7 @@ func (r *pgxRepository) MarkFailed(ctx context.Context, id uuid.UUID, jobErr err
 	).Scan(&status, &attempts, &scheduledFor, &updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrJobNotFound
+			return ErrNotFound
 		}
 		return err
 	}
@@ -375,7 +375,7 @@ func (r *pgxRepository) ReclaimStale(ctx context.Context, timeout time.Duration)
 
 // List retrieves enrichment jobs with filtering and pagination.
 // Returns the jobs, total count, and any error.
-func (r *pgxRepository) List(ctx context.Context, filter JobFilter, opts repository.ListOptions) ([]*EnrichmentJob, int64, error) {
+func (r *pgxRepository) List(ctx context.Context, filter Filter, opts repository.ListOptions) ([]*Job, int64, error) {
 	// Build the WHERE clause dynamically
 	var conditions []string
 	var args []any
@@ -429,11 +429,11 @@ func (r *pgxRepository) List(ctx context.Context, filter JobFilter, opts reposit
 	}
 	defer rows.Close()
 
-	jobs := make([]*EnrichmentJob, 0)
+	jobs := make([]*Job, 0)
 	var totalCount int64
 
 	for rows.Next() {
-		var job EnrichmentJob
+		var job Job
 
 		err := rows.Scan(
 			&job.ID,

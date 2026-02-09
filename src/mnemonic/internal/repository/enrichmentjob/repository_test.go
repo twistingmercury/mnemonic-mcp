@@ -18,8 +18,8 @@ import (
 )
 
 // testJob returns a sample enrichment job for testing.
-func testJob() *enrichmentjob.EnrichmentJob {
-	return &enrichmentjob.EnrichmentJob{
+func testJob() *enrichmentjob.Job {
+	return &enrichmentjob.Job{
 		ID:           uuid.New(),
 		PatternID:    uuid.New(),
 		Status:       "pending",
@@ -36,7 +36,7 @@ func TestRepository_Create(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		job       *enrichmentjob.EnrichmentJob
+		job       *enrichmentjob.Job
 		setupMock func(mock pgxmock.PgxPoolIface)
 		wantErr   error
 	}{
@@ -118,7 +118,7 @@ func TestRepository_Create_GeneratesUUID(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	job := &enrichmentjob.EnrichmentJob{
+	job := &enrichmentjob.Job{
 		// ID is not set - should be generated
 		PatternID: uuid.New(),
 	}
@@ -160,7 +160,7 @@ func TestRepository_Get(t *testing.T) {
 		name      string
 		jobID     uuid.UUID
 		setupMock func(mock pgxmock.PgxPoolIface)
-		wantJob   *enrichmentjob.EnrichmentJob
+		wantJob   *enrichmentjob.Job
 		wantErr   error
 	}{
 		{
@@ -188,7 +188,7 @@ func TestRepository_Get(t *testing.T) {
 					WithArgs(jobID).
 					WillReturnRows(rows)
 			},
-			wantJob: &enrichmentjob.EnrichmentJob{
+			wantJob: &enrichmentjob.Job{
 				ID:           jobID,
 				PatternID:    patternID,
 				Status:       "pending",
@@ -201,7 +201,7 @@ func TestRepository_Get(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:  "not found returns ErrJobNotFound",
+			name:  "not found returns ErrNotFound",
 			jobID: jobID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("SELECT .* FROM enrichment_jobs").
@@ -209,7 +209,7 @@ func TestRepository_Get(t *testing.T) {
 					WillReturnError(pgx.ErrNoRows)
 			},
 			wantJob: nil,
-			wantErr: enrichmentjob.ErrJobNotFound,
+			wantErr: enrichmentjob.ErrNotFound,
 		},
 	}
 
@@ -282,14 +282,14 @@ func TestRepository_GetByPatternID(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:      "not found returns ErrJobNotFound",
+			name:      "not found returns ErrNotFound",
 			patternID: patternID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("SELECT .* FROM enrichment_jobs WHERE pattern_id").
 					WithArgs(patternID).
 					WillReturnError(pgx.ErrNoRows)
 			},
-			wantErr: enrichmentjob.ErrJobNotFound,
+			wantErr: enrichmentjob.ErrNotFound,
 		},
 	}
 
@@ -442,14 +442,14 @@ func TestRepository_MarkProcessing(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:  "not found returns ErrJobNotFound",
+			name:  "not found returns ErrNotFound",
 			jobID: jobID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("UPDATE enrichment_jobs SET").
 					WithArgs(jobID, "processing").
 					WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 			},
-			wantErr: enrichmentjob.ErrJobNotFound,
+			wantErr: enrichmentjob.ErrNotFound,
 		},
 	}
 
@@ -499,14 +499,14 @@ func TestRepository_MarkCompleted(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:  "not found returns ErrJobNotFound",
+			name:  "not found returns ErrNotFound",
 			jobID: jobID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("UPDATE enrichment_jobs SET").
 					WithArgs(jobID, "completed").
 					WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 			},
-			wantErr: enrichmentjob.ErrJobNotFound,
+			wantErr: enrichmentjob.ErrNotFound,
 		},
 	}
 
@@ -621,7 +621,7 @@ func TestRepository_MarkFailed_NotFound(t *testing.T) {
 	repo := enrichmentjob.NewRepository(mock)
 	err = repo.MarkFailed(context.Background(), jobID, errors.New("error"), retryDelay)
 
-	assert.ErrorIs(t, err, enrichmentjob.ErrJobNotFound)
+	assert.ErrorIs(t, err, enrichmentjob.ErrNotFound)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -833,7 +833,7 @@ func TestRepository_List(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		filter    enrichmentjob.JobFilter
+		filter    enrichmentjob.Filter
 		opts      repository.ListOptions
 		setupMock func(mock pgxmock.PgxPoolIface)
 		wantCount int
@@ -842,7 +842,7 @@ func TestRepository_List(t *testing.T) {
 	}{
 		{
 			name:   "list all jobs without filter",
-			filter: enrichmentjob.JobFilter{},
+			filter: enrichmentjob.Filter{},
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
@@ -861,7 +861,7 @@ func TestRepository_List(t *testing.T) {
 		},
 		{
 			name: "list with status filter",
-			filter: enrichmentjob.JobFilter{
+			filter: enrichmentjob.Filter{
 				Status: ptr("pending"),
 			},
 			opts: repository.ListOptions{},
@@ -882,7 +882,7 @@ func TestRepository_List(t *testing.T) {
 		},
 		{
 			name: "list with pattern_id filter",
-			filter: enrichmentjob.JobFilter{
+			filter: enrichmentjob.Filter{
 				PatternID: &patternID,
 			},
 			opts: repository.ListOptions{},
@@ -903,7 +903,7 @@ func TestRepository_List(t *testing.T) {
 		},
 		{
 			name:   "list with pagination",
-			filter: enrichmentjob.JobFilter{},
+			filter: enrichmentjob.Filter{},
 			opts:   repository.ListOptions{Limit: 1, Offset: 1},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
@@ -922,7 +922,7 @@ func TestRepository_List(t *testing.T) {
 		},
 		{
 			name:   "empty list returns empty slice",
-			filter: enrichmentjob.JobFilter{},
+			filter: enrichmentjob.Filter{},
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
@@ -970,7 +970,7 @@ func ptr[T any](v T) *T {
 	return &v
 }
 
-func TestEnrichmentJob_StatusHelpers(t *testing.T) {
+func TestJob_StatusHelpers(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -990,7 +990,7 @@ func TestEnrichmentJob_StatusHelpers(t *testing.T) {
 		t.Run(tt.status, func(t *testing.T) {
 			t.Parallel()
 
-			job := &enrichmentjob.EnrichmentJob{Status: tt.status}
+			job := &enrichmentjob.Job{Status: tt.status}
 
 			assert.Equal(t, tt.isPending, job.IsPending())
 			assert.Equal(t, tt.isProcessing, job.IsProcessing())
@@ -1000,7 +1000,7 @@ func TestEnrichmentJob_StatusHelpers(t *testing.T) {
 	}
 }
 
-func TestEnrichmentJob_CanRetry(t *testing.T) {
+func TestJob_CanRetry(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -1020,7 +1020,7 @@ func TestEnrichmentJob_CanRetry(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			job := &enrichmentjob.EnrichmentJob{
+			job := &enrichmentjob.Job{
 				Attempts:    tt.attempts,
 				MaxAttempts: tt.maxAttempts,
 			}

@@ -12,22 +12,22 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
-func TestNewPatternMetrics(t *testing.T) {
+func TestNewPattern(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	meter := provider.Meter("test")
 
-	pm, err := metrics.NewPatternMetrics(meter)
+	pm, err := metrics.NewPattern(meter)
 	require.NoError(t, err)
 	assert.NotNil(t, pm)
 }
 
-func TestPatternMetricsRecordQuery(t *testing.T) {
+func TestPatternRecordQuery(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	meter := provider.Meter("test")
 
-	pm, err := metrics.NewPatternMetrics(meter)
+	pm, err := metrics.NewPattern(meter)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -56,12 +56,12 @@ func TestPatternMetricsRecordQuery(t *testing.T) {
 	assert.True(t, foundPatternsReturned, "patterns returned metric should be recorded")
 }
 
-func TestPatternMetricsRecordQueryLatency(t *testing.T) {
+func TestPatternRecordQueryLatency(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	meter := provider.Meter("test")
 
-	pm, err := metrics.NewPatternMetrics(meter)
+	pm, err := metrics.NewPattern(meter)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -75,12 +75,12 @@ func TestPatternMetricsRecordQueryLatency(t *testing.T) {
 	assert.NotEmpty(t, data.ScopeMetrics)
 }
 
-func TestPatternMetricsRecordPatternsReturned(t *testing.T) {
+func TestPatternRecordPatternsReturned(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	meter := provider.Meter("test")
 
-	pm, err := metrics.NewPatternMetrics(meter)
+	pm, err := metrics.NewPattern(meter)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -94,12 +94,12 @@ func TestPatternMetricsRecordPatternsReturned(t *testing.T) {
 	assert.NotEmpty(t, data.ScopeMetrics)
 }
 
-func TestPatternMetricsWithDifferentDatabases(t *testing.T) {
+func TestPatternWithDifferentDatabases(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	meter := provider.Meter("test")
 
-	pm, err := metrics.NewPatternMetrics(meter)
+	pm, err := metrics.NewPattern(meter)
 	require.NoError(t, err)
 
 	ctx := context.Background()

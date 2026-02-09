@@ -57,7 +57,7 @@ func TestRepository_Create(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:  "duplicate name returns ErrAgentExists",
+			name:  "duplicate name returns ErrExists",
 			agent: testAgent(),
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("INSERT INTO agents").
@@ -73,7 +73,7 @@ func TestRepository_Create(t *testing.T) {
 					).
 					WillReturnError(&pgconn.PgError{Code: "23505"})
 			},
-			wantErr: agent.ErrAgentExists,
+			wantErr: agent.ErrExists,
 		},
 		{
 			name: "empty allowed_tools creates valid JSON",
@@ -168,11 +168,11 @@ func TestRepository_Create_CheckConstraintViolation(t *testing.T) {
 
 	err = repo.Create(context.Background(), a)
 
-	// Verify the error is returned (not wrapped as a domain error like ErrAgentExists)
+	// Verify the error is returned (not wrapped as a domain error like ErrExists)
 	assert.Error(t, err)
-	assert.NotErrorIs(t, err, agent.ErrAgentExists)
-	assert.NotErrorIs(t, err, agent.ErrAgentNotFound)
-	assert.NotErrorIs(t, err, agent.ErrAgentInUse)
+	assert.NotErrorIs(t, err, agent.ErrExists)
+	assert.NotErrorIs(t, err, agent.ErrNotFound)
+	assert.NotErrorIs(t, err, agent.ErrInUse)
 
 	// Verify the original PgError is returned
 	var pgErr *pgconn.PgError
@@ -223,9 +223,9 @@ func TestRepository_Update_CheckConstraintViolation(t *testing.T) {
 
 	// Verify the error is returned (not wrapped as a domain error)
 	assert.Error(t, err)
-	assert.NotErrorIs(t, err, agent.ErrAgentExists)
-	assert.NotErrorIs(t, err, agent.ErrAgentNotFound)
-	assert.NotErrorIs(t, err, agent.ErrAgentInUse)
+	assert.NotErrorIs(t, err, agent.ErrExists)
+	assert.NotErrorIs(t, err, agent.ErrNotFound)
+	assert.NotErrorIs(t, err, agent.ErrInUse)
 
 	// Verify the original PgError is returned
 	var pgErr *pgconn.PgError
@@ -284,7 +284,7 @@ func TestRepository_Get(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:      "not found returns ErrAgentNotFound",
+			name:      "not found returns ErrNotFound",
 			agentName: "nonexistent",
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("SELECT .* FROM agents").
@@ -292,7 +292,7 @@ func TestRepository_Get(t *testing.T) {
 					WillReturnError(pgx.ErrNoRows)
 			},
 			wantAgent: nil,
-			wantErr:   agent.ErrAgentNotFound,
+			wantErr:   agent.ErrNotFound,
 		},
 		{
 			name:      "corrupted allowed_tools JSON returns error with context",
@@ -431,7 +431,7 @@ func TestRepository_Update(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name: "not found returns ErrAgentNotFound",
+			name: "not found returns ErrNotFound",
 			agent: &agent.Agent{
 				Name:            "nonexistent",
 				Description:     "Does not exist",
@@ -453,7 +453,7 @@ func TestRepository_Update(t *testing.T) {
 					).
 					WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 			},
-			wantErr: agent.ErrAgentNotFound,
+			wantErr: agent.ErrNotFound,
 		},
 	}
 
@@ -502,24 +502,24 @@ func TestRepository_Delete(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:      "not found returns ErrAgentNotFound",
+			name:      "not found returns ErrNotFound",
 			agentName: "nonexistent",
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("DELETE FROM agents").
 					WithArgs("nonexistent").
 					WillReturnResult(pgxmock.NewResult("DELETE", 0))
 			},
-			wantErr: agent.ErrAgentNotFound,
+			wantErr: agent.ErrNotFound,
 		},
 		{
-			name:      "foreign key violation returns ErrAgentInUse",
+			name:      "foreign key violation returns ErrInUse",
 			agentName: "in-use-agent",
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("DELETE FROM agents").
 					WithArgs("in-use-agent").
 					WillReturnError(&pgconn.PgError{Code: "23503"})
 			},
-			wantErr: agent.ErrAgentInUse,
+			wantErr: agent.ErrInUse,
 		},
 	}
 

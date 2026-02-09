@@ -177,10 +177,10 @@ func TestIntegration_Get(t *testing.T) {
 		assert.False(t, retrieved.UpdatedAt.IsZero())
 	})
 
-	t.Run("returns ErrAgentNotFound for nonexistent agent", func(t *testing.T) {
+	t.Run("returns ErrNotFound for nonexistent agent", func(t *testing.T) {
 		retrieved, err := repo.Get(ctx, testAgentPrefix+"nonexistent")
 
-		assert.ErrorIs(t, err, agent.ErrAgentNotFound)
+		assert.ErrorIs(t, err, agent.ErrNotFound)
 		assert.Nil(t, retrieved)
 	})
 }
@@ -226,7 +226,7 @@ func TestIntegration_Update(t *testing.T) {
 			"UpdatedAt should be >= CreatedAt")
 	})
 
-	t.Run("returns ErrAgentNotFound for nonexistent agent", func(t *testing.T) {
+	t.Run("returns ErrNotFound for nonexistent agent", func(t *testing.T) {
 		nonexistent := &agent.Agent{
 			Name:            testAgentPrefix + "nonexistent-update",
 			Description:     "Does not exist",
@@ -237,7 +237,7 @@ func TestIntegration_Update(t *testing.T) {
 		}
 
 		err := repo.Update(ctx, nonexistent)
-		assert.ErrorIs(t, err, agent.ErrAgentNotFound)
+		assert.ErrorIs(t, err, agent.ErrNotFound)
 	})
 }
 
@@ -269,9 +269,9 @@ func TestIntegration_Delete(t *testing.T) {
 		assert.False(t, exists)
 	})
 
-	t.Run("returns ErrAgentNotFound for nonexistent agent", func(t *testing.T) {
+	t.Run("returns ErrNotFound for nonexistent agent", func(t *testing.T) {
 		err := repo.Delete(ctx, testAgentPrefix+"nonexistent-delete")
-		assert.ErrorIs(t, err, agent.ErrAgentNotFound)
+		assert.ErrorIs(t, err, agent.ErrNotFound)
 	})
 }
 
@@ -406,7 +406,7 @@ func TestIntegration_CreateDuplicate(t *testing.T) {
 	testAgent := testIntegrationAgent("duplicate-test")
 	require.NoError(t, repo.Create(ctx, testAgent))
 
-	t.Run("returns ErrAgentExists for duplicate name", func(t *testing.T) {
+	t.Run("returns ErrExists for duplicate name", func(t *testing.T) {
 		duplicate := &agent.Agent{
 			Name:            testAgent.Name, // Same name
 			Description:     "Different description",
@@ -417,7 +417,7 @@ func TestIntegration_CreateDuplicate(t *testing.T) {
 		}
 
 		err := repo.Create(ctx, duplicate)
-		assert.ErrorIs(t, err, agent.ErrAgentExists)
+		assert.ErrorIs(t, err, agent.ErrExists)
 	})
 }
 

@@ -13,22 +13,22 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
-func TestNewDatabaseMetrics(t *testing.T) {
+func TestNewDatabase(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	meter := provider.Meter("test")
 
-	dm, err := metrics.NewDatabaseMetrics(meter)
+	dm, err := metrics.NewDatabase(meter)
 	require.NoError(t, err)
 	assert.NotNil(t, dm)
 }
 
-func TestDatabaseMetricsRecordPoolStats(t *testing.T) {
+func TestDatabaseRecordPoolStats(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	meter := provider.Meter("test")
 
-	dm, err := metrics.NewDatabaseMetrics(meter)
+	dm, err := metrics.NewDatabase(meter)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -56,12 +56,12 @@ func TestDatabaseMetricsRecordPoolStats(t *testing.T) {
 	assert.True(t, foundPoolInUse, "pool in use metric should be recorded")
 }
 
-func TestDatabaseMetricsRecordQuery(t *testing.T) {
+func TestDatabaseRecordQuery(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	meter := provider.Meter("test")
 
-	dm, err := metrics.NewDatabaseMetrics(meter)
+	dm, err := metrics.NewDatabase(meter)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -85,12 +85,12 @@ func TestDatabaseMetricsRecordQuery(t *testing.T) {
 	assert.True(t, foundQueryLatency, "query latency metric should be recorded")
 }
 
-func TestDatabaseMetricsRecordError(t *testing.T) {
+func TestDatabaseRecordError(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	meter := provider.Meter("test")
 
-	dm, err := metrics.NewDatabaseMetrics(meter)
+	dm, err := metrics.NewDatabase(meter)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -114,12 +114,12 @@ func TestDatabaseMetricsRecordError(t *testing.T) {
 	assert.True(t, foundQueryErrors, "query errors metric should be recorded")
 }
 
-func TestDatabaseMetricsRecordQueryWithError(t *testing.T) {
+func TestDatabaseRecordQueryWithError(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	meter := provider.Meter("test")
 
-	dm, err := metrics.NewDatabaseMetrics(meter)
+	dm, err := metrics.NewDatabase(meter)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -152,12 +152,12 @@ func TestDatabaseMetricsRecordQueryWithError(t *testing.T) {
 	assert.True(t, foundQueryErrors, "query errors metric should be recorded for failed query")
 }
 
-func TestDatabaseMetricsWithMultipleDatabases(t *testing.T) {
+func TestDatabaseWithMultipleDatabases(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	meter := provider.Meter("test")
 
-	dm, err := metrics.NewDatabaseMetrics(meter)
+	dm, err := metrics.NewDatabase(meter)
 	require.NoError(t, err)
 
 	ctx := context.Background()

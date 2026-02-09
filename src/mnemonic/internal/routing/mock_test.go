@@ -23,9 +23,9 @@ func (m *mockRuleMatcher) Type() routing.MatchType {
 
 // mockRuleLoader is a hand-rolled mock for the RuleLoader interface.
 type mockRuleLoader struct {
-	loadFn func(ctx context.Context) ([]*routingrule.RoutingRule, error)
+	loadFn func(ctx context.Context) ([]*routingrule.Rule, error)
 }
 
-func (m *mockRuleLoader) LoadRules(ctx context.Context) ([]*routingrule.RoutingRule, error) {
+func (m *mockRuleLoader) LoadRules(ctx context.Context) ([]*routingrule.Rule, error) {
 	return m.loadFn(ctx)
 }

@@ -26,8 +26,8 @@ func TestNewRuleCache(t *testing.T) {
 		{
 			name: "successful load with sorting by priority descending",
 			loader: &mockRuleLoader{
-				loadFn: func(_ context.Context) ([]*routingrule.RoutingRule, error) {
-					return []*routingrule.RoutingRule{
+				loadFn: func(_ context.Context) ([]*routingrule.Rule, error) {
+					return []*routingrule.Rule{
 						{ID: uuid.MustParse("00000000-0000-0000-0000-000000000001"), Name: "low", Priority: 0, Enabled: true},
 						{ID: uuid.MustParse("00000000-0000-0000-0000-000000000002"), Name: "high", Priority: 100, Enabled: true},
 						{ID: uuid.MustParse("00000000-0000-0000-0000-000000000003"), Name: "mid", Priority: 50, Enabled: true},
@@ -40,8 +40,8 @@ func TestNewRuleCache(t *testing.T) {
 		{
 			name: "tie-breaking by ID ascending when priorities are equal",
 			loader: &mockRuleLoader{
-				loadFn: func(_ context.Context) ([]*routingrule.RoutingRule, error) {
-					return []*routingrule.RoutingRule{
+				loadFn: func(_ context.Context) ([]*routingrule.Rule, error) {
+					return []*routingrule.Rule{
 						{ID: uuid.MustParse("cccccccc-0000-0000-0000-000000000000"), Name: "rule-c", Priority: 50, Enabled: true},
 						{ID: uuid.MustParse("aaaaaaaa-0000-0000-0000-000000000000"), Name: "rule-a", Priority: 50, Enabled: true},
 						{ID: uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000000"), Name: "rule-b", Priority: 50, Enabled: true},
@@ -54,7 +54,7 @@ func TestNewRuleCache(t *testing.T) {
 		{
 			name: "load error returns error (fail-fast)",
 			loader: &mockRuleLoader{
-				loadFn: func(_ context.Context) ([]*routingrule.RoutingRule, error) {
+				loadFn: func(_ context.Context) ([]*routingrule.Rule, error) {
 					return nil, errors.New("database connection refused")
 				},
 			},
@@ -64,8 +64,8 @@ func TestNewRuleCache(t *testing.T) {
 		{
 			name: "empty rules returns empty cache",
 			loader: &mockRuleLoader{
-				loadFn: func(_ context.Context) ([]*routingrule.RoutingRule, error) {
-					return []*routingrule.RoutingRule{}, nil
+				loadFn: func(_ context.Context) ([]*routingrule.Rule, error) {
+					return []*routingrule.Rule{}, nil
 				},
 			},
 			wantCount: 0,
@@ -105,8 +105,8 @@ func TestRuleCache_GetRules_ReturnsCopy(t *testing.T) {
 	t.Parallel()
 
 	loader := &mockRuleLoader{
-		loadFn: func(_ context.Context) ([]*routingrule.RoutingRule, error) {
-			return []*routingrule.RoutingRule{
+		loadFn: func(_ context.Context) ([]*routingrule.Rule, error) {
+			return []*routingrule.Rule{
 				{ID: uuid.New(), Name: "rule-1", Priority: 100, Enabled: true},
 			}, nil
 		},
@@ -118,7 +118,7 @@ func TestRuleCache_GetRules_ReturnsCopy(t *testing.T) {
 	// Get rules and replace an entry in the returned slice.
 	rules := cache.GetRules()
 	require.Len(t, rules, 1)
-	rules[0] = &routingrule.RoutingRule{Name: "replaced"}
+	rules[0] = &routingrule.Rule{Name: "replaced"}
 
 	// Verify the cache is not affected by the slice replacement.
 	original := cache.GetRules()
@@ -141,9 +141,9 @@ func TestRuleCache_RuleCount(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			rules := make([]*routingrule.RoutingRule, tt.ruleCount)
+			rules := make([]*routingrule.Rule, tt.ruleCount)
 			for i := range tt.ruleCount {
-				rules[i] = &routingrule.RoutingRule{
+				rules[i] = &routingrule.Rule{
 					ID:      uuid.New(),
 					Name:    "rule",
 					Enabled: true,
@@ -151,7 +151,7 @@ func TestRuleCache_RuleCount(t *testing.T) {
 			}
 
 			loader := &mockRuleLoader{
-				loadFn: func(_ context.Context) ([]*routingrule.RoutingRule, error) {
+				loadFn: func(_ context.Context) ([]*routingrule.Rule, error) {
 					return rules, nil
 				},
 			}

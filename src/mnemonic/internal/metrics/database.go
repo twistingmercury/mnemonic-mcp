@@ -9,17 +9,17 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// DatabaseMetrics holds instruments for database-related metrics.
+// Database holds instruments for database-related metrics.
 // It tracks connection pool statistics, query latency, and errors.
-type DatabaseMetrics struct {
+type Database struct {
 	connectionPoolSize  metric.Int64Gauge
 	connectionPoolInUse metric.Int64Gauge
 	queryLatency        metric.Float64Histogram
 	queryErrors         metric.Int64Counter
 }
 
-// NewDatabaseMetrics creates database metric instruments using the provided meter.
-func NewDatabaseMetrics(meter metric.Meter) (*DatabaseMetrics, error) {
+// NewDatabase creates database metric instruments using the provided meter.
+func NewDatabase(meter metric.Meter) (*Database, error) {
 	connectionPoolSize, err := meter.Int64Gauge(
 		"mnemonic.db.connection_pool.size",
 		metric.WithDescription("Total size of the database connection pool"),
@@ -57,7 +57,7 @@ func NewDatabaseMetrics(meter metric.Meter) (*DatabaseMetrics, error) {
 		return nil, fmt.Errorf("query errors counter: %w", err)
 	}
 
-	return &DatabaseMetrics{
+	return &Database{
 		connectionPoolSize:  connectionPoolSize,
 		connectionPoolInUse: connectionPoolInUse,
 		queryLatency:        queryLatency,
@@ -69,7 +69,7 @@ func NewDatabaseMetrics(meter metric.Meter) (*DatabaseMetrics, error) {
 // Call this periodically (e.g., every 30 seconds) to track pool health.
 // The database parameter should be a predefined database name (e.g., "postgres", "neo4j")
 // with bounded cardinality. Do not use user-provided or dynamic values.
-func (m *DatabaseMetrics) RecordPoolStats(ctx context.Context, database string, size, inUse int64) {
+func (m *Database) RecordPoolStats(ctx context.Context, database string, size, inUse int64) {
 	attrs := metric.WithAttributes(attribute.String("database", database))
 	m.connectionPoolSize.Record(ctx, size, attrs)
 	m.connectionPoolInUse.Record(ctx, inUse, attrs)
@@ -79,7 +79,7 @@ func (m *DatabaseMetrics) RecordPoolStats(ctx context.Context, database string, 
 // The operation parameter identifies the type of query (e.g., "select", "insert", "update").
 // Both database and operation should be predefined values with bounded cardinality.
 // Do not use user-provided or dynamic values to avoid metric explosion.
-func (m *DatabaseMetrics) RecordQuery(ctx context.Context, database, operation string, duration time.Duration) {
+func (m *Database) RecordQuery(ctx context.Context, database, operation string, duration time.Duration) {
 	m.queryLatency.Record(ctx, float64(duration.Milliseconds()), metric.WithAttributes(
 		attribute.String("database", database),
 		attribute.String("operation", operation),
@@ -89,7 +89,7 @@ func (m *DatabaseMetrics) RecordQuery(ctx context.Context, database, operation s
 // RecordError records a database query error.
 // Both database and operation should be predefined values with bounded cardinality.
 // Do not use user-provided or dynamic values to avoid metric explosion.
-func (m *DatabaseMetrics) RecordError(ctx context.Context, database, operation string) {
+func (m *Database) RecordError(ctx context.Context, database, operation string) {
 	m.queryErrors.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("database", database),
 		attribute.String("operation", operation),
@@ -98,7 +98,7 @@ func (m *DatabaseMetrics) RecordError(ctx context.Context, database, operation s
 
 // RecordQueryWithError records a database query, including an error if one occurred.
 // This is a convenience method for recording both latency and potential errors.
-func (m *DatabaseMetrics) RecordQueryWithError(ctx context.Context, database, operation string, duration time.Duration, err error) {
+func (m *Database) RecordQueryWithError(ctx context.Context, database, operation string, duration time.Duration, err error) {
 	m.RecordQuery(ctx, database, operation, duration)
 	if err != nil {
 		m.RecordError(ctx, database, operation)

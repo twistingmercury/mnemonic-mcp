@@ -8,17 +8,17 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// RoutingMetrics holds instruments for routing-related metrics.
+// Routing holds instruments for routing-related metrics.
 // It tracks routing decisions, rule matches, and cache performance.
-type RoutingMetrics struct {
+type Routing struct {
 	routingDecisions metric.Int64Counter
 	ruleMatches      metric.Int64Counter
 	cacheHits        metric.Int64Counter
 	cacheMisses      metric.Int64Counter
 }
 
-// NewRoutingMetrics creates routing metric instruments using the provided meter.
-func NewRoutingMetrics(meter metric.Meter) (*RoutingMetrics, error) {
+// NewRouting creates routing metric instruments using the provided meter.
+func NewRouting(meter metric.Meter) (*Routing, error) {
 	routingDecisions, err := meter.Int64Counter(
 		"mnemonic.routing.decisions",
 		metric.WithDescription("Number of routing decisions made"),
@@ -55,7 +55,7 @@ func NewRoutingMetrics(meter metric.Meter) (*RoutingMetrics, error) {
 		return nil, fmt.Errorf("cache misses counter: %w", err)
 	}
 
-	return &RoutingMetrics{
+	return &Routing{
 		routingDecisions: routingDecisions,
 		ruleMatches:      ruleMatches,
 		cacheHits:        cacheHits,
@@ -66,7 +66,7 @@ func NewRoutingMetrics(meter metric.Meter) (*RoutingMetrics, error) {
 // RecordRoutingDecision records that a routing decision was made for the specified agent.
 // The agentName should be one of the predefined agent types (bounded cardinality).
 // Do not use user-provided or dynamic values to avoid metric explosion.
-func (m *RoutingMetrics) RecordRoutingDecision(ctx context.Context, agentName string) {
+func (m *Routing) RecordRoutingDecision(ctx context.Context, agentName string) {
 	m.routingDecisions.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("agent", agentName),
 	))
@@ -75,18 +75,18 @@ func (m *RoutingMetrics) RecordRoutingDecision(ctx context.Context, agentName st
 // RecordRuleMatch records a rule match by type.
 // The ruleType should be one of the predefined rule types (bounded cardinality).
 // Do not use user-provided or dynamic values to avoid metric explosion.
-func (m *RoutingMetrics) RecordRuleMatch(ctx context.Context, ruleType string) {
+func (m *Routing) RecordRuleMatch(ctx context.Context, ruleType string) {
 	m.ruleMatches.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("rule_type", ruleType),
 	))
 }
 
 // RecordCacheHit records a routing cache hit.
-func (m *RoutingMetrics) RecordCacheHit(ctx context.Context) {
+func (m *Routing) RecordCacheHit(ctx context.Context) {
 	m.cacheHits.Add(ctx, 1)
 }
 
 // RecordCacheMiss records a routing cache miss.
-func (m *RoutingMetrics) RecordCacheMiss(ctx context.Context) {
+func (m *Routing) RecordCacheMiss(ctx context.Context) {
 	m.cacheMisses.Add(ctx, 1)
 }

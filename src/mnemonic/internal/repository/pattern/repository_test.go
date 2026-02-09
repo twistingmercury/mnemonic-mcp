@@ -69,7 +69,7 @@ func TestRepository_Create(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:    "duplicate name returns ErrPatternNameExists",
+			name:    "duplicate name returns ErrNameExists",
 			pattern: testPattern(),
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("INSERT INTO patterns").
@@ -85,7 +85,7 @@ func TestRepository_Create(t *testing.T) {
 					).
 					WillReturnError(&pgconn.PgError{Code: "23505"})
 			},
-			wantErr: pattern.ErrPatternNameExists,
+			wantErr: pattern.ErrNameExists,
 		},
 		{
 			name: "nil description is valid",
@@ -216,7 +216,7 @@ func TestRepository_Get(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:      "not found returns ErrPatternNotFound",
+			name:      "not found returns ErrNotFound",
 			patternID: uuid.New(),
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("SELECT .* FROM patterns").
@@ -224,7 +224,7 @@ func TestRepository_Get(t *testing.T) {
 					WillReturnError(pgx.ErrNoRows)
 			},
 			wantPattern: nil,
-			wantErr:     pattern.ErrPatternNotFound,
+			wantErr:     pattern.ErrNotFound,
 		},
 	}
 
@@ -290,14 +290,14 @@ func TestRepository_GetByName(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:        "not found returns ErrPatternNotFound",
+			name:        "not found returns ErrNotFound",
 			patternName: "nonexistent",
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("SELECT .* FROM patterns").
 					WithArgs("nonexistent").
 					WillReturnError(pgx.ErrNoRows)
 			},
-			wantErr: pattern.ErrPatternNotFound,
+			wantErr: pattern.ErrNotFound,
 		},
 	}
 
@@ -354,7 +354,7 @@ func TestRepository_Update(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:    "not found returns ErrPatternNotFound",
+			name:    "not found returns ErrNotFound",
 			pattern: testPattern(),
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("UPDATE patterns SET").
@@ -368,10 +368,10 @@ func TestRepository_Update(t *testing.T) {
 					).
 					WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 			},
-			wantErr: pattern.ErrPatternNotFound,
+			wantErr: pattern.ErrNotFound,
 		},
 		{
-			name:    "duplicate name returns ErrPatternNameExists",
+			name:    "duplicate name returns ErrNameExists",
 			pattern: testPattern(),
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("UPDATE patterns SET").
@@ -385,7 +385,7 @@ func TestRepository_Update(t *testing.T) {
 					).
 					WillReturnError(&pgconn.PgError{Code: "23505"})
 			},
-			wantErr: pattern.ErrPatternNameExists,
+			wantErr: pattern.ErrNameExists,
 		},
 	}
 
@@ -488,14 +488,14 @@ func TestRepository_Delete(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:      "not found returns ErrPatternNotFound",
+			name:      "not found returns ErrNotFound",
 			patternID: uuid.New(),
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("DELETE FROM patterns").
 					WithArgs(pgxmock.AnyArg()).
 					WillReturnResult(pgxmock.NewResult("DELETE", 0))
 			},
-			wantErr: pattern.ErrPatternNotFound,
+			wantErr: pattern.ErrNotFound,
 		},
 	}
 
@@ -532,7 +532,7 @@ func TestRepository_List(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		filter    pattern.PatternFilter
+		filter    pattern.Filter
 		opts      repository.ListOptions
 		setupMock func(mock pgxmock.PgxPoolIface)
 		wantCount int
@@ -542,7 +542,7 @@ func TestRepository_List(t *testing.T) {
 	}{
 		{
 			name:   "list all patterns without filter",
-			filter: pattern.PatternFilter{},
+			filter: pattern.Filter{},
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
@@ -563,7 +563,7 @@ func TestRepository_List(t *testing.T) {
 		},
 		{
 			name:   "list with enrichment status filter",
-			filter: pattern.PatternFilter{EnrichmentStatus: "enriched"},
+			filter: pattern.Filter{EnrichmentStatus: "enriched"},
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
@@ -583,7 +583,7 @@ func TestRepository_List(t *testing.T) {
 		},
 		{
 			name:   "list with pagination",
-			filter: pattern.PatternFilter{},
+			filter: pattern.Filter{},
 			opts:   repository.ListOptions{Limit: 1, Offset: 1},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
@@ -603,7 +603,7 @@ func TestRepository_List(t *testing.T) {
 		},
 		{
 			name:   "empty list returns empty slice",
-			filter: pattern.PatternFilter{},
+			filter: pattern.Filter{},
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
@@ -620,7 +620,7 @@ func TestRepository_List(t *testing.T) {
 		},
 		{
 			name:   "list with search query filter",
-			filter: pattern.PatternFilter{SearchQuery: "authentication"},
+			filter: pattern.Filter{SearchQuery: "authentication"},
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
@@ -709,7 +709,7 @@ func TestRepository_UpdateEmbedding(t *testing.T) {
 					).
 					WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 			},
-			wantErr: pattern.ErrPatternNotFound,
+			wantErr: pattern.ErrNotFound,
 		},
 	}
 
@@ -802,7 +802,7 @@ func TestRepository_UpdateEnrichmentStatus(t *testing.T) {
 					).
 					WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 			},
-			wantErr: pattern.ErrPatternNotFound,
+			wantErr: pattern.ErrNotFound,
 		},
 		{
 			name:      "invalid status returns error",
@@ -859,7 +859,7 @@ func TestRepository_FindSimilar(t *testing.T) {
 		setupMock    func(mock pgxmock.PgxPoolIface)
 		wantCount    int
 		wantErr      error
-		checkResults func(t *testing.T, matches []*pattern.PatternMatch)
+		checkResults func(t *testing.T, matches []*pattern.Match)
 	}{
 		{
 			name:      "find similar patterns",
@@ -882,7 +882,7 @@ func TestRepository_FindSimilar(t *testing.T) {
 					WillReturnRows(rows)
 			},
 			wantCount: 2,
-			checkResults: func(t *testing.T, matches []*pattern.PatternMatch) {
+			checkResults: func(t *testing.T, matches []*pattern.Match) {
 				assert.Equal(t, "similar-pattern-1", matches[0].Pattern.Name)
 				assert.InDelta(t, 0.95, matches[0].Similarity, 0.001)
 				assert.Equal(t, "similar-pattern-2", matches[1].Pattern.Name)
@@ -1036,7 +1036,7 @@ func TestRepository_SetAgentAssociations(t *testing.T) {
 					WithArgs(pgxmock.AnyArg()).
 					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 			},
-			wantErr: pattern.ErrPatternNotFound,
+			wantErr: pattern.ErrNotFound,
 		},
 		{
 			name:      "invalid agent name returns ErrAgentNotFound",

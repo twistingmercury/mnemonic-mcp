@@ -224,7 +224,7 @@ classDiagram
         MatchTypeDefault
     }
 
-    class RoutingRule {
+    class Rule {
         +uuid.UUID ID
         +string Name
         +int Priority
@@ -268,7 +268,7 @@ classDiagram
         +Type() string
     }
 
-    RoutingRule --> MatchConfig : contains
+    Rule --> MatchConfig : contains
     MatchConfig <|.. KeywordMatchConfig : implements
     MatchConfig <|.. RegexMatchConfig : implements
     MatchConfig <|.. PatternMatchConfig : implements
@@ -285,7 +285,7 @@ classDiagram
 - `MatchType: pattern` -> `PatternMatchConfig` implements MatchConfig
 - `MatchType: default` -> `DefaultMatchConfig` implements MatchConfig
 
-Note: `RoutingRule.MatchType` is stored as a plain `string` in the database. The routing engine explicitly converts it to the typed `MatchType` constant during evaluation: `matchType := MatchType(rule.MatchType)`.
+Note: `Rule.MatchType` is stored as a plain `string` in the database. The routing engine explicitly converts it to the typed `MatchType` constant during evaluation: `matchType := MatchType(rule.MatchType)`.
 
 ### Complete Type Relationships
 
@@ -304,7 +304,7 @@ classDiagram
         -RuleCache cache
         -MatcherRegistry registry
         -string defaultAgent
-        -RoutingMetrics metrics
+        -Routing metrics
         -zerolog.Logger logger
         -trace.Tracer tracer
         +Route(ctx context.Context, req Request) Decision, error
@@ -312,8 +312,8 @@ classDiagram
 
     class RuleCache {
         -sync.RWMutex mu
-        -[]*RoutingRule rules
-        +GetRules() []*RoutingRule
+        -[]*Rule rules
+        +GetRules() []*Rule
         +RuleCount() int
     }
 
@@ -331,7 +331,7 @@ classDiagram
 
     class RuleLoader {
         <<interface>>
-        +LoadRules(ctx context.Context) []*RoutingRule, error
+        +LoadRules(ctx context.Context) []*Rule, error
     }
 
     class Request {
@@ -348,7 +348,7 @@ classDiagram
         +string Reasoning
     }
 
-    class RoutingRule {
+    class Rule {
         +uuid.UUID ID
         +string Name
         +int Priority
@@ -365,7 +365,7 @@ classDiagram
         +string Details
     }
 
-    class RoutingMetrics {
+    class Routing {
         +RecordRoutingDecision(ctx, agentName)
         +RecordRuleMatch(ctx, ruleType)
     }
@@ -373,11 +373,11 @@ classDiagram
     Evaluator <|.. Engine : implements
     Engine --> RuleCache : uses
     Engine --> MatcherRegistry : uses
-    Engine --> RoutingMetrics : uses
+    Engine --> Routing : uses
     Engine ..> Request : receives
     Engine ..> Decision : returns
     RuleCache --> RuleLoader : loads from
-    RuleCache o-- RoutingRule : caches
+    RuleCache o-- Rule : caches
     MatcherRegistry o-- RuleMatcher : contains
     RuleMatcher ..> MatchResult : returns
 ```
@@ -415,7 +415,7 @@ flowchart TD
 
 ```go
 type RuleCache struct {
-    rules []*routingrule.RoutingRule
+    rules []*routingrule.Rule
     mu    sync.RWMutex
 }
 
@@ -436,12 +436,12 @@ func NewRuleCache(ctx context.Context, loader RuleLoader) (*RuleCache, error) {
     return &RuleCache{rules: rules}, nil
 }
 
-func (c *RuleCache) GetRules() []*routingrule.RoutingRule {
+func (c *RuleCache) GetRules() []*routingrule.Rule {
     c.mu.RLock()
     defer c.mu.RUnlock()
 
     // Return a shallow copy to prevent external mutation of the slice.
-    result := make([]*routingrule.RoutingRule, len(c.rules))
+    result := make([]*routingrule.Rule, len(c.rules))
     copy(result, c.rules)
     return result
 }
@@ -452,7 +452,7 @@ func (c *RuleCache) GetRules() []*routingrule.RoutingRule {
 - Returns a shallow copy of cached rules (prevents external mutation of the slice)
 - Rules are pre-sorted by priority DESC, then by Rule ID ASC (lexicographic)
 - The RWMutex ensures safe concurrent access from multiple routing requests
-- The shallow copy shares underlying RoutingRule structs with the cache, which is safe because all MatchConfig implementations are value types with immutable fields
+- The shallow copy shares underlying Rule structs with the cache, which is safe because all MatchConfig implementations are value types with immutable fields
 
 ### Startup Behavior
 
@@ -1116,7 +1116,7 @@ stateDiagram-v2
 
 [↑ Table of Contents](#table-of-contents)
 
-- [OpenAPI Specification](../../../api/openapi/mnemonic-v1.yaml) - RoutingRule, MatchType, Decision (RoutingDecision) schemas
+- [OpenAPI Specification](../../../api/openapi/mnemonic-v1.yaml) - Rule (RoutingRule), MatchType, Decision (RoutingDecision) schemas
 - [System Architecture](../../architecture/03-system-architecture.md) - Mnemonic component overview
 - [Communication Patterns](../../architecture/04-communication-patterns.md) - REST endpoint patterns
 - [Architectural Decisions](../../architecture/02-architectural-decisions.md) - ADR-002: Routing Location

@@ -14,28 +14,28 @@ import (
 
 // Repository defines data access operations for routing rules.
 type Repository interface {
-	// Create stores a new routing rule. Returns ErrRuleNameExists if name already exists.
-	Create(ctx context.Context, rule *RoutingRule) error
+	// Create stores a new routing rule. Returns ErrNameExists if name already exists.
+	Create(ctx context.Context, rule *Rule) error
 
-	// Get retrieves a routing rule by ID. Returns ErrRuleNotFound if not found.
-	Get(ctx context.Context, id uuid.UUID) (*RoutingRule, error)
+	// Get retrieves a routing rule by ID. Returns ErrNotFound if not found.
+	Get(ctx context.Context, id uuid.UUID) (*Rule, error)
 
-	// GetByName retrieves a routing rule by name. Returns ErrRuleNotFound if not found.
-	GetByName(ctx context.Context, name string) (*RoutingRule, error)
+	// GetByName retrieves a routing rule by name. Returns ErrNotFound if not found.
+	GetByName(ctx context.Context, name string) (*Rule, error)
 
-	// Update modifies an existing routing rule. Returns ErrRuleNotFound if not found.
-	Update(ctx context.Context, rule *RoutingRule) error
+	// Update modifies an existing routing rule. Returns ErrNotFound if not found.
+	Update(ctx context.Context, rule *Rule) error
 
-	// Delete removes a routing rule by ID. Returns ErrRuleNotFound if not found.
+	// Delete removes a routing rule by ID. Returns ErrNotFound if not found.
 	Delete(ctx context.Context, id uuid.UUID) error
 
 	// List retrieves routing rules with filtering and pagination.
 	// Returns the rules, total count, and any error.
-	List(ctx context.Context, filter RuleFilter, opts repository.ListOptions) ([]*RoutingRule, int64, error)
+	List(ctx context.Context, filter Filter, opts repository.ListOptions) ([]*Rule, int64, error)
 
 	// ListEnabled retrieves all enabled rules ordered by priority (descending).
 	// This is the primary method used by the routing engine.
-	ListEnabled(ctx context.Context) ([]*RoutingRule, error)
+	ListEnabled(ctx context.Context) ([]*Rule, error)
 
 	// SetEnabled updates the enabled state of a rule.
 	SetEnabled(ctx context.Context, id uuid.UUID, enabled bool) error
@@ -57,7 +57,7 @@ func NewRepository(db repository.DBTX) Repository {
 // Create stores a new routing rule in the database.
 // Validates that MatchConfig type matches MatchType.
 // Uses SQL now() for timestamps to ensure consistency with database time.
-func (r *pgxRepository) Create(ctx context.Context, rule *RoutingRule) error {
+func (r *pgxRepository) Create(ctx context.Context, rule *Rule) error {
 	// Validate that MatchConfig type matches MatchType
 	if rule.MatchConfig != nil && rule.MatchConfig.Type() != rule.MatchType {
 		return ErrInvalidMatchConfig
@@ -95,7 +95,7 @@ func (r *pgxRepository) Create(ctx context.Context, rule *RoutingRule) error {
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
 			case repository.PgErrCodeUniqueViolation:
-				return ErrRuleNameExists
+				return ErrNameExists
 			case repository.PgErrCodeForeignKeyViolation:
 				return ErrAgentNotFound
 			case repository.PgErrCodeCheckViolation:
@@ -110,7 +110,7 @@ func (r *pgxRepository) Create(ctx context.Context, rule *RoutingRule) error {
 }
 
 // Get retrieves a routing rule by ID from the database.
-func (r *pgxRepository) Get(ctx context.Context, id uuid.UUID) (*RoutingRule, error) {
+func (r *pgxRepository) Get(ctx context.Context, id uuid.UUID) (*Rule, error) {
 	query := `
 		SELECT id, name, priority, agent_name, match_type,
 			   match_config, enabled, created_at, updated_at
@@ -122,7 +122,7 @@ func (r *pgxRepository) Get(ctx context.Context, id uuid.UUID) (*RoutingRule, er
 }
 
 // GetByName retrieves a routing rule by name from the database.
-func (r *pgxRepository) GetByName(ctx context.Context, name string) (*RoutingRule, error) {
+func (r *pgxRepository) GetByName(ctx context.Context, name string) (*Rule, error) {
 	query := `
 		SELECT id, name, priority, agent_name, match_type,
 			   match_config, enabled, created_at, updated_at
@@ -133,9 +133,9 @@ func (r *pgxRepository) GetByName(ctx context.Context, name string) (*RoutingRul
 	return r.scanRule(ctx, query, name)
 }
 
-// scanRule is a helper that executes a query and scans the result into a RoutingRule.
-func (r *pgxRepository) scanRule(ctx context.Context, query string, args ...any) (*RoutingRule, error) {
-	var rule RoutingRule
+// scanRule is a helper that executes a query and scans the result into a Rule.
+func (r *pgxRepository) scanRule(ctx context.Context, query string, args ...any) (*Rule, error) {
+	var rule Rule
 	var matchConfigJSON []byte
 
 	err := r.db.QueryRow(ctx, query, args...).Scan(
@@ -151,7 +151,7 @@ func (r *pgxRepository) scanRule(ctx context.Context, query string, args ...any)
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrRuleNotFound
+			return nil, ErrNotFound
 		}
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func (r *pgxRepository) scanRule(ctx context.Context, query string, args ...any)
 // Update modifies an existing routing rule in the database.
 // Validates that MatchConfig type matches MatchType.
 // Uses SQL now() for timestamps to ensure consistency with database time.
-func (r *pgxRepository) Update(ctx context.Context, rule *RoutingRule) error {
+func (r *pgxRepository) Update(ctx context.Context, rule *Rule) error {
 	// Validate that MatchConfig type matches MatchType
 	if rule.MatchConfig != nil && rule.MatchConfig.Type() != rule.MatchType {
 		return ErrInvalidMatchConfig
@@ -203,13 +203,13 @@ func (r *pgxRepository) Update(ctx context.Context, rule *RoutingRule) error {
 	).Scan(&rule.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrRuleNotFound
+			return ErrNotFound
 		}
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
 			case repository.PgErrCodeUniqueViolation:
-				return ErrRuleNameExists
+				return ErrNameExists
 			case repository.PgErrCodeForeignKeyViolation:
 				return ErrAgentNotFound
 			case repository.PgErrCodeCheckViolation:
@@ -232,14 +232,14 @@ func (r *pgxRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 
 	if result.RowsAffected() == 0 {
-		return ErrRuleNotFound
+		return ErrNotFound
 	}
 
 	return nil
 }
 
 // List retrieves routing rules with filtering and pagination.
-func (r *pgxRepository) List(ctx context.Context, filter RuleFilter, opts repository.ListOptions) ([]*RoutingRule, int64, error) {
+func (r *pgxRepository) List(ctx context.Context, filter Filter, opts repository.ListOptions) ([]*Rule, int64, error) {
 	// Build the WHERE clause dynamically
 	var conditions []string
 	var args []any
@@ -298,11 +298,11 @@ func (r *pgxRepository) List(ctx context.Context, filter RuleFilter, opts reposi
 	}
 	defer rows.Close()
 
-	rules := make([]*RoutingRule, 0)
+	rules := make([]*Rule, 0)
 	var totalCount int64
 
 	for rows.Next() {
-		var rule RoutingRule
+		var rule Rule
 		var matchConfigJSON []byte
 
 		err := rows.Scan(
@@ -338,7 +338,7 @@ func (r *pgxRepository) List(ctx context.Context, filter RuleFilter, opts reposi
 }
 
 // ListEnabled retrieves all enabled rules ordered by priority (descending).
-func (r *pgxRepository) ListEnabled(ctx context.Context) ([]*RoutingRule, error) {
+func (r *pgxRepository) ListEnabled(ctx context.Context) ([]*Rule, error) {
 	query := `
 		SELECT id, name, priority, agent_name, match_type,
 			   match_config, enabled, created_at, updated_at
@@ -353,10 +353,10 @@ func (r *pgxRepository) ListEnabled(ctx context.Context) ([]*RoutingRule, error)
 	}
 	defer rows.Close()
 
-	rules := make([]*RoutingRule, 0)
+	rules := make([]*Rule, 0)
 
 	for rows.Next() {
-		var rule RoutingRule
+		var rule Rule
 		var matchConfigJSON []byte
 
 		err := rows.Scan(
@@ -406,7 +406,7 @@ func (r *pgxRepository) SetEnabled(ctx context.Context, id uuid.UUID, enabled bo
 	}
 
 	if result.RowsAffected() == 0 {
-		return ErrRuleNotFound
+		return ErrNotFound
 	}
 
 	return nil

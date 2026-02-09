@@ -17,8 +17,8 @@ import (
 )
 
 // testKeywordRule returns a sample keyword rule for testing.
-func testKeywordRule() *routingrule.RoutingRule {
-	return &routingrule.RoutingRule{
+func testKeywordRule() *routingrule.Rule {
+	return &routingrule.Rule{
 		ID:        uuid.New(),
 		Name:      "go-keyword-rule",
 		Priority:  100,
@@ -33,8 +33,8 @@ func testKeywordRule() *routingrule.RoutingRule {
 }
 
 // testRegexRule returns a sample regex rule for testing.
-func testRegexRule() *routingrule.RoutingRule {
-	return &routingrule.RoutingRule{
+func testRegexRule() *routingrule.Rule {
+	return &routingrule.Rule{
 		ID:        uuid.New(),
 		Name:      "python-regex-rule",
 		Priority:  90,
@@ -49,8 +49,8 @@ func testRegexRule() *routingrule.RoutingRule {
 }
 
 // testDefaultRule returns a sample default rule for testing.
-func testDefaultRule() *routingrule.RoutingRule {
-	return &routingrule.RoutingRule{
+func testDefaultRule() *routingrule.Rule {
+	return &routingrule.Rule{
 		ID:          uuid.New(),
 		Name:        "default-fallback",
 		Priority:    0,
@@ -68,7 +68,7 @@ func TestRepository_Create(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		rule      *routingrule.RoutingRule
+		rule      *routingrule.Rule
 		setupMock func(mock pgxmock.PgxPoolIface)
 		wantErr   error
 	}{
@@ -133,7 +133,7 @@ func TestRepository_Create(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name: "duplicate name returns ErrRuleNameExists",
+			name: "duplicate name returns ErrNameExists",
 			rule: testKeywordRule(),
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("INSERT INTO routing_rules").
@@ -148,7 +148,7 @@ func TestRepository_Create(t *testing.T) {
 					).
 					WillReturnError(&pgconn.PgError{Code: "23505"})
 			},
-			wantErr: routingrule.ErrRuleNameExists,
+			wantErr: routingrule.ErrNameExists,
 		},
 		{
 			name: "agent not found returns ErrAgentNotFound",
@@ -170,7 +170,7 @@ func TestRepository_Create(t *testing.T) {
 		},
 		{
 			name: "mismatched match type returns ErrInvalidMatchConfig",
-			rule: &routingrule.RoutingRule{
+			rule: &routingrule.Rule{
 				ID:        uuid.New(),
 				Name:      "mismatched-rule",
 				Priority:  100,
@@ -223,7 +223,7 @@ func TestRepository_Create_GeneratesUUID(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	rule := &routingrule.RoutingRule{
+	rule := &routingrule.Rule{
 		// ID is not set - should be generated
 		Name:        "test-rule",
 		Priority:    50,
@@ -265,7 +265,7 @@ func TestRepository_Get(t *testing.T) {
 		name      string
 		ruleID    uuid.UUID
 		setupMock func(mock pgxmock.PgxPoolIface)
-		wantRule  *routingrule.RoutingRule
+		wantRule  *routingrule.Rule
 		wantErr   error
 	}{
 		{
@@ -290,7 +290,7 @@ func TestRepository_Get(t *testing.T) {
 					WithArgs(ruleID).
 					WillReturnRows(rows)
 			},
-			wantRule: &routingrule.RoutingRule{
+			wantRule: &routingrule.Rule{
 				ID:        ruleID,
 				Name:      "go-keyword-rule",
 				Priority:  100,
@@ -328,7 +328,7 @@ func TestRepository_Get(t *testing.T) {
 					WithArgs(ruleID).
 					WillReturnRows(rows)
 			},
-			wantRule: &routingrule.RoutingRule{
+			wantRule: &routingrule.Rule{
 				ID:          ruleID,
 				Name:        "default-fallback",
 				Priority:    0,
@@ -342,7 +342,7 @@ func TestRepository_Get(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:   "not found returns ErrRuleNotFound",
+			name:   "not found returns ErrNotFound",
 			ruleID: ruleID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("SELECT .* FROM routing_rules").
@@ -350,7 +350,7 @@ func TestRepository_Get(t *testing.T) {
 					WillReturnError(pgx.ErrNoRows)
 			},
 			wantRule: nil,
-			wantErr:  routingrule.ErrRuleNotFound,
+			wantErr:  routingrule.ErrNotFound,
 		},
 	}
 
@@ -422,14 +422,14 @@ func TestRepository_GetByName(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:     "not found returns ErrRuleNotFound",
+			name:     "not found returns ErrNotFound",
 			ruleName: "nonexistent",
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("SELECT .* FROM routing_rules").
 					WithArgs("nonexistent").
 					WillReturnError(pgx.ErrNoRows)
 			},
-			wantErr: routingrule.ErrRuleNotFound,
+			wantErr: routingrule.ErrNotFound,
 		},
 	}
 
@@ -466,7 +466,7 @@ func TestRepository_Update(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		rule      *routingrule.RoutingRule
+		rule      *routingrule.Rule
 		setupMock func(mock pgxmock.PgxPoolIface)
 		wantErr   error
 	}{
@@ -491,7 +491,7 @@ func TestRepository_Update(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name: "not found returns ErrRuleNotFound",
+			name: "not found returns ErrNotFound",
 			rule: testKeywordRule(),
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("UPDATE routing_rules SET").
@@ -506,10 +506,10 @@ func TestRepository_Update(t *testing.T) {
 					).
 					WillReturnError(pgx.ErrNoRows)
 			},
-			wantErr: routingrule.ErrRuleNotFound,
+			wantErr: routingrule.ErrNotFound,
 		},
 		{
-			name: "duplicate name returns ErrRuleNameExists",
+			name: "duplicate name returns ErrNameExists",
 			rule: testKeywordRule(),
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("UPDATE routing_rules SET").
@@ -524,7 +524,7 @@ func TestRepository_Update(t *testing.T) {
 					).
 					WillReturnError(&pgconn.PgError{Code: "23505"})
 			},
-			wantErr: routingrule.ErrRuleNameExists,
+			wantErr: routingrule.ErrNameExists,
 		},
 		{
 			name: "agent not found returns ErrAgentNotFound",
@@ -546,7 +546,7 @@ func TestRepository_Update(t *testing.T) {
 		},
 		{
 			name: "mismatched match type returns ErrInvalidMatchConfig",
-			rule: &routingrule.RoutingRule{
+			rule: &routingrule.Rule{
 				ID:        uuid.New(),
 				Name:      "mismatched-rule",
 				Priority:  100,
@@ -612,14 +612,14 @@ func TestRepository_Delete(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:   "not found returns ErrRuleNotFound",
+			name:   "not found returns ErrNotFound",
 			ruleID: ruleID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("DELETE FROM routing_rules").
 					WithArgs(ruleID).
 					WillReturnResult(pgxmock.NewResult("DELETE", 0))
 			},
-			wantErr: routingrule.ErrRuleNotFound,
+			wantErr: routingrule.ErrNotFound,
 		},
 	}
 
@@ -654,7 +654,7 @@ func TestRepository_List(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		filter    routingrule.RuleFilter
+		filter    routingrule.Filter
 		opts      repository.ListOptions
 		setupMock func(mock pgxmock.PgxPoolIface)
 		wantCount int
@@ -664,7 +664,7 @@ func TestRepository_List(t *testing.T) {
 	}{
 		{
 			name:   "list all rules without filter",
-			filter: routingrule.RuleFilter{},
+			filter: routingrule.Filter{},
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
@@ -685,7 +685,7 @@ func TestRepository_List(t *testing.T) {
 		},
 		{
 			name: "list with agent filter",
-			filter: routingrule.RuleFilter{
+			filter: routingrule.Filter{
 				AgentName: ptr("go-agent"),
 			},
 			opts: repository.ListOptions{},
@@ -707,7 +707,7 @@ func TestRepository_List(t *testing.T) {
 		},
 		{
 			name: "list with enabled filter",
-			filter: routingrule.RuleFilter{
+			filter: routingrule.Filter{
 				Enabled: ptr(true),
 			},
 			opts: repository.ListOptions{},
@@ -729,7 +729,7 @@ func TestRepository_List(t *testing.T) {
 		},
 		{
 			name:   "list with pagination",
-			filter: routingrule.RuleFilter{},
+			filter: routingrule.Filter{},
 			opts:   repository.ListOptions{Limit: 1, Offset: 1},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
@@ -749,7 +749,7 @@ func TestRepository_List(t *testing.T) {
 		},
 		{
 			name:   "empty list returns empty slice",
-			filter: routingrule.RuleFilter{},
+			filter: routingrule.Filter{},
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
@@ -907,7 +907,7 @@ func TestRepository_SetEnabled(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:    "not found returns ErrRuleNotFound",
+			name:    "not found returns ErrNotFound",
 			ruleID:  ruleID,
 			enabled: true,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
@@ -915,7 +915,7 @@ func TestRepository_SetEnabled(t *testing.T) {
 					WithArgs(ruleID, true).
 					WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 			},
-			wantErr: routingrule.ErrRuleNotFound,
+			wantErr: routingrule.ErrNotFound,
 		},
 	}
 
