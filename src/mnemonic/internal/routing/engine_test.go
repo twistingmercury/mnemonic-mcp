@@ -15,11 +15,11 @@ import (
 )
 
 // newTestEngine creates an Engine for testing with the given rules and registry.
-func newTestEngine(t *testing.T, rules []*routingrule.RoutingRule, registry *routing.MatcherRegistry, defaultAgent string) *routing.Engine {
+func newTestEngine(t *testing.T, rules []*routingrule.Rule, registry *routing.MatcherRegistry, defaultAgent string) *routing.Engine {
 	t.Helper()
 
 	loader := &mockRuleLoader{
-		loadFn: func(_ context.Context) ([]*routingrule.RoutingRule, error) {
+		loadFn: func(_ context.Context) ([]*routingrule.Rule, error) {
 			return rules, nil
 		},
 	}
@@ -37,7 +37,7 @@ func TestEngine_Route(t *testing.T) {
 
 	tests := []struct {
 		name              string
-		rules             []*routingrule.RoutingRule
+		rules             []*routingrule.Rule
 		matchers          []routing.RuleMatcher
 		defaultAgent      string
 		prompt            string
@@ -50,7 +50,7 @@ func TestEngine_Route(t *testing.T) {
 	}{
 		{
 			name: "first rule matches (short circuit)",
-			rules: []*routingrule.RoutingRule{
+			rules: []*routingrule.Rule{
 				{
 					ID:          uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 					Name:        "high-priority",
@@ -93,7 +93,7 @@ func TestEngine_Route(t *testing.T) {
 		},
 		{
 			name: "second rule matches when first does not",
-			rules: []*routingrule.RoutingRule{
+			rules: []*routingrule.Rule{
 				{
 					ID:          uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 					Name:        "high-priority",
@@ -140,7 +140,7 @@ func TestEngine_Route(t *testing.T) {
 		},
 		{
 			name: "falls through to default when no rules match",
-			rules: []*routingrule.RoutingRule{
+			rules: []*routingrule.Rule{
 				{
 					ID:          uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 					Name:        "keyword-rule",
@@ -168,7 +168,7 @@ func TestEngine_Route(t *testing.T) {
 		},
 		{
 			name:              "no rules at all returns default decision",
-			rules:             []*routingrule.RoutingRule{},
+			rules:             []*routingrule.Rule{},
 			matchers:          []routing.RuleMatcher{},
 			defaultAgent:      "general-agent",
 			prompt:            "anything",
@@ -179,7 +179,7 @@ func TestEngine_Route(t *testing.T) {
 		},
 		{
 			name: "matcher error skips rule and continues",
-			rules: []*routingrule.RoutingRule{
+			rules: []*routingrule.Rule{
 				{
 					ID:          uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 					Name:        "broken-rule",
@@ -227,7 +227,7 @@ func TestEngine_Route(t *testing.T) {
 		},
 		{
 			name: "unknown match type skips rule and continues",
-			rules: []*routingrule.RoutingRule{
+			rules: []*routingrule.Rule{
 				{
 					ID:          uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 					Name:        "unknown-type-rule",
@@ -269,7 +269,7 @@ func TestEngine_Route(t *testing.T) {
 		},
 		{
 			name: "prompt normalization - uppercase and whitespace",
-			rules: []*routingrule.RoutingRule{
+			rules: []*routingrule.Rule{
 				{
 					ID:          uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 					Name:        "keyword-rule",
@@ -306,7 +306,7 @@ func TestEngine_Route(t *testing.T) {
 		},
 		{
 			name: "pattern match with fractional confidence",
-			rules: []*routingrule.RoutingRule{
+			rules: []*routingrule.Rule{
 				{
 					ID:          uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 					Name:        "pattern-rule",
@@ -377,7 +377,7 @@ func TestEngine_Route_ShortCircuit(t *testing.T) {
 	// Verify the second matcher is NOT called when the first matches.
 	var secondMatcherCalled atomic.Bool
 
-	rules := []*routingrule.RoutingRule{
+	rules := []*routingrule.Rule{
 		{
 			ID:          uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 			Name:        "first-rule",
@@ -432,7 +432,7 @@ func TestEngine_Route_NilMetrics(t *testing.T) {
 	t.Parallel()
 
 	// Verify that nil metrics does not cause a panic.
-	rules := []*routingrule.RoutingRule{
+	rules := []*routingrule.Rule{
 		{
 			ID:          uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 			Name:        "test-rule",
@@ -471,7 +471,7 @@ func TestEngine_Route_NilMetrics(t *testing.T) {
 func TestEngine_Route_DisabledRulesSkipped(t *testing.T) {
 	t.Parallel()
 
-	rules := []*routingrule.RoutingRule{
+	rules := []*routingrule.Rule{
 		{
 			ID:          uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 			Name:        "disabled-rule",
@@ -517,7 +517,7 @@ func TestEngine_Route_DisabledRulesSkipped(t *testing.T) {
 func TestEngine_Route_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	rules := []*routingrule.RoutingRule{
+	rules := []*routingrule.Rule{
 		{
 			ID:          uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 			Name:        "test-rule",

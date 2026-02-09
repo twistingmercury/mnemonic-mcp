@@ -17,24 +17,24 @@ import (
 
 // Repository defines data access operations for patterns.
 type Repository interface {
-	// Create stores a new pattern. Returns ErrPatternNameExists if name already exists.
+	// Create stores a new pattern. Returns ErrNameExists if name already exists.
 	Create(ctx context.Context, pattern *Pattern) error
 
-	// Get retrieves a pattern by ID. Returns ErrPatternNotFound if not found.
+	// Get retrieves a pattern by ID. Returns ErrNotFound if not found.
 	Get(ctx context.Context, id uuid.UUID) (*Pattern, error)
 
-	// GetByName retrieves a pattern by name. Returns ErrPatternNotFound if not found.
+	// GetByName retrieves a pattern by name. Returns ErrNotFound if not found.
 	GetByName(ctx context.Context, name string) (*Pattern, error)
 
-	// Update modifies an existing pattern. Returns ErrPatternNotFound if not found.
+	// Update modifies an existing pattern. Returns ErrNotFound if not found.
 	Update(ctx context.Context, pattern *Pattern) error
 
-	// Delete removes a pattern by ID. Returns ErrPatternNotFound if not found.
+	// Delete removes a pattern by ID. Returns ErrNotFound if not found.
 	Delete(ctx context.Context, id uuid.UUID) error
 
 	// List retrieves patterns with filtering and pagination.
 	// Returns the patterns, total count, and any error.
-	List(ctx context.Context, filter PatternFilter, opts repository.ListOptions) ([]*Pattern, int64, error)
+	List(ctx context.Context, filter Filter, opts repository.ListOptions) ([]*Pattern, int64, error)
 
 	// UpdateEmbedding stores the embedding vector for a pattern.
 	UpdateEmbedding(ctx context.Context, id uuid.UUID, embedding []float32) error
@@ -43,7 +43,7 @@ type Repository interface {
 	UpdateEnrichmentStatus(ctx context.Context, id uuid.UUID, status string, errMsg *string) error
 
 	// FindSimilar finds patterns similar to the given embedding vector.
-	FindSimilar(ctx context.Context, embedding []float32, opts SimilarityOptions) ([]*PatternMatch, error)
+	FindSimilar(ctx context.Context, embedding []float32, opts SimilarityOptions) ([]*Match, error)
 
 	// SetAgentAssociations replaces all agent associations for a pattern.
 	SetAgentAssociations(ctx context.Context, patternID uuid.UUID, associations []AgentAssociation) error
@@ -103,7 +103,7 @@ func (r *pgxRepository) Create(ctx context.Context, pattern *Pattern) error {
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == repository.PgErrCodeUniqueViolation {
-			return ErrPatternNameExists
+			return ErrNameExists
 		}
 		return fmt.Errorf("creating pattern: %w", err)
 	}
@@ -161,7 +161,7 @@ func (r *pgxRepository) scanPattern(ctx context.Context, query string, arg any) 
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrPatternNotFound
+			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("getting pattern: %w", err)
 	}
@@ -213,13 +213,13 @@ func (r *pgxRepository) Update(ctx context.Context, pattern *Pattern) error {
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == repository.PgErrCodeUniqueViolation {
-			return ErrPatternNameExists
+			return ErrNameExists
 		}
 		return fmt.Errorf("updating pattern: %w", err)
 	}
 
 	if result.RowsAffected() == 0 {
-		return ErrPatternNotFound
+		return ErrNotFound
 	}
 
 	// Update pattern struct to reflect the reset enrichment fields
@@ -241,14 +241,14 @@ func (r *pgxRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 
 	if result.RowsAffected() == 0 {
-		return ErrPatternNotFound
+		return ErrNotFound
 	}
 
 	return nil
 }
 
 // List retrieves patterns with filtering and pagination.
-func (r *pgxRepository) List(ctx context.Context, filter PatternFilter, opts repository.ListOptions) ([]*Pattern, int64, error) {
+func (r *pgxRepository) List(ctx context.Context, filter Filter, opts repository.ListOptions) ([]*Pattern, int64, error) {
 	// Build query dynamically based on filter
 	var whereConditions []string
 	var args []any
@@ -374,7 +374,7 @@ func (r *pgxRepository) UpdateEmbedding(ctx context.Context, id uuid.UUID, embed
 	}
 
 	if result.RowsAffected() == 0 {
-		return ErrPatternNotFound
+		return ErrNotFound
 	}
 
 	return nil
@@ -408,14 +408,14 @@ func (r *pgxRepository) UpdateEnrichmentStatus(ctx context.Context, id uuid.UUID
 	}
 
 	if result.RowsAffected() == 0 {
-		return ErrPatternNotFound
+		return ErrNotFound
 	}
 
 	return nil
 }
 
 // FindSimilar finds patterns similar to the given embedding vector.
-func (r *pgxRepository) FindSimilar(ctx context.Context, embedding []float32, opts SimilarityOptions) ([]*PatternMatch, error) {
+func (r *pgxRepository) FindSimilar(ctx context.Context, embedding []float32, opts SimilarityOptions) ([]*Match, error) {
 	vec := pgvector.NewVector(embedding)
 
 	// Build query dynamically based on options
@@ -478,7 +478,7 @@ func (r *pgxRepository) FindSimilar(ctx context.Context, embedding []float32, op
 	}
 	defer rows.Close()
 
-	matches := make([]*PatternMatch, 0)
+	matches := make([]*Match, 0)
 
 	for rows.Next() {
 		var pattern Pattern
@@ -512,7 +512,7 @@ func (r *pgxRepository) FindSimilar(ctx context.Context, embedding []float32, op
 			pattern.Embedding = embeddingVec.Slice()
 		}
 
-		matches = append(matches, &PatternMatch{
+		matches = append(matches, &Match{
 			Pattern:    &pattern,
 			Similarity: similarity,
 		})
@@ -534,7 +534,7 @@ func (r *pgxRepository) SetAgentAssociations(ctx context.Context, patternID uuid
 		return err
 	}
 	if !exists {
-		return ErrPatternNotFound
+		return ErrNotFound
 	}
 
 	// Check if we can start a transaction for atomicity

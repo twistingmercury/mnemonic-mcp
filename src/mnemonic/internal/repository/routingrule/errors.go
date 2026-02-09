@@ -4,11 +4,11 @@ import "errors"
 
 // Common repository errors for routing rule operations.
 var (
-	// ErrRuleNotFound is returned when a routing rule with the specified ID or name cannot be found.
-	ErrRuleNotFound = errors.New("routing rule not found")
+	// ErrNotFound is returned when a routing rule with the specified ID or name cannot be found.
+	ErrNotFound = errors.New("routing rule not found")
 
-	// ErrRuleNameExists is returned when attempting to create a rule with a name that already exists.
-	ErrRuleNameExists = errors.New("routing rule name already exists")
+	// ErrNameExists is returned when attempting to create a rule with a name that already exists.
+	ErrNameExists = errors.New("routing rule name already exists")
 
 	// ErrInvalidMatchType is returned when an invalid match type is provided.
 	ErrInvalidMatchType = errors.New("invalid match type")

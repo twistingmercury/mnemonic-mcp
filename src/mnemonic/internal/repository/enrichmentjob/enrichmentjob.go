@@ -7,8 +7,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// EnrichmentJob represents a background enrichment task stored in the database.
-type EnrichmentJob struct {
+// Job represents a background enrichment task stored in the database.
+type Job struct {
 	// ID is the unique identifier for the job.
 	ID uuid.UUID `db:"id"`
 
@@ -44,21 +44,21 @@ type EnrichmentJob struct {
 	UpdatedAt time.Time `db:"updated_at"`
 }
 
-// JobStatus represents the valid job status values.
-type JobStatus string
+// Status represents the valid job status values.
+type Status string
 
 const (
 	// StatusPending indicates the job is awaiting processing.
-	StatusPending JobStatus = "pending"
+	StatusPending Status = "pending"
 
 	// StatusProcessing indicates the job is currently being processed by a worker.
-	StatusProcessing JobStatus = "processing"
+	StatusProcessing Status = "processing"
 
 	// StatusCompleted indicates the job finished successfully.
-	StatusCompleted JobStatus = "completed"
+	StatusCompleted Status = "completed"
 
 	// StatusFailed indicates processing failed (see LastError).
-	StatusFailed JobStatus = "failed"
+	StatusFailed Status = "failed"
 )
 
 // ValidStatuses defines the valid values for the Status field.
@@ -75,35 +75,35 @@ func IsValidStatus(status string) bool {
 }
 
 // IsPending returns true if the job is in pending state.
-func (j *EnrichmentJob) IsPending() bool {
+func (j *Job) IsPending() bool {
 	return j.Status == string(StatusPending)
 }
 
 // IsProcessing returns true if the job is currently being processed.
-func (j *EnrichmentJob) IsProcessing() bool {
+func (j *Job) IsProcessing() bool {
 	return j.Status == string(StatusProcessing)
 }
 
 // IsCompleted returns true if the job completed successfully.
-func (j *EnrichmentJob) IsCompleted() bool {
+func (j *Job) IsCompleted() bool {
 	return j.Status == string(StatusCompleted)
 }
 
 // IsFailed returns true if the job failed.
-func (j *EnrichmentJob) IsFailed() bool {
+func (j *Job) IsFailed() bool {
 	return j.Status == string(StatusFailed)
 }
 
 // CanRetry returns true if the job can be retried.
-func (j *EnrichmentJob) CanRetry() bool {
+func (j *Job) CanRetry() bool {
 	return j.Attempts < j.MaxAttempts
 }
 
 // DefaultMaxAttempts is the default maximum number of attempts for a job.
 const DefaultMaxAttempts = 3
 
-// JobFilter defines filtering options for job queries.
-type JobFilter struct {
+// Filter defines filtering options for job queries.
+type Filter struct {
 	// Status filters by job status (pending, processing, completed, failed).
 	Status *string
 

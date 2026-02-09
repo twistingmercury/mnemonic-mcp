@@ -53,8 +53,8 @@ func IsValidEnrichmentStatus(status string) bool {
 	return slices.Contains(ValidEnrichmentStatuses, status)
 }
 
-// PatternFilter defines filtering options for pattern queries.
-type PatternFilter struct {
+// Filter defines filtering options for pattern queries.
+type Filter struct {
 	// Tags filters patterns that have any of these tags.
 	Tags []string
 
@@ -78,8 +78,8 @@ type SimilarityOptions struct {
 	Tags []string
 }
 
-// PatternMatch represents a similarity search result.
-type PatternMatch struct {
+// Match represents a similarity search result.
+type Match struct {
 	// Pattern is the matched pattern.
 	Pattern *Pattern
 

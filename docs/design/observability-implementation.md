@@ -587,16 +587,16 @@ import (
     "go.opentelemetry.io/otel/metric"
 )
 
-// RoutingMetrics holds instruments for routing-related metrics.
-type RoutingMetrics struct {
+// Routing holds instruments for routing-related metrics.
+type Routing struct {
     routingDecisions metric.Int64Counter
     ruleMatches      metric.Int64Counter
     cacheHits        metric.Int64Counter
     cacheMisses      metric.Int64Counter
 }
 
-// NewRoutingMetrics creates routing metric instruments.
-func NewRoutingMetrics(meter metric.Meter) (*RoutingMetrics, error) {
+// NewRouting creates routing metric instruments.
+func NewRouting(meter metric.Meter) (*Routing, error) {
     routingDecisions, err := meter.Int64Counter(
         "mnemonic.routing.decisions",
         metric.WithDescription("Number of routing decisions made"),
@@ -633,7 +633,7 @@ func NewRoutingMetrics(meter metric.Meter) (*RoutingMetrics, error) {
         return nil, err
     }
 
-    return &RoutingMetrics{
+    return &Routing{
         routingDecisions: routingDecisions,
         ruleMatches:      ruleMatches,
         cacheHits:        cacheHits,
@@ -642,26 +642,26 @@ func NewRoutingMetrics(meter metric.Meter) (*RoutingMetrics, error) {
 }
 
 // RecordRoutingDecision records a routing decision was made.
-func (m *RoutingMetrics) RecordRoutingDecision(ctx context.Context, agentName string) {
+func (m *Routing) RecordRoutingDecision(ctx context.Context, agentName string) {
     m.routingDecisions.Add(ctx, 1, metric.WithAttributes(
         attribute.String("agent", agentName),
     ))
 }
 
 // RecordRuleMatch records a rule match by type.
-func (m *RoutingMetrics) RecordRuleMatch(ctx context.Context, ruleType string) {
+func (m *Routing) RecordRuleMatch(ctx context.Context, ruleType string) {
     m.ruleMatches.Add(ctx, 1, metric.WithAttributes(
         attribute.String("rule_type", ruleType),
     ))
 }
 
 // RecordCacheHit records a cache hit.
-func (m *RoutingMetrics) RecordCacheHit(ctx context.Context) {
+func (m *Routing) RecordCacheHit(ctx context.Context) {
     m.cacheHits.Add(ctx, 1)
 }
 
 // RecordCacheMiss records a cache miss.
-func (m *RoutingMetrics) RecordCacheMiss(ctx context.Context) {
+func (m *Routing) RecordCacheMiss(ctx context.Context) {
     m.cacheMisses.Add(ctx, 1)
 }
 ```
@@ -681,14 +681,14 @@ import (
     "go.opentelemetry.io/otel/metric"
 )
 
-// PatternMetrics holds instruments for pattern retrieval metrics.
-type PatternMetrics struct {
+// Pattern holds instruments for pattern retrieval metrics.
+type Pattern struct {
     queryLatency     metric.Float64Histogram
     patternsReturned metric.Int64Histogram
 }
 
-// NewPatternMetrics creates pattern metric instruments.
-func NewPatternMetrics(meter metric.Meter) (*PatternMetrics, error) {
+// NewPattern creates pattern metric instruments.
+func NewPattern(meter metric.Meter) (*Pattern, error) {
     queryLatency, err := meter.Float64Histogram(
         "mnemonic.patterns.query_latency",
         metric.WithDescription("Pattern query latency in milliseconds"),
@@ -709,14 +709,14 @@ func NewPatternMetrics(meter metric.Meter) (*PatternMetrics, error) {
         return nil, err
     }
 
-    return &PatternMetrics{
+    return &Pattern{
         queryLatency:     queryLatency,
         patternsReturned: patternsReturned,
     }, nil
 }
 
 // RecordQuery records a pattern query with its latency and result count.
-func (m *PatternMetrics) RecordQuery(ctx context.Context, database string, duration time.Duration, count int) {
+func (m *Pattern) RecordQuery(ctx context.Context, database string, duration time.Duration, count int) {
     attrs := metric.WithAttributes(attribute.String("database", database))
     m.queryLatency.Record(ctx, float64(duration.Milliseconds()), attrs)
     m.patternsReturned.Record(ctx, int64(count), attrs)
@@ -738,16 +738,16 @@ import (
     "go.opentelemetry.io/otel/metric"
 )
 
-// DatabaseMetrics holds instruments for database-related metrics.
-type DatabaseMetrics struct {
+// Database holds instruments for database-related metrics.
+type Database struct {
     connectionPoolSize   metric.Int64Gauge
     connectionPoolInUse  metric.Int64Gauge
     queryLatency         metric.Float64Histogram
     queryErrors          metric.Int64Counter
 }
 
-// NewDatabaseMetrics creates database metric instruments.
-func NewDatabaseMetrics(meter metric.Meter) (*DatabaseMetrics, error) {
+// NewDatabase creates database metric instruments.
+func NewDatabase(meter metric.Meter) (*Database, error) {
     connectionPoolSize, err := meter.Int64Gauge(
         "mnemonic.db.connection_pool.size",
         metric.WithDescription("Total size of the database connection pool"),
@@ -785,7 +785,7 @@ func NewDatabaseMetrics(meter metric.Meter) (*DatabaseMetrics, error) {
         return nil, err
     }
 
-    return &DatabaseMetrics{
+    return &Database{
         connectionPoolSize:  connectionPoolSize,
         connectionPoolInUse: connectionPoolInUse,
         queryLatency:        queryLatency,
@@ -794,14 +794,14 @@ func NewDatabaseMetrics(meter metric.Meter) (*DatabaseMetrics, error) {
 }
 
 // RecordPoolStats records connection pool statistics.
-func (m *DatabaseMetrics) RecordPoolStats(ctx context.Context, database string, size, inUse int64) {
+func (m *Database) RecordPoolStats(ctx context.Context, database string, size, inUse int64) {
     attrs := metric.WithAttributes(attribute.String("database", database))
     m.connectionPoolSize.Record(ctx, size, attrs)
     m.connectionPoolInUse.Record(ctx, inUse, attrs)
 }
 
 // RecordQuery records a database query with latency.
-func (m *DatabaseMetrics) RecordQuery(ctx context.Context, database, operation string, duration time.Duration) {
+func (m *Database) RecordQuery(ctx context.Context, database, operation string, duration time.Duration) {
     m.queryLatency.Record(ctx, float64(duration.Milliseconds()), metric.WithAttributes(
         attribute.String("database", database),
         attribute.String("operation", operation),
@@ -809,7 +809,7 @@ func (m *DatabaseMetrics) RecordQuery(ctx context.Context, database, operation s
 }
 
 // RecordError records a database error.
-func (m *DatabaseMetrics) RecordError(ctx context.Context, database, operation string) {
+func (m *Database) RecordError(ctx context.Context, database, operation string) {
     m.queryErrors.Add(ctx, 1, metric.WithAttributes(
         attribute.String("database", database),
         attribute.String("operation", operation),
@@ -830,24 +830,24 @@ import (
 
 // Registry holds all metric instruments for the application.
 type Registry struct {
-    Routing  *RoutingMetrics
-    Patterns *PatternMetrics
-    Database *DatabaseMetrics
+    Routing  *Routing
+    Patterns *Pattern
+    Database *Database
 }
 
 // NewRegistry creates all metric instruments.
 func NewRegistry(meter metric.Meter) (*Registry, error) {
-    routing, err := NewRoutingMetrics(meter)
+    routing, err := NewRouting(meter)
     if err != nil {
         return nil, err
     }
 
-    patterns, err := NewPatternMetrics(meter)
+    patterns, err := NewPattern(meter)
     if err != nil {
         return nil, err
     }
 
-    database, err := NewDatabaseMetrics(meter)
+    database, err := NewDatabase(meter)
     if err != nil {
         return nil, err
     }
@@ -1174,11 +1174,11 @@ var tracer = otel.Tracer("mnemonic/repository/postgres")
 // InstrumentedPool wraps pgxpool.Pool with observability.
 type InstrumentedPool struct {
     pool    *pgxpool.Pool
-    metrics *metrics.DatabaseMetrics
+    metrics *metrics.Database
 }
 
 // NewInstrumentedPool creates an instrumented database pool.
-func NewInstrumentedPool(pool *pgxpool.Pool, metrics *metrics.DatabaseMetrics) *InstrumentedPool {
+func NewInstrumentedPool(pool *pgxpool.Pool, metrics *metrics.Database) *InstrumentedPool {
     return &InstrumentedPool{
         pool:    pool,
         metrics: metrics,
@@ -1297,11 +1297,11 @@ var tracer = otel.Tracer("mnemonic/repository/neo4j")
 // InstrumentedSession wraps neo4j.SessionWithContext with observability.
 type InstrumentedSession struct {
     session neo4j.SessionWithContext
-    metrics *metrics.DatabaseMetrics
+    metrics *metrics.Database
 }
 
 // NewInstrumentedSession creates an instrumented Neo4j session.
-func NewInstrumentedSession(session neo4j.SessionWithContext, metrics *metrics.DatabaseMetrics) *InstrumentedSession {
+func NewInstrumentedSession(session neo4j.SessionWithContext, metrics *metrics.Database) *InstrumentedSession {
     return &InstrumentedSession{
         session: session,
         metrics: metrics,
@@ -1441,14 +1441,14 @@ import (
     mmetrics "github.com/twistingmercury/mnemonic/internal/metrics"
 )
 
-func TestRoutingMetrics(t *testing.T) {
+func TestRouting(t *testing.T) {
     // Create a test meter provider with in-memory reader
     reader := metric.NewManualReader()
     provider := metric.NewMeterProvider(metric.WithReader(reader))
     meter := provider.Meter("test")
 
     // Create metrics
-    rm, err := mmetrics.NewRoutingMetrics(meter)
+    rm, err := mmetrics.NewRouting(meter)
     if err != nil {
         t.Fatalf("failed to create routing metrics: %v", err)
     }

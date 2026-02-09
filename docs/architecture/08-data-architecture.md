@@ -704,7 +704,7 @@ sequenceDiagram
 
     CLI->>API: POST /api/route
     API->>CACHE: Get cached rules
-    CACHE-->>API: []RoutingRule
+    CACHE-->>API: []Rule
 
     loop Priority-ordered evaluation
         API->>API: Match prompt against rule

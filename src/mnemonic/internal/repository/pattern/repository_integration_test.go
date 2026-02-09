@@ -238,7 +238,7 @@ func TestIntegration_Create(t *testing.T) {
 		assert.Empty(t, retrieved.Tags)
 	})
 
-	t.Run("returns ErrPatternNameExists for duplicate name", func(t *testing.T) {
+	t.Run("returns ErrNameExists for duplicate name", func(t *testing.T) {
 		p1 := testIntegrationPattern("create-duplicate")
 		require.NoError(t, repo.Create(ctx, p1))
 
@@ -249,7 +249,7 @@ func TestIntegration_Create(t *testing.T) {
 		}
 
 		err := repo.Create(ctx, p2)
-		assert.ErrorIs(t, err, pattern.ErrPatternNameExists)
+		assert.ErrorIs(t, err, pattern.ErrNameExists)
 	})
 }
 
@@ -279,11 +279,11 @@ func TestIntegration_Get(t *testing.T) {
 		assert.False(t, retrieved.UpdatedAt.IsZero())
 	})
 
-	t.Run("returns ErrPatternNotFound for nonexistent ID", func(t *testing.T) {
+	t.Run("returns ErrNotFound for nonexistent ID", func(t *testing.T) {
 		nonexistentID := uuid.New()
 		retrieved, err := repo.Get(ctx, nonexistentID)
 
-		assert.ErrorIs(t, err, pattern.ErrPatternNotFound)
+		assert.ErrorIs(t, err, pattern.ErrNotFound)
 		assert.Nil(t, retrieved)
 	})
 }
@@ -308,10 +308,10 @@ func TestIntegration_GetByName(t *testing.T) {
 		assert.Equal(t, testPattern.Name, retrieved.Name)
 	})
 
-	t.Run("returns ErrPatternNotFound for nonexistent name", func(t *testing.T) {
+	t.Run("returns ErrNotFound for nonexistent name", func(t *testing.T) {
 		retrieved, err := repo.GetByName(ctx, testPatternPrefix+"nonexistent")
 
-		assert.ErrorIs(t, err, pattern.ErrPatternNotFound)
+		assert.ErrorIs(t, err, pattern.ErrNotFound)
 		assert.Nil(t, retrieved)
 	})
 }
@@ -354,7 +354,7 @@ func TestIntegration_Update(t *testing.T) {
 			"UpdatedAt should be >= CreatedAt")
 	})
 
-	t.Run("returns ErrPatternNotFound for nonexistent pattern", func(t *testing.T) {
+	t.Run("returns ErrNotFound for nonexistent pattern", func(t *testing.T) {
 		nonexistent := &pattern.Pattern{
 			ID:      uuid.New(),
 			Name:    testPatternPrefix + "nonexistent-update",
@@ -363,7 +363,7 @@ func TestIntegration_Update(t *testing.T) {
 		}
 
 		err := repo.Update(ctx, nonexistent)
-		assert.ErrorIs(t, err, pattern.ErrPatternNotFound)
+		assert.ErrorIs(t, err, pattern.ErrNotFound)
 	})
 }
 
@@ -395,9 +395,9 @@ func TestIntegration_Delete(t *testing.T) {
 		assert.False(t, exists)
 	})
 
-	t.Run("returns ErrPatternNotFound for nonexistent pattern", func(t *testing.T) {
+	t.Run("returns ErrNotFound for nonexistent pattern", func(t *testing.T) {
 		err := repo.Delete(ctx, uuid.New())
-		assert.ErrorIs(t, err, pattern.ErrPatternNotFound)
+		assert.ErrorIs(t, err, pattern.ErrNotFound)
 	})
 }
 
@@ -428,7 +428,7 @@ func TestIntegration_List(t *testing.T) {
 	}
 
 	t.Run("lists all patterns without filters", func(t *testing.T) {
-		result, total, err := repo.List(ctx, pattern.PatternFilter{}, repository.ListOptions{})
+		result, total, err := repo.List(ctx, pattern.Filter{}, repository.ListOptions{})
 
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, total, int64(5))
@@ -444,7 +444,7 @@ func TestIntegration_List(t *testing.T) {
 	})
 
 	t.Run("lists with limit", func(t *testing.T) {
-		result, total, err := repo.List(ctx, pattern.PatternFilter{}, repository.ListOptions{Limit: 2})
+		result, total, err := repo.List(ctx, pattern.Filter{}, repository.ListOptions{Limit: 2})
 
 		require.NoError(t, err)
 		assert.Len(t, result, 2)
@@ -453,12 +453,12 @@ func TestIntegration_List(t *testing.T) {
 
 	t.Run("lists with limit and offset", func(t *testing.T) {
 		// Get first page
-		page1, total1, err := repo.List(ctx, pattern.PatternFilter{}, repository.ListOptions{Limit: 2, Offset: 0})
+		page1, total1, err := repo.List(ctx, pattern.Filter{}, repository.ListOptions{Limit: 2, Offset: 0})
 		require.NoError(t, err)
 		assert.Len(t, page1, 2)
 
 		// Get second page
-		page2, total2, err := repo.List(ctx, pattern.PatternFilter{}, repository.ListOptions{Limit: 2, Offset: 2})
+		page2, total2, err := repo.List(ctx, pattern.Filter{}, repository.ListOptions{Limit: 2, Offset: 2})
 		require.NoError(t, err)
 		assert.Len(t, page2, 2)
 
@@ -474,7 +474,7 @@ func TestIntegration_List(t *testing.T) {
 	})
 
 	t.Run("lists with tag filter", func(t *testing.T) {
-		result, _, err := repo.List(ctx, pattern.PatternFilter{
+		result, _, err := repo.List(ctx, pattern.Filter{
 			Tags: []string{"go"},
 		}, repository.ListOptions{})
 
@@ -489,7 +489,7 @@ func TestIntegration_List(t *testing.T) {
 	})
 
 	t.Run("returns ordered results", func(t *testing.T) {
-		result, _, err := repo.List(ctx, pattern.PatternFilter{}, repository.ListOptions{})
+		result, _, err := repo.List(ctx, pattern.Filter{}, repository.ListOptions{})
 
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, len(result), 2)
@@ -538,10 +538,10 @@ func TestIntegration_UpdateEmbedding(t *testing.T) {
 		}
 	})
 
-	t.Run("returns ErrPatternNotFound for nonexistent pattern", func(t *testing.T) {
+	t.Run("returns ErrNotFound for nonexistent pattern", func(t *testing.T) {
 		embedding := createNormalizedEmbedding(0)
 		err := repo.UpdateEmbedding(ctx, uuid.New(), embedding)
-		assert.ErrorIs(t, err, pattern.ErrPatternNotFound)
+		assert.ErrorIs(t, err, pattern.ErrNotFound)
 	})
 }
 
@@ -588,9 +588,9 @@ func TestIntegration_UpdateEnrichmentStatus(t *testing.T) {
 		assert.Equal(t, errMsg, *retrieved.EnrichmentError)
 	})
 
-	t.Run("returns ErrPatternNotFound for nonexistent pattern", func(t *testing.T) {
+	t.Run("returns ErrNotFound for nonexistent pattern", func(t *testing.T) {
 		err := repo.UpdateEnrichmentStatus(ctx, uuid.New(), "enriched", nil)
-		assert.ErrorIs(t, err, pattern.ErrPatternNotFound)
+		assert.ErrorIs(t, err, pattern.ErrNotFound)
 	})
 }
 
@@ -816,12 +816,12 @@ func TestIntegration_AgentAssociations(t *testing.T) {
 		assert.Empty(t, retrieved)
 	})
 
-	t.Run("returns ErrPatternNotFound for nonexistent pattern", func(t *testing.T) {
+	t.Run("returns ErrNotFound for nonexistent pattern", func(t *testing.T) {
 		associations := []pattern.AgentAssociation{
 			{AgentName: agent1.Name, Relevance: 0.9},
 		}
 		err := patternRepo.SetAgentAssociations(ctx, uuid.New(), associations)
-		assert.ErrorIs(t, err, pattern.ErrPatternNotFound)
+		assert.ErrorIs(t, err, pattern.ErrNotFound)
 	})
 
 	t.Run("returns empty slice for pattern with no associations", func(t *testing.T) {
@@ -1080,7 +1080,7 @@ func TestIntegration_ListWithEnrichmentStatusFilter(t *testing.T) {
 	require.NoError(t, repo.UpdateEnrichmentStatus(ctx, failedPattern.ID, "failed", &errMsg))
 
 	t.Run("filters by pending status", func(t *testing.T) {
-		result, _, err := repo.List(ctx, pattern.PatternFilter{
+		result, _, err := repo.List(ctx, pattern.Filter{
 			EnrichmentStatus: "pending",
 		}, repository.ListOptions{})
 
@@ -1097,7 +1097,7 @@ func TestIntegration_ListWithEnrichmentStatusFilter(t *testing.T) {
 	})
 
 	t.Run("filters by enriched status", func(t *testing.T) {
-		result, _, err := repo.List(ctx, pattern.PatternFilter{
+		result, _, err := repo.List(ctx, pattern.Filter{
 			EnrichmentStatus: "enriched",
 		}, repository.ListOptions{})
 
@@ -1114,7 +1114,7 @@ func TestIntegration_ListWithEnrichmentStatusFilter(t *testing.T) {
 	})
 
 	t.Run("filters by failed status", func(t *testing.T) {
-		result, _, err := repo.List(ctx, pattern.PatternFilter{
+		result, _, err := repo.List(ctx, pattern.Filter{
 			EnrichmentStatus: "failed",
 		}, repository.ListOptions{})
 

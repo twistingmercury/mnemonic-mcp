@@ -27,8 +27,8 @@
 - [Repository Interfaces](#repository-interfaces)
   - [AgentRepository](#agentrepository)
   - [PatternRepository](#patternrepository)
-  - [RoutingRuleRepository](#routingrulerepository)
-  - [EnrichmentJobRepository](#enrichmentjobrepository)
+  - [RoutingRule Repository](#routingrule-repository)
+  - [EnrichmentJob Repository](#enrichmentjob-repository)
   - [GraphRepository](#graphrepository)
 - [Connection Configuration](#connection-configuration)
   - [PostgreSQL Connection](#postgresql-connection)
@@ -978,16 +978,16 @@ RETURN count(c) AS deletedCount;
 // AgentRepository defines data access operations for agents.
 // Implementation: internal/repository/agent_repository.go
 type AgentRepository interface {
-    // Create stores a new agent. Returns ErrAgentExists if name already exists.
+    // Create stores a new agent. Returns ErrExists if name already exists.
     Create(ctx context.Context, agent *Agent) error
 
-    // Get retrieves an agent by name. Returns ErrAgentNotFound if not found.
+    // Get retrieves an agent by name. Returns ErrNotFound if not found.
     Get(ctx context.Context, name string) (*Agent, error)
 
-    // Update modifies an existing agent. Returns ErrAgentNotFound if not found.
+    // Update modifies an existing agent. Returns ErrNotFound if not found.
     Update(ctx context.Context, agent *Agent) error
 
-    // Delete removes an agent by name. Returns ErrAgentInUse if referenced by rules.
+    // Delete removes an agent by name. Returns ErrInUse if referenced by rules.
     Delete(ctx context.Context, name string) error
 
     // List retrieves all agents with optional pagination.
@@ -1016,23 +1016,23 @@ type Agent struct {
 // PatternRepository defines data access operations for patterns.
 // Implementation: internal/repository/pattern_repository.go
 type PatternRepository interface {
-    // Create stores a new pattern. Returns ErrPatternNameExists if name exists.
+    // Create stores a new pattern. Returns ErrNameExists if name exists.
     Create(ctx context.Context, pattern *Pattern) error
 
-    // Get retrieves a pattern by ID. Returns ErrPatternNotFound if not found.
+    // Get retrieves a pattern by ID. Returns ErrNotFound if not found.
     Get(ctx context.Context, id uuid.UUID) (*Pattern, error)
 
-    // GetByName retrieves a pattern by name. Returns ErrPatternNotFound if not found.
+    // GetByName retrieves a pattern by name. Returns ErrNotFound if not found.
     GetByName(ctx context.Context, name string) (*Pattern, error)
 
-    // Update modifies an existing pattern. Returns ErrPatternNotFound if not found.
+    // Update modifies an existing pattern. Returns ErrNotFound if not found.
     Update(ctx context.Context, pattern *Pattern) error
 
-    // Delete removes a pattern by ID. Returns ErrPatternNotFound if not found.
+    // Delete removes a pattern by ID. Returns ErrNotFound if not found.
     Delete(ctx context.Context, id uuid.UUID) error
 
     // List retrieves patterns with filtering and pagination.
-    List(ctx context.Context, filter PatternFilter, opts ListOptions) ([]*Pattern, int64, error)
+    List(ctx context.Context, filter Filter, opts ListOptions) ([]*Pattern, int64, error)
 
     // UpdateEmbedding stores the embedding vector for a pattern.
     UpdateEmbedding(ctx context.Context, id uuid.UUID, embedding []float32) error
@@ -1041,7 +1041,7 @@ type PatternRepository interface {
     UpdateEnrichmentStatus(ctx context.Context, id uuid.UUID, status string, err error) error
 
     // FindSimilar finds patterns similar to the given embedding vector.
-    FindSimilar(ctx context.Context, embedding []float32, opts SimilarityOptions) ([]*PatternMatch, error)
+    FindSimilar(ctx context.Context, embedding []float32, opts SimilarityOptions) ([]*Match, error)
 
     // SetAgentAssociations replaces all agent associations for a pattern.
     SetAgentAssociations(ctx context.Context, patternID uuid.UUID, associations []AgentAssociation) error
@@ -1065,8 +1065,8 @@ type Pattern struct {
     UpdatedAt        time.Time  `db:"updated_at"`
 }
 
-// PatternFilter defines filtering options for pattern queries.
-type PatternFilter struct {
+// Filter defines filtering options for pattern queries.
+type Filter struct {
     Tags            []string // Filter by any of these tags
     EnrichmentStatus string  // Filter by enrichment status
     SearchQuery     string   // Full-text search in name/description
@@ -1079,8 +1079,8 @@ type SimilarityOptions struct {
     Tags          []string // Optional tag filter
 }
 
-// PatternMatch represents a similarity search result.
-type PatternMatch struct {
+// Match represents a similarity search result.
+type Match struct {
     Pattern    *Pattern
     Similarity float64
 }
@@ -1092,33 +1092,33 @@ type AgentAssociation struct {
 }
 ```
 
-### RoutingRuleRepository
+### RoutingRule Repository
 
 ```go
 // RoutingRuleRepository defines data access operations for routing rules.
 // Implementation: internal/repository/routing_rule_repository.go
 type RoutingRuleRepository interface {
-    // Create stores a new routing rule. Returns ErrRuleNameExists if name exists.
-    Create(ctx context.Context, rule *RoutingRule) error
+    // Create stores a new routing rule. Returns ErrNameExists if name exists.
+    Create(ctx context.Context, rule *Rule) error
 
-    // Get retrieves a routing rule by ID. Returns ErrRuleNotFound if not found.
-    Get(ctx context.Context, id uuid.UUID) (*RoutingRule, error)
+    // Get retrieves a routing rule by ID. Returns ErrNotFound if not found.
+    Get(ctx context.Context, id uuid.UUID) (*Rule, error)
 
-    // GetByName retrieves a routing rule by name. Returns ErrRuleNotFound if not found.
-    GetByName(ctx context.Context, name string) (*RoutingRule, error)
+    // GetByName retrieves a routing rule by name. Returns ErrNotFound if not found.
+    GetByName(ctx context.Context, name string) (*Rule, error)
 
-    // Update modifies an existing routing rule. Returns ErrRuleNotFound if not found.
-    Update(ctx context.Context, rule *RoutingRule) error
+    // Update modifies an existing routing rule. Returns ErrNotFound if not found.
+    Update(ctx context.Context, rule *Rule) error
 
-    // Delete removes a routing rule by ID. Returns ErrRuleNotFound if not found.
+    // Delete removes a routing rule by ID. Returns ErrNotFound if not found.
     Delete(ctx context.Context, id uuid.UUID) error
 
     // List retrieves routing rules with filtering and pagination.
-    List(ctx context.Context, filter RuleFilter, opts ListOptions) ([]*RoutingRule, int64, error)
+    List(ctx context.Context, filter Filter, opts ListOptions) ([]*Rule, int64, error)
 
     // ListEnabled retrieves all enabled rules ordered by priority (descending).
     // This is the primary method used by the routing engine.
-    ListEnabled(ctx context.Context) ([]*RoutingRule, error)
+    ListEnabled(ctx context.Context) ([]*Rule, error)
 
     // SetEnabled updates the enabled state of a rule.
     SetEnabled(ctx context.Context, id uuid.UUID, enabled bool) error
@@ -1127,8 +1127,8 @@ type RoutingRuleRepository interface {
     Exists(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
-// RoutingRule represents a routing rule definition.
-type RoutingRule struct {
+// Rule represents a routing rule definition.
+type Rule struct {
     ID          uuid.UUID   `db:"id"`
     Name        string      `db:"name"`
     Priority    int         `db:"priority"`
@@ -1174,33 +1174,33 @@ type DefaultMatchConfig struct{}
 
 func (d DefaultMatchConfig) Type() string { return "default" }
 
-// RuleFilter defines filtering options for rule queries.
-type RuleFilter struct {
+// Filter defines filtering options for rule queries.
+type Filter struct {
     AgentName *string // Filter by target agent
     MatchType *string // Filter by match type
     Enabled   *bool   // Filter by enabled state
 }
 ```
 
-### EnrichmentJobRepository
+### EnrichmentJob Repository
 
 ```go
 // EnrichmentJobRepository defines data access operations for enrichment jobs.
 // Implementation: internal/repository/enrichment_job_repository.go
 type EnrichmentJobRepository interface {
     // Create stores a new enrichment job.
-    Create(ctx context.Context, job *EnrichmentJob) error
+    Create(ctx context.Context, job *Job) error
 
-    // Get retrieves an enrichment job by ID. Returns ErrJobNotFound if not found.
-    Get(ctx context.Context, id uuid.UUID) (*EnrichmentJob, error)
+    // Get retrieves an enrichment job by ID. Returns ErrNotFound if not found.
+    Get(ctx context.Context, id uuid.UUID) (*Job, error)
 
     // GetByPatternID retrieves the latest job for a pattern.
-    GetByPatternID(ctx context.Context, patternID uuid.UUID) (*EnrichmentJob, error)
+    GetByPatternID(ctx context.Context, patternID uuid.UUID) (*Job, error)
 
     // ClaimPending atomically claims a pending job for processing.
     // Uses FOR UPDATE SKIP LOCKED for safe concurrent processing.
     // Returns nil if no pending jobs are available.
-    ClaimPending(ctx context.Context) (*EnrichmentJob, error)
+    ClaimPending(ctx context.Context) (*Job, error)
 
     // MarkProcessing updates job status to processing with start time.
     MarkProcessing(ctx context.Context, id uuid.UUID) error
@@ -1224,11 +1224,11 @@ type EnrichmentJobRepository interface {
 
     // List retrieves enrichment jobs with filtering and pagination.
     // Returns the jobs, total count, and any error.
-    List(ctx context.Context, filter JobFilter, opts ListOptions) ([]*EnrichmentJob, int64, error)
+    List(ctx context.Context, filter Filter, opts ListOptions) ([]*Job, int64, error)
 }
 
-// EnrichmentJob represents a background enrichment task.
-type EnrichmentJob struct {
+// Job represents a background enrichment task.
+type Job struct {
     ID          uuid.UUID  `db:"id"`
     PatternID   uuid.UUID  `db:"pattern_id"`
     Status      string     `db:"status"`
@@ -1242,8 +1242,8 @@ type EnrichmentJob struct {
     UpdatedAt   time.Time  `db:"updated_at"`
 }
 
-// JobFilter defines filtering options for job queries.
-type JobFilter struct {
+// Filter defines filtering options for job queries.
+type Filter struct {
     Status    *string    // Filter by job status (pending, processing, completed, failed)
     PatternID *uuid.UUID // Filter by the associated pattern ID
 }
@@ -1323,19 +1323,30 @@ type ListOptions struct {
     Limit  int // Maximum items to return (0 = no limit)
 }
 
-// Repository errors
+// Repository errors (package-specific)
+// agent package errors
 var (
-    ErrAgentNotFound    = errors.New("agent not found")
-    ErrAgentExists      = errors.New("agent already exists")
-    ErrAgentInUse       = errors.New("agent is referenced by routing rules")
+    ErrNotFound = errors.New("agent not found")
+    ErrExists   = errors.New("agent already exists")
+    ErrInUse    = errors.New("agent is referenced by routing rules")
+)
 
-    ErrPatternNotFound  = errors.New("pattern not found")
-    ErrPatternNameExists = errors.New("pattern name already exists")
+// pattern package errors
+var (
+    ErrNotFound   = errors.New("pattern not found")
+    ErrNameExists = errors.New("pattern name already exists")
+)
 
-    ErrRuleNotFound     = errors.New("routing rule not found")
-    ErrRuleNameExists   = errors.New("routing rule name already exists")
+// routingrule package errors
+var (
+    ErrNotFound   = errors.New("routing rule not found")
+    ErrNameExists = errors.New("routing rule name already exists")
+)
 
-    ErrJobNotFound      = errors.New("enrichment job not found")
+// enrichmentjob package errors
+var (
+    ErrNotFound  = errors.New("enrichment job not found")
+    ErrNoPending = errors.New("no pending enrichment jobs available")
 )
 ```
 

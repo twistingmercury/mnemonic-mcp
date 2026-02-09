@@ -14,13 +14,13 @@ import (
 // signature, allowing a repository to be used directly without conversion.
 type RuleLoader interface {
 	// LoadRules retrieves all enabled routing rules.
-	LoadRules(ctx context.Context) ([]*routingrule.RoutingRule, error)
+	LoadRules(ctx context.Context) ([]*routingrule.Rule, error)
 }
 
 // RuleCache provides an in-memory cache of routing rules, pre-sorted by
 // priority (descending) then ID (ascending). It is safe for concurrent access.
 type RuleCache struct {
-	rules []*routingrule.RoutingRule
+	rules []*routingrule.Rule
 	mu    sync.RWMutex
 }
 
@@ -49,19 +49,19 @@ func NewRuleCache(ctx context.Context, loader RuleLoader) (*RuleCache, error) {
 // DESC, ID ASC.
 //
 // Safety invariant: the slice is copied so callers cannot reorder or replace
-// entries. The pointers themselves share the underlying RoutingRule structs
+// entries. The pointers themselves share the underlying Rule structs
 // with the cache, but this is safe because all MatchConfig implementations
 // (KeywordMatchConfig, RegexMatchConfig, PatternMatchConfig, DefaultMatchConfig)
 // are value types -- structs whose fields are either primitive types or slices
 // that are never mutated after construction. If a new MatchConfig type is
 // introduced with pointer fields or mutable shared state, this method must be
 // updated to perform a deep copy.
-func (c *RuleCache) GetRules() []*routingrule.RoutingRule {
+func (c *RuleCache) GetRules() []*routingrule.Rule {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	// Return a shallow copy to prevent external mutation of the slice.
-	result := make([]*routingrule.RoutingRule, len(c.rules))
+	result := make([]*routingrule.Rule, len(c.rules))
 	copy(result, c.rules)
 	return result
 }

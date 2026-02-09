@@ -14,16 +14,16 @@ import (
 
 // Repository defines data access operations for agents.
 type Repository interface {
-	// Create stores a new agent. Returns ErrAgentExists if name already exists.
+	// Create stores a new agent. Returns ErrExists if name already exists.
 	Create(ctx context.Context, agent *Agent) error
 
-	// Get retrieves an agent by name. Returns ErrAgentNotFound if not found.
+	// Get retrieves an agent by name. Returns ErrNotFound if not found.
 	Get(ctx context.Context, name string) (*Agent, error)
 
-	// Update modifies an existing agent. Returns ErrAgentNotFound if not found.
+	// Update modifies an existing agent. Returns ErrNotFound if not found.
 	Update(ctx context.Context, agent *Agent) error
 
-	// Delete removes an agent by name. Returns ErrAgentInUse if referenced by routing rules.
+	// Delete removes an agent by name. Returns ErrInUse if referenced by routing rules.
 	Delete(ctx context.Context, name string) error
 
 	// List retrieves all agents with optional pagination.
@@ -79,7 +79,7 @@ func (r *pgxRepository) Create(ctx context.Context, agent *Agent) error {
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
 			case repository.PgErrCodeUniqueViolation:
-				return ErrAgentExists
+				return ErrExists
 			case repository.PgErrCodeCheckViolation:
 				// Return the constraint violation message for better debugging
 				return err
@@ -117,7 +117,7 @@ func (r *pgxRepository) Get(ctx context.Context, name string) (*Agent, error) {
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrAgentNotFound
+			return nil, ErrNotFound
 		}
 		return nil, err
 	}
@@ -174,7 +174,7 @@ func (r *pgxRepository) Update(ctx context.Context, agent *Agent) error {
 	}
 
 	if result.RowsAffected() == 0 {
-		return ErrAgentNotFound
+		return ErrNotFound
 	}
 
 	agent.UpdatedAt = now
@@ -189,13 +189,13 @@ func (r *pgxRepository) Delete(ctx context.Context, name string) error {
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == repository.PgErrCodeForeignKeyViolation {
-			return ErrAgentInUse
+			return ErrInUse
 		}
 		return err
 	}
 
 	if result.RowsAffected() == 0 {
-		return ErrAgentNotFound
+		return ErrNotFound
 	}
 
 	return nil

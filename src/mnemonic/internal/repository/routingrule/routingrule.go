@@ -21,8 +21,8 @@ const (
 	MatchTypeDefault MatchType = "default"
 )
 
-// RoutingRule represents a routing rule definition stored in the database.
-type RoutingRule struct {
+// Rule represents a routing rule definition stored in the database.
+type Rule struct {
 	// ID is the unique identifier for the routing rule.
 	ID uuid.UUID `db:"id"`
 
@@ -166,8 +166,8 @@ func MarshalMatchConfig(cfg MatchConfig) ([]byte, error) {
 	return json.Marshal(cfg)
 }
 
-// RuleFilter defines filtering options for rule queries.
-type RuleFilter struct {
+// Filter defines filtering options for rule queries.
+type Filter struct {
 	// AgentName filters by target agent name.
 	AgentName *string
 
