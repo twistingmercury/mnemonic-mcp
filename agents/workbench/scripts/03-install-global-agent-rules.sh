@@ -8,7 +8,7 @@ PROJ_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # Logging setup
 TIMESTAMP="${TIMESTAMP:-$(date +%Y%m%d-%H%M%S)}"
 LOG_DIR="${SCRIPT_DIR}/logs/${TIMESTAMP}"
-LOG_FILE="${LOG_DIR}/02-install-global-agent-rules.log"
+LOG_FILE="${LOG_DIR}/03-install-global-agent-rules.log"
 
 mkdir -p "${LOG_DIR}"
 exec > >(tee -a "${LOG_FILE}") 2>&1

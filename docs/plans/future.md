@@ -4,6 +4,11 @@
 
 This document tracks work items identified but deferred beyond the current MVP scope. These are potential enhancements, operational improvements, and features that have emerged during design and implementation but are not required for initial delivery.
 
+## Table of Contents
+
+- [Operational Concerns](#operational-concerns)
+- [Skills and Orchestration Workflows](#skills-and-orchestration-workflows)
+
 ## Operational Concerns
 
 ### Admin Endpoints for Graph Maintenance
@@ -55,3 +60,34 @@ This would mean the `/api/admin/` path above becomes its own service (e.g., `mne
 - If a separate service, should it share the same Go module or be a separate module with shared library dependencies?
 
 **Context:** Emerged from Phase 8B code review and the pattern-update cascade analysis.
+
+[Back to Table of Contents](#table-of-contents)
+
+## Skills and Orchestration Workflows
+
+### Incorporating Skill Definitions into Mnemonic
+
+Skills are specialized orchestration workflows that coordinate multiple agents to accomplish complex tasks. Currently, skill definitions live in `agents/skills/`, are installed by the `02-install-skills.sh` script, and use the `project_skill` frontmatter marker to distinguish them from standard agent definitions.
+
+A critical architectural constraint shapes this integration: skills are inherently a **client-side concept** — they execute locally within each developer's Claude Code installation (`~/.claude/skills/`). Mnemonic, as a server-side service, has no direct path to this local directory. This creates a distribution challenge: if Mnemonic becomes the source of truth for skill definitions, there must be a mechanism to push updated skills to developer workstations.
+
+#### Integration benefits
+
+Incorporating skills into Mnemonic's knowledge graph would provide four key capabilities:
+
+- **Skill routing** — The routing engine could recommend skills (not just individual agents) when a task matches a multi-agent workflow pattern. For example, "write a shell script" would route to the shell-script-orchestration skill, which automatically chains `shell-script-agent` → `bats-test-agent`.
+- **Skill storage** — Skill definitions would be stored in Postgres and Neo4j alongside agent definitions and patterns, making them queryable and versionable through the same infrastructure.
+- **Skill-agent relationships** — The knowledge graph would model which agents a skill orchestrates, enabling queries like "what skills use this agent?" or "what agents does this skill coordinate?"
+- **Skill pattern associations** — When a skill is invoked, Mnemonic could retrieve relevant patterns for all constituent agents in the workflow, ensuring each specialist has the knowledge it needs.
+
+#### Open questions
+
+- Should skills be first-class entities in the data model, or metadata on routing rules?
+- Should Mnemonic validate skill definitions (e.g., ensure all referenced agents exist in the graph)?
+- What is the sync strategy between source files (`agents/skills/`) and the database? Should skills follow the same update cascade pattern as agents?
+- Should skill enrichment extract concepts from skill procedures to improve routing accuracy?
+- How should skills be distributed from Mnemonic to developer workstations? Should Mnemonic expose an endpoint that a local agent or cron job polls for skill updates? Should the workbench install script pull from Mnemonic instead of the repository? What does the push/pull synchronization model look like?
+
+**Context:** Emerged from code review and shell script workflow skill extraction.
+
+[Back to Table of Contents](#table-of-contents)

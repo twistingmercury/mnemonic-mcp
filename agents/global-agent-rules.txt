@@ -2,7 +2,7 @@
 
 ## MANDATORY PRE-RESPONSE CHECK
 
-**Last Updated: 2026-02-02**
+**Last Updated: 2026-02-09**
 
 **Before responding to ANY user request, STOP and check this delegation table:**
 
@@ -11,7 +11,7 @@
 | Task Keywords                        | Delegate To                                         | Never Do Yourself              |
 | ------------------------------------ | --------------------------------------------------- | ------------------------------ |
 | "write/create **BATS tests**"        | `bats-test-agent`                                   | Don't explore/plan tests       |
-| "write/create **shell script**"      | `shell-script-agent` → THEN → `bats-test-agent`     | Don't write .sh files          |
+| "write/create **shell script**"      | `/shell-script` skill                               | Don't write .sh files          |
 | "write/create **Go code/service**"   | `go-software-agent`                                 | Don't write .go files          |
 | "write/create **E2E tests**"         | `go-e2e-test-agent`                                 | Don't plan test cases          |
 | "design/create **API spec**"         | `api-architect-agent`                               | Don't design APIs              |
@@ -22,8 +22,8 @@
 | "**DevOps**/Docker/CI"               | `go-devops-agent`                                   | Don't write deployment configs |
 | "design **data schema/model**"       | `data-architect-agent`                              | Don't design schemas           |
 | "write **SQL/migrations/Cypher**"    | `data-engineer-agent`                               | Don't write SQL                |
-| "review **code**/PR/changes"         | `code-review-agent`                                 | Don't analyze code patterns    |
-| "check **patterns**/compliance"      | `code-review-agent`                                 | Don't validate compliance      |
+| "review **code**/PR/changes"         | `/code-review` skill                                | Don't analyze code patterns    |
+| "check **patterns**/compliance"      | `/code-review` skill                                | Don't validate compliance      |
 
 ### Red Flags - If You're Doing These, STOP
 
@@ -59,64 +59,22 @@ User request → Identify task type → Check table → Delegate immediately
 1. **Complex/new projects**: Main Claude → `software-architect-agent` → recommendations → Main Claude → `go-architect-agent` → plan → specialists
 2. **Go-specific projects**: Main Claude → `go-architect-agent` → plan → specialists
 3. **Data schema/database work**: Main Claude → `data-architect-agent` → schema design → `data-engineer-agent` → migrations → `go-software-agent` → repositories
-4. **Code review**: Main Claude → [`code-review-agent` + `software-architect-agent`] (parallel) → reconcile → unified findings → user collaboration → specialists
+4. **Code review**: Run the `/code-review` skill (3-agent parallel review: `code-review-agent` + `go-architect-agent` + `software-architect-agent`)
 5. **Documentation updates**: Main Claude → `documentation-agent` (for README, CHANGELOG, guides)
 6. **Single component**: Main Claude → specialist directly (use table above)
 7. **Simple implementation**: Main Claude → appropriate specialist (use table above)
 
 ### Special Workflow: Shell Script Creation
 
-**When user requests shell script creation, AUTOMATICALLY chain to testing:**
+**When user requests shell script creation, run the `/shell-script` skill.**
 
-1. User: "Create a deployment script" or "Write a shell script for X"
-2. Main Claude → Delegate to `shell-script-agent` (creates script)
-3. **AUTOMATICALLY** (without user request) → Delegate to `bats-test-agent` (creates & runs tests)
-4. If tests fail with script bug → `bats-test-agent` delegates back to `shell-script-agent`
-5. Iterate until all tests pass
-6. Report completion to user with test results
-
-**Key Points:**
-
-- Testing happens AUTOMATICALLY - don't wait for user to ask
-- The workflow feels seamless (script + tests = one operation)
-- Quality is ensured through the test feedback loop
-- Maintains separation of concerns (different specialists for code vs tests)
+The skill orchestrates script creation via `shell-script-agent`, automatic BATS test generation via `bats-test-agent`, and an iterative fix loop until all tests pass.
 
 ### Special Workflow: Code Review
 
-**When user requests code review (PR, changes, files):**
+**When user requests code review (PR, changes, files), run the `/code-review` skill.**
 
-1. User: "Review this code" or "Check the PR" or "Review my changes"
-2. Main Claude → Delegate to BOTH agents **in parallel**:
-   - `code-review-agent` (pattern compliance, linting, best practices)
-   - `software-architect-agent` (architectural concerns, design coherence)
-3. Both agents return their findings to Main Claude
-4. Main Claude synthesizes findings and identifies:
-   - **Agreements**: Issues both agents flagged
-   - **Unique findings**: Issues only one agent caught
-   - **Disagreements**: Conflicting recommendations
-5. If disagreements exist → Main Claude asks both agents to reconcile:
-   - Present the conflicting views to each agent
-   - Request they provide reasoning and reach consensus
-6. Main Claude compiles **unified findings** and delegates to `documentation-agent`:
-   - Document any new patterns discovered
-   - Update existing pattern docs if needed
-7. Main Claude presents unified findings to user
-8. Main Claude works WITH user to prioritize and resolve findings:
-   - Discuss trade-offs for architectural decisions
-   - Get user approval before delegating fixes
-9. Main Claude delegates approved fixes to appropriate specialists:
-   - Go issues → `go-software-agent`
-   - Shell issues → `shell-script-agent`
-   - DevOps issues → `go-devops-agent`
-
-**Key Points:**
-
-- Two perspectives: tactical (code-review) + strategic (software-architect)
-- Agents reconcile disagreements BEFORE presenting to user
-- User is involved in resolution decisions, not just notified
-- Documentation updated to capture learnings from review
-- Pattern compliance checked against Cognee knowledge base
+The skill orchestrates a 3-agent parallel review and handles synthesis, reconciliation, and fix delegation. See `~/.claude/skills/code-review/SKILL.md` for the full procedure.
 
 ### Main Claude's Role
 

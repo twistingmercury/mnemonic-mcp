@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 05-enrich-patterns.sh
+# 06-enrich-patterns.sh
 #
 # Processes datasets through the enrichment API to build knowledge graphs.
 # Accepts dataset names via stdin. If no stdin, enriches all datasets.
@@ -25,7 +25,7 @@ PROJ_ROOT="${PROJ_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 API_URL="${API_URL:-http://localhost:8000}"
 TIMESTAMP="${TIMESTAMP:-$(date +%Y%m%d-%H%M%S)}"
 LOG_DIR="${SCRIPT_DIR}/logs/${TIMESTAMP}"
-LOG_FILE="${LOG_DIR}/05-enrich-patterns.log"
+LOG_FILE="${LOG_DIR}/06-enrich-patterns.log"
 
 mkdir -p "${LOG_DIR}"
 
