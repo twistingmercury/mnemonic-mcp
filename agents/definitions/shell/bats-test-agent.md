@@ -4,7 +4,7 @@ description: Creates comprehensive BATS (Bash Automated Testing System) test sui
 model: sonnet
 color: cyan
 project_agent: team-agentic-setup
-allowed_tools:
+tools:
   - "Read(**/*.sh)"
   - "Read(**/*.bats)"
   - "Read(**/*.md)"

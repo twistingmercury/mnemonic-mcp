@@ -4,7 +4,7 @@ description: Creates comprehensive black-box E2E tests in Go that validate user-
 model: opus
 color: yellow
 project_agent: team-agentic-setup
-allowed_tools:
+tools:
   # Read access
   - "Read(**/*.sh)"
   - "Read(**/*.json)"

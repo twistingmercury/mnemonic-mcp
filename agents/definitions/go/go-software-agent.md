@@ -4,7 +4,7 @@ description: Expert Go engineer for writing, refactoring, optimizing, and archit
 model: opus
 color: green
 project_agent: team-agentic-setup
-allowed_tools:
+tools:
   # Read access
   - "Read(**/*.sh)"
   - "Read(**/*.json)"

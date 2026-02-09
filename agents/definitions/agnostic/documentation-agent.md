@@ -4,7 +4,7 @@ description: Creates and maintains project documentation (README, CHANGELOG, gui
 model: sonnet
 color: blue
 project_agent: team-agentic-setup
-allowed_tools:
+tools:
   - "Read(**/*.md)"
   - "Read(**/README.md)"
   - "Read(**/CHANGELOG.md)"

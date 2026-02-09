@@ -4,7 +4,7 @@ description: Language-agnostic data engineer. Writes SQL migrations, Cypher quer
 model: opus
 color: cyan
 project_agent: team-agentic-setup
-allowed_tools:
+tools:
   # Read access
   - "Read(**/*.sql)"
   - "Read(**/*.cypher)"
