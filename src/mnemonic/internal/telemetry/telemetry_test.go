@@ -235,5 +235,5 @@ func TestMetricsRegistryCreatedAndAccessible(t *testing.T) {
 	registry.Routing.RecordCacheHit(context.Background())
 	registry.Routing.RecordCacheMiss(context.Background())
 	registry.Routing.RecordRoutingDecision(context.Background(), "test-agent")
-	registry.Routing.RecordPatternMatch(context.Background(), "exact")
+	registry.Routing.RecordRuleMatch(context.Background(), "exact")
 }

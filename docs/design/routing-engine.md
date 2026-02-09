@@ -7,9 +7,9 @@
 - [Overview](#overview)
 - [Design Principles](#design-principles)
 - [Interface Definitions](#interface-definitions)
-  - [Router Interface](#router-interface)
+  - [Evaluator Interface](#evaluator-interface)
   - [RuleMatcher Interface](#rulematcher-interface)
-  - [RoutingDecision Type](#routingdecision-type)
+  - [Decision Type](#decision-type)
   - [Supporting Types](#supporting-types)
   - [Complete Type Relationships](#complete-type-relationships)
 - [Rule Loading and Caching](#rule-loading-and-caching)
@@ -75,45 +75,45 @@ The routing engine implements the logic described in the [OpenAPI specification]
 
 > **Architecture Reference:** [Communication Patterns - CLI to Mnemonic Communication](../../architecture/04-communication-patterns.md#cli-to-mnemonic-communication) | [Communication Patterns - Response Structure](../../architecture/04-communication-patterns.md#response-structure)
 
-### Router Interface
+### Evaluator Interface
 
-The `Router` interface defines the primary routing contract. It evaluates the prompt against all enabled routing rules in priority order and returns the first match.
+The `Evaluator` interface defines the primary routing contract. It evaluates the prompt against all enabled routing rules in priority order and returns the first match.
 
 ```mermaid
 classDiagram
-    class Router {
+    class Evaluator {
         <<interface>>
-        +Route(ctx context.Context, req RouteRequest) RoutingDecision, error
+        +Route(ctx context.Context, req Request) Decision, error
     }
 
-    class RouteRequest {
+    class Request {
         +string Prompt
-        +RouteContext Context
-        +RouteOptions Options
+        +RequestContext Context
+        +Options Options
     }
 
-    class RouteContext {
+    class RequestContext {
         +string WorkingDirectory
         +[]string FileTypes
         +[]string RecentAgents
     }
 
-    class RouteOptions {
+    class Options {
         +bool IncludePatterns
         +int MaxPatterns
         +float64 PatternRelevanceThreshold
     }
 
-    note for RouteOptions "Per-request overrides for pattern retrieval.\nIf not specified, defaults from server config are used.\nSee configuration.md for default values."
+    note for Options "Per-request overrides for pattern retrieval.\nIf not specified, defaults from server config are used.\nSee configuration.md for default values."
 
-    Router ..> RouteRequest : uses
-    RouteRequest *-- RouteContext : contains
-    RouteRequest *-- RouteOptions : contains
+    Evaluator ..> Request : uses
+    Request *-- RequestContext : contains
+    Request *-- Options : contains
 ```
 
-**RouteOptions precedence:** The `RouteOptions` fields (`IncludePatterns`, `MaxPatterns`, `PatternRelevanceThreshold`) allow per-request overrides of the server-side default values. If these fields are not specified in a request, the Mnemonic server configuration defaults are used.
+**Options precedence:** The `Options` fields (`IncludePatterns`, `MaxPatterns`, `PatternRelevanceThreshold`) allow per-request overrides of the server-side default values. If these fields are not specified in a request, the Mnemonic server configuration defaults are used.
 
-**Router.Route behavior:**
+**Evaluator.Route behavior:**
 
 - Evaluates rules in descending priority order
 - Returns immediately when a rule matches (short-circuit evaluation)
@@ -122,6 +122,8 @@ classDiagram
 ### RuleMatcher Interface
 
 Each match type implements the `RuleMatcher` interface. Different implementations handle keyword, regex, pattern, and default matching.
+
+Note: `MatchConfig` is an interface implemented by concrete types (`KeywordMatchConfig`, `RegexMatchConfig`, `PatternMatchConfig`, `DefaultMatchConfig`), not a union struct.
 
 ```mermaid
 classDiagram
@@ -181,13 +183,13 @@ classDiagram
 | `MatchedKeywords` | []string | Keywords that triggered a keyword match (empty for other match types) |
 | `Details`         | string   | Additional match information for logging                              |
 
-### RoutingDecision Type
+### Decision Type
 
-The `RoutingDecision` struct contains the result of routing evaluation and maps to the RoutingDecision schema in the OpenAPI spec.
+The `Decision` struct contains the result of routing evaluation and maps to the RoutingDecision schema in the OpenAPI spec.
 
 ```mermaid
 classDiagram
-    class RoutingDecision {
+    class Decision {
         +string AgentName
         +float64 Confidence
         +MatchType MatchType
@@ -195,10 +197,10 @@ classDiagram
         +string Reasoning
     }
 
-    RoutingDecision --> MatchType : uses
+    Decision --> MatchType : uses
 ```
 
-**RoutingDecision fields:**
+**Decision fields:**
 
 | Field             | Type      | Description                                                     |
 | ----------------- | --------- | --------------------------------------------------------------- |
@@ -227,7 +229,7 @@ classDiagram
         +string Name
         +int Priority
         +string AgentName
-        +MatchType MatchType
+        +string MatchType
         +MatchConfig MatchConfig
         +bool Enabled
         +time.Time CreatedAt
@@ -235,14 +237,14 @@ classDiagram
     }
 
     class MatchConfig {
-        +*KeywordMatchConfig Keyword
-        +*RegexMatchConfig Regex
-        +*PatternMatchConfig Pattern
+        <<interface>>
+        +Type() string
     }
 
     class KeywordMatchConfig {
         +[]string Keywords
         +KeywordMatchMode MatchMode
+        +Type() string
     }
 
     class KeywordMatchMode {
@@ -254,28 +256,36 @@ classDiagram
     class RegexMatchConfig {
         +string Pattern
         +string Flags
+        +Type() string
     }
 
     class PatternMatchConfig {
         +[]uuid.UUID PatternIDs
+        +Type() string
     }
 
-    RoutingRule --> MatchType : uses
-    RoutingRule *-- MatchConfig : contains
-    MatchConfig *-- KeywordMatchConfig : contains
-    MatchConfig *-- RegexMatchConfig : contains
-    MatchConfig *-- PatternMatchConfig : contains
+    class DefaultMatchConfig {
+        +Type() string
+    }
+
+    RoutingRule --> MatchConfig : contains
+    MatchConfig <|.. KeywordMatchConfig : implements
+    MatchConfig <|.. RegexMatchConfig : implements
+    MatchConfig <|.. PatternMatchConfig : implements
+    MatchConfig <|.. DefaultMatchConfig : implements
     KeywordMatchConfig --> KeywordMatchMode : uses
 ```
 
-**MatchConfig union semantics:**
+**MatchConfig interface semantics:**
 
-Only one field is populated based on the `MatchType`:
+`MatchConfig` is an interface with concrete implementations:
 
-- `MatchType: keyword` -> `MatchConfig.Keyword` is populated
-- `MatchType: regex` -> `MatchConfig.Regex` is populated
-- `MatchType: pattern` -> `MatchConfig.Pattern` is populated
-- `MatchType: default` -> No configuration needed (empty config)
+- `MatchType: keyword` -> `KeywordMatchConfig` implements MatchConfig
+- `MatchType: regex` -> `RegexMatchConfig` implements MatchConfig
+- `MatchType: pattern` -> `PatternMatchConfig` implements MatchConfig
+- `MatchType: default` -> `DefaultMatchConfig` implements MatchConfig
+
+Note: `RoutingRule.MatchType` is stored as a plain `string` in the database. The routing engine explicitly converts it to the typed `MatchType` constant during evaluation: `matchType := MatchType(rule.MatchType)`.
 
 ### Complete Type Relationships
 
@@ -285,15 +295,26 @@ The following diagram shows the complete relationship between all routing engine
 classDiagram
     direction TB
 
-    class Router {
+    class Evaluator {
         <<interface>>
-        +Route(ctx context.Context, req RouteRequest) RoutingDecision, error
+        +Route(ctx context.Context, req Request) Decision, error
+    }
+
+    class Engine {
+        -RuleCache cache
+        -MatcherRegistry registry
+        -string defaultAgent
+        -RoutingMetrics metrics
+        -zerolog.Logger logger
+        -trace.Tracer tracer
+        +Route(ctx context.Context, req Request) Decision, error
     }
 
     class RuleCache {
         -sync.RWMutex mu
-        -[]RoutingRule rules
-        +GetRules() []RoutingRule
+        -[]*RoutingRule rules
+        +GetRules() []*RoutingRule
+        +RuleCount() int
     }
 
     class MatcherRegistry {
@@ -308,18 +329,18 @@ classDiagram
         +Type() MatchType
     }
 
-    class RuleRepository {
+    class RuleLoader {
         <<interface>>
-        +ListEnabledRules(ctx context.Context) []RoutingRule, error
+        +LoadRules(ctx context.Context) []*RoutingRule, error
     }
 
-    class RouteRequest {
+    class Request {
         +string Prompt
-        +RouteContext Context
-        +RouteOptions Options
+        +RequestContext Context
+        +Options Options
     }
 
-    class RoutingDecision {
+    class Decision {
         +string AgentName
         +float64 Confidence
         +MatchType MatchType
@@ -332,7 +353,7 @@ classDiagram
         +string Name
         +int Priority
         +string AgentName
-        +MatchType MatchType
+        +string MatchType
         +MatchConfig MatchConfig
         +bool Enabled
     }
@@ -344,11 +365,18 @@ classDiagram
         +string Details
     }
 
-    Router --> RuleCache : uses
-    Router --> MatcherRegistry : uses
-    Router ..> RouteRequest : receives
-    Router ..> RoutingDecision : returns
-    RuleCache --> RuleRepository : loads from
+    class RoutingMetrics {
+        +RecordRoutingDecision(ctx, agentName)
+        +RecordRuleMatch(ctx, ruleType)
+    }
+
+    Evaluator <|.. Engine : implements
+    Engine --> RuleCache : uses
+    Engine --> MatcherRegistry : uses
+    Engine --> RoutingMetrics : uses
+    Engine ..> Request : receives
+    Engine ..> Decision : returns
+    RuleCache --> RuleLoader : loads from
     RuleCache o-- RoutingRule : caches
     MatcherRegistry o-- RuleMatcher : contains
     RuleMatcher ..> MatchResult : returns
@@ -369,7 +397,7 @@ The routing engine maintains an in-memory cache of enabled routing rules to mini
 ```mermaid
 flowchart TD
     subgraph "Routing Engine"
-        ROUTER[Router]
+        ENGINE[Engine]
         CACHE[Rule Cache<br/>sync.RWMutex protected]
         MATCHERS[Matcher Registry]
     end
@@ -378,8 +406,8 @@ flowchart TD
         PG[(Postgres)]
     end
 
-    ROUTER --> CACHE
-    ROUTER --> MATCHERS
+    ENGINE --> CACHE
+    ENGINE --> MATCHERS
     CACHE <--|"Load on startup"| PG
 ```
 
@@ -387,41 +415,44 @@ flowchart TD
 
 ```go
 type RuleCache struct {
-    rules []Rule
+    rules []*routingrule.RoutingRule
     mu    sync.RWMutex
 }
 
-func NewRuleCache(loader RuleLoader) (*RuleCache, error) {
-    rules, err := loader.Load(context.Background())
+func NewRuleCache(ctx context.Context, loader RuleLoader) (*RuleCache, error) {
+    rules, err := loader.LoadRules(ctx)
     if err != nil {
         return nil, fmt.Errorf("failed to load rules at startup: %w", err)
     }
+
+    // Sort rules: priority descending, then ID ascending for tie-breaking.
+    sort.Slice(rules, func(i, j int) bool {
+        if rules[i].Priority != rules[j].Priority {
+            return rules[i].Priority > rules[j].Priority
+        }
+        return rules[i].ID.String() < rules[j].ID.String()
+    })
+
     return &RuleCache{rules: rules}, nil
 }
 
-func (c *RuleCache) GetRules() []Rule {
+func (c *RuleCache) GetRules() []*routingrule.RoutingRule {
     c.mu.RLock()
     defer c.mu.RUnlock()
-    return c.rules
+
+    // Return a shallow copy to prevent external mutation of the slice.
+    result := make([]*routingrule.RoutingRule, len(c.rules))
+    copy(result, c.rules)
+    return result
 }
 ```
 
 **GetRules behavior:**
 
-- Returns cached rules (thread-safe via RWMutex read lock)
+- Returns a shallow copy of cached rules (prevents external mutation of the slice)
 - Rules are pre-sorted by priority DESC, then by Rule ID ASC (lexicographic)
 - The RWMutex ensures safe concurrent access from multiple routing requests
-
-**Sorting implementation (performed at startup):**
-
-```go
-sort.Slice(rules, func(i, j int) bool {
-    if rules[i].Priority != rules[j].Priority {
-        return rules[i].Priority > rules[j].Priority
-    }
-    return rules[i].ID.String() < rules[j].ID.String()
-})
-```
+- The shallow copy shares underlying RoutingRule structs with the cache, which is safe because all MatchConfig implementations are value types with immutable fields
 
 ### Startup Behavior
 
@@ -429,8 +460,8 @@ On startup, the routing engine must successfully load rules before accepting req
 
 ```mermaid
 stateDiagram-v2
-    [*] --> CreateRouter: Service Start
-    CreateRouter --> InitializeCache
+    [*] --> CreateEngine: Service Start
+    CreateEngine --> InitializeCache
     InitializeCache --> LoadRules
 
     state LoadRules <<choice>>
@@ -463,7 +494,7 @@ stateDiagram-v2
 - Background refresh via ticker with configurable `refresh_interval`
 - Explicit cache invalidation when rules are modified via admin API
 - Graceful degradation for refresh failures (use stale cache)
-- `Router.ReloadRules(ctx context.Context) error` method for on-demand refresh
+- `Engine.ReloadRules(ctx context.Context) error` method for on-demand refresh
 - Configurable `startup_timeout` for initial rule load
 
 **Planned configuration:**
@@ -509,10 +540,10 @@ stateDiagram-v2
     ExecuteMatch --> CheckMatched
 
     state CheckMatched <<choice>>
-    CheckMatched --> BuildRoutingDecision: Matched
+    CheckMatched --> BuildDecision: Matched
     CheckMatched --> CheckMoreRules: Not matched
 
-    BuildRoutingDecision --> ReturnDecision
+    BuildDecision --> ReturnDecision
     ReturnDefaultDecision --> ReturnDecision
     ReturnDecision --> [*]
 ```
@@ -525,12 +556,12 @@ stateDiagram-v2
    - Skip if rule is disabled
    - Get the appropriate matcher for the rule's match type
    - Execute the match operation
-   - If match result is true, build and return RoutingDecision
-4. If no rules matched, return default routing decision
+   - If match result is true, build and return Decision
+4. If no rules matched, return default decision
 
 ### Short-Circuit Behavior
 
-The router uses short-circuit evaluation for performance:
+The routing engine uses short-circuit evaluation for performance:
 
 1. **First match wins**: Once a rule matches, evaluation stops immediately
 2. **Priority ordering**: Higher priority rules are evaluated first
@@ -1079,13 +1110,13 @@ stateDiagram-v2
     ReturnDefaultDecision --> [*]
 ```
 
-**Key principle:** The router should never fail to return a routing decision. If all rules fail or error, the default agent handles the request.
+**Key principle:** The routing engine should never fail to return a routing decision. If all rules fail or error, the default agent handles the request.
 
 ## References
 
 [↑ Table of Contents](#table-of-contents)
 
-- [OpenAPI Specification](../../../api/openapi/mnemonic-v1.yaml) - RoutingRule, MatchType, RoutingDecision schemas
+- [OpenAPI Specification](../../../api/openapi/mnemonic-v1.yaml) - RoutingRule, MatchType, Decision (RoutingDecision) schemas
 - [System Architecture](../../architecture/03-system-architecture.md) - Mnemonic component overview
 - [Communication Patterns](../../architecture/04-communication-patterns.md) - REST endpoint patterns
 - [Architectural Decisions](../../architecture/02-architectural-decisions.md) - ADR-002: Routing Location

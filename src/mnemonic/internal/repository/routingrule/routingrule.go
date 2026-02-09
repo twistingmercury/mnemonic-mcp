@@ -9,6 +9,18 @@ import (
 	"github.com/google/uuid"
 )
 
+// MatchType is a string enum representing the type of match a routing rule uses.
+// This is the authoritative definition used by both the repository and routing packages.
+type MatchType string
+
+// Valid MatchType values.
+const (
+	MatchTypeKeyword MatchType = "keyword"
+	MatchTypeRegex   MatchType = "regex"
+	MatchTypePattern MatchType = "pattern"
+	MatchTypeDefault MatchType = "default"
+)
+
 // RoutingRule represents a routing rule definition stored in the database.
 type RoutingRule struct {
 	// ID is the unique identifier for the routing rule.
@@ -42,7 +54,13 @@ type RoutingRule struct {
 }
 
 // ValidMatchTypes defines the valid values for the MatchType field.
-var ValidMatchTypes = []string{"keyword", "regex", "pattern", "default"}
+// These are derived from the MatchType constants to avoid duplication.
+var ValidMatchTypes = []string{
+	string(MatchTypeKeyword),
+	string(MatchTypeRegex),
+	string(MatchTypePattern),
+	string(MatchTypeDefault),
+}
 
 // IsValidMatchType checks if the given match type string is valid.
 func IsValidMatchType(matchType string) bool {
