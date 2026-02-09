@@ -9,10 +9,10 @@ import (
 )
 
 // RoutingMetrics holds instruments for routing-related metrics.
-// It tracks routing decisions, pattern matches, and cache performance.
+// It tracks routing decisions, rule matches, and cache performance.
 type RoutingMetrics struct {
 	routingDecisions metric.Int64Counter
-	patternMatches   metric.Int64Counter
+	ruleMatches      metric.Int64Counter
 	cacheHits        metric.Int64Counter
 	cacheMisses      metric.Int64Counter
 }
@@ -28,13 +28,13 @@ func NewRoutingMetrics(meter metric.Meter) (*RoutingMetrics, error) {
 		return nil, fmt.Errorf("routing decisions counter: %w", err)
 	}
 
-	patternMatches, err := meter.Int64Counter(
-		"mnemonic.routing.pattern_matches",
-		metric.WithDescription("Number of pattern matches by rule type"),
+	ruleMatches, err := meter.Int64Counter(
+		"mnemonic.routing.rule_matches",
+		metric.WithDescription("Number of rule matches by type"),
 		metric.WithUnit("{match}"),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("pattern matches counter: %w", err)
+		return nil, fmt.Errorf("rule matches counter: %w", err)
 	}
 
 	cacheHits, err := meter.Int64Counter(
@@ -57,7 +57,7 @@ func NewRoutingMetrics(meter metric.Meter) (*RoutingMetrics, error) {
 
 	return &RoutingMetrics{
 		routingDecisions: routingDecisions,
-		patternMatches:   patternMatches,
+		ruleMatches:      ruleMatches,
 		cacheHits:        cacheHits,
 		cacheMisses:      cacheMisses,
 	}, nil
@@ -72,11 +72,11 @@ func (m *RoutingMetrics) RecordRoutingDecision(ctx context.Context, agentName st
 	))
 }
 
-// RecordPatternMatch records a pattern match by rule type.
+// RecordRuleMatch records a rule match by type.
 // The ruleType should be one of the predefined rule types (bounded cardinality).
 // Do not use user-provided or dynamic values to avoid metric explosion.
-func (m *RoutingMetrics) RecordPatternMatch(ctx context.Context, ruleType string) {
-	m.patternMatches.Add(ctx, 1, metric.WithAttributes(
+func (m *RoutingMetrics) RecordRuleMatch(ctx context.Context, ruleType string) {
+	m.ruleMatches.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("rule_type", ruleType),
 	))
 }

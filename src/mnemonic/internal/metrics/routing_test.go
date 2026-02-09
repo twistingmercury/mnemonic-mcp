@@ -51,7 +51,7 @@ func TestRoutingMetricsRecordRoutingDecision(t *testing.T) {
 	assert.True(t, foundRoutingDecisions, "routing decisions metric should be recorded")
 }
 
-func TestRoutingMetricsRecordPatternMatch(t *testing.T) {
+func TestRoutingMetricsRecordRuleMatch(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	meter := provider.Meter("test")
@@ -60,24 +60,24 @@ func TestRoutingMetricsRecordPatternMatch(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	rm.RecordPatternMatch(ctx, "keyword")
-	rm.RecordPatternMatch(ctx, "semantic")
-	rm.RecordPatternMatch(ctx, "keyword")
+	rm.RecordRuleMatch(ctx, "keyword")
+	rm.RecordRuleMatch(ctx, "semantic")
+	rm.RecordRuleMatch(ctx, "keyword")
 
 	var data metricdata.ResourceMetrics
 	err = reader.Collect(ctx, &data)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, data.ScopeMetrics)
-	foundPatternMatches := false
+	foundRuleMatches := false
 	for _, sm := range data.ScopeMetrics {
 		for _, m := range sm.Metrics {
-			if m.Name == "mnemonic.routing.pattern_matches" {
-				foundPatternMatches = true
+			if m.Name == "mnemonic.routing.rule_matches" {
+				foundRuleMatches = true
 			}
 		}
 	}
-	assert.True(t, foundPatternMatches, "pattern matches metric should be recorded")
+	assert.True(t, foundRuleMatches, "rule matches metric should be recorded")
 }
 
 func TestRoutingMetricsRecordCacheHitAndMiss(t *testing.T) {
