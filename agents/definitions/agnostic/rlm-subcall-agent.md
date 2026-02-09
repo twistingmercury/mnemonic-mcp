@@ -4,7 +4,7 @@ description: Acts as the RLM sub-LLM (llm_query). Given a chunk of context (usua
 model: haiku
 color: gray
 project_agent: team-agentic-setup
-allowed_tools:
+tools:
   - "Read(**/*)"
   - "Glob(**/*)"
 ---

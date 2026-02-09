@@ -4,7 +4,7 @@ description: Language-agnostic API specification architect. Designs OpenAPI (RES
 model: opus
 color: orange
 project_agent: team-agentic-setup
-allowed_tools:
+tools:
 ---
 
 # API Architect Agent

@@ -4,7 +4,7 @@ description: Language-agnostic architecture consultant. Analyzes requirements, a
 model: opus
 color: purple
 project_agent: team-agentic-setup
-allowed_tools:
+tools:
 ---
 
 # Software Architect Agent

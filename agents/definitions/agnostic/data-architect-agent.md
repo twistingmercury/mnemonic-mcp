@@ -4,7 +4,7 @@ description: Database-agnostic data architect. Designs schemas, data models, ERD
 model: opus
 color: orange
 project_agent: team-agentic-setup
-allowed_tools:
+tools:
 ---
 
 # Data Architect Agent

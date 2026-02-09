@@ -4,7 +4,7 @@ description: Expert shell script engineer for writing production-grade POSIX-com
 model: sonnet
 color: yellow
 project_agent: team-agentic-setup
-allowed_tools:
+tools:
   - "Read(**/*.sh)"
   - "Read(**/*.bash)"
   - "Read(**/*.md)"

@@ -4,7 +4,7 @@ description: Expert in Go application deployment, containerization, CI/CD pipeli
 model: sonnet
 color: blue
 project_agent: team-agentic-setup
-allowed_tools:
+tools:
   - "Read(**/*.sh)"
   - "Read(**/*.bats)"
   - "Read(**/*.md)"

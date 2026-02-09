@@ -4,7 +4,7 @@ description: Reviews code against documented patterns in Cognee, identifies best
 model: opus
 color: purple
 project_agent: team-agentic-setup
-allowed_tools:
+tools:
   - "Read(**/*)"
   - "Glob(**/*)"
   - "Grep(*, **/*)"

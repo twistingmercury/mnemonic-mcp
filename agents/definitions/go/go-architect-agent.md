@@ -4,7 +4,7 @@ description: Go-specific architecture consultant. Receives high-level architectu
 model: opus
 color: purple
 project_agent: team-agentic-setup
-allowed_tools:
+tools:
   - "Read(**/*.sh)"
   - "Read(**/*.bats)"
   - "Read(**/*.md)"
