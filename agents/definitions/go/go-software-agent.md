@@ -194,6 +194,7 @@ Use the retrieved patterns to guide your implementation:
 ### Code Style & Conventions
 
 - Follow Go conventions: use gofmt formatting, proper naming (camelCase for unexported, PascalCase for exported)
+- **Avoid stuttering**: Never repeat the package name in exported identifiers. Since callers always qualify with the package name, `agent.Repository` is correct while `agent.AgentRepository` stutters. Apply this to types, functions, constants, and variables (e.g., `config.Load` not `config.LoadConfig`, `routing.Engine` not `routing.RoutingEngine`)
 - Use meaningful, descriptive variable names that convey intent
 - Prefer composition over complex inheritance patterns
 - Keep functions focused and small; extract complex logic into well-named helper functions
