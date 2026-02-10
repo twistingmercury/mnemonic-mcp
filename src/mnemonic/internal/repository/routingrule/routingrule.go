@@ -67,11 +67,20 @@ func IsValidMatchType(matchType string) bool {
 	return slices.Contains(ValidMatchTypes, matchType)
 }
 
-// ValidMatchModes defines the valid values for keyword match mode.
-var ValidMatchModes = []string{"any", "all"}
+// MatchMode is a string enum representing the keyword match mode for a routing rule.
+type MatchMode string
 
-// IsValidMatchMode checks if the given match mode string is valid.
-func IsValidMatchMode(mode string) bool {
+// Valid MatchMode values.
+const (
+	MatchModeAny MatchMode = "any"
+	MatchModeAll MatchMode = "all"
+)
+
+// ValidMatchModes defines the valid values for keyword match mode.
+var ValidMatchModes = []MatchMode{MatchModeAny, MatchModeAll}
+
+// IsValidMatchMode checks if the given match mode is valid.
+func IsValidMatchMode(mode MatchMode) bool {
 	return slices.Contains(ValidMatchModes, mode)
 }
 
@@ -88,7 +97,7 @@ type KeywordMatchConfig struct {
 	Keywords []string `json:"keywords"`
 
 	// MatchMode determines how keywords are matched: "any" or "all".
-	MatchMode string `json:"match_mode"`
+	MatchMode MatchMode `json:"match_mode"`
 }
 
 // Type returns the match type identifier.

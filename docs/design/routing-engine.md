@@ -596,29 +596,38 @@ The keyword matcher checks if configured keywords appear in the prompt.
 - Word boundary awareness (prevents "go" matching "mango")
 - Supports single words and multi-word phrases
 - Two modes: `any` (OR) and `all` (AND)
+- Uses sliding TTL cache for compiled regex patterns to balance performance and memory
+- Falls back to substring matching for keywords containing non-word characters (e.g., "c++", "func()")
 
 ```mermaid
 classDiagram
     class KeywordMatcher {
-        -map[string]*regexp.Regexp patterns
+        -map[string]*cachedPattern patterns
+        -time.Duration ttl
+        -chan struct{} done
         +Match(ctx context.Context, prompt string, config MatchConfig) MatchResult, error
         +Type() MatchType
-        -containsKeyword(prompt string, keyword string) bool
+        +Close()
+        -containsKeyword(prompt string, keyword string) (bool, error)
+        -matchWordBoundary(prompt string, keyword string) (bool, error)
+        -getOrCompilePattern(keyword string) (*regexp.Regexp, error)
+        -cleanExpiredPatterns()
+        -cleanupLoop(interval time.Duration)
     }
 
     class KeywordMatchConfig {
         +[]string Keywords
-        +KeywordMatchMode MatchMode
+        +MatchMode MatchMode
     }
 
-    class KeywordMatchMode {
+    class MatchMode {
         <<enumeration>>
-        KeywordMatchModeAny : Match if any keyword found
-        KeywordMatchModeAll : Match only if all keywords found
+        MatchModeAny : Match if any keyword found
+        MatchModeAll : Match only if all keywords found
     }
 
     KeywordMatcher ..> KeywordMatchConfig : uses
-    KeywordMatchConfig --> KeywordMatchMode : uses
+    KeywordMatchConfig --> MatchMode : uses
 ```
 
 **Match algorithm:**
@@ -634,7 +643,11 @@ stateDiagram-v2
 
         state CheckSpaces <<choice>>
         CheckSpaces --> SubstringMatch: Contains spaces
-        CheckSpaces --> WordBoundaryMatch: No spaces
+        CheckSpaces --> CheckNonWordChars: No spaces
+
+        state CheckNonWordChars <<choice>>
+        CheckNonWordChars --> SubstringMatch: Has non-word chars (e.g., c++, func())
+        CheckNonWordChars --> WordBoundaryMatch: Only word chars
 
         SubstringMatch --> CheckFound
         WordBoundaryMatch --> CheckFound
