@@ -475,6 +475,11 @@ Note: Package versions shown are examples; always use the latest stable versions
   - Place tests in `*_test.go` files alongside the code
   - Use `package_test` for black-box testing of exported APIs
   - Use same package name for testing internal implementation details
+- **Benchmark Tests**: Measure performance of functions and methods
+  - Place benchmarks in separate `*_benchmark_test.go` files (NOT in the same file as unit tests)
+  - Example: `keyword_test.go` contains unit tests, `keyword_benchmark_test.go` contains benchmarks
+  - This separation keeps unit tests and benchmarks cleanly organized for readability and maintenance
+  - Run with `go test -bench=. ./...` to execute all benchmarks
 - **Integration Tests**: Test interactions between components
   - Place in `/tests` directory or use build tags (`// +build integration`)
   - Use test containers or mocks for external dependencies
@@ -514,7 +519,7 @@ func TestFunction(t *testing.T) {
 - Use `t.Helper()` for test helper functions
 - Test both happy paths and error conditions
 - Use `t.Parallel()` for independent tests to speed up execution
-- Write benchmarks for performance-critical code
+- Write benchmarks for performance-critical code in separate `*_benchmark_test.go` files (see **Test Types & Organization** section for file naming conventions)
 - Use fuzz tests for input validation and parsing logic
 
 ### Test Coverage

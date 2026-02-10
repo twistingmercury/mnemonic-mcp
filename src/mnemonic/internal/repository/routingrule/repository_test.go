@@ -26,7 +26,7 @@ func testKeywordRule() *routingrule.Rule {
 		MatchType: "keyword",
 		MatchConfig: routingrule.KeywordMatchConfig{
 			Keywords:  []string{"go", "golang"},
-			MatchMode: "any",
+			MatchMode: routingrule.MatchModeAny,
 		},
 		Enabled: true,
 	}
@@ -178,7 +178,7 @@ func TestRepository_Create(t *testing.T) {
 				MatchType: "regex", // Mismatch: MatchType is regex
 				MatchConfig: routingrule.KeywordMatchConfig{ // but config is keyword
 					Keywords:  []string{"go"},
-					MatchMode: "any",
+					MatchMode: routingrule.MatchModeAny,
 				},
 				Enabled: true,
 			},
@@ -298,7 +298,7 @@ func TestRepository_Get(t *testing.T) {
 				MatchType: "keyword",
 				MatchConfig: routingrule.KeywordMatchConfig{
 					Keywords:  []string{"go", "golang"},
-					MatchMode: "any",
+					MatchMode: routingrule.MatchModeAny,
 				},
 				Enabled:   true,
 				CreatedAt: now,
@@ -1113,18 +1113,18 @@ func TestIsValidMatchMode(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		mode string
+		mode routingrule.MatchMode
 		want bool
 	}{
-		{"any", true},
-		{"all", true},
+		{routingrule.MatchModeAny, true},
+		{routingrule.MatchModeAll, true},
 		{"none", false},
 		{"ANY", false},
 		{"", false},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.mode, func(t *testing.T) {
+		t.Run(string(tt.mode), func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tt.want, routingrule.IsValidMatchMode(tt.mode))
 		})

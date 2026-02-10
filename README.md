@@ -15,8 +15,7 @@ agent orchestration.
 ## Usage
 
 Mnemonic provides REST API endpoints for agent routing and pattern
-retrieval. The ACE CLI (planned for separate repository) will consume
-these endpoints to orchestrate agent selection.
+retrieval.
 
 Example routing request:
 
@@ -35,7 +34,6 @@ for complete endpoint documentation.
 ## How it works
 
 This repository contains Mnemonic, the backend service for ACE.
-The ACE CLI will be developed in a separate repository.
 
 Mnemonic provides three core capabilities:
 
@@ -55,16 +53,15 @@ via REST endpoints, allowing any client to consume its capabilities.
 ### Phased Approach
 
 - **Phase 1** (Current): Mnemonic backend with routing and pattern API
-- **Phase 2** (Future): ACE CLI in separate repository
-- **Phase 3** (Future): Multi-user authentication, rate limiting, and
+- **Phase 2** (Future): Multi-user authentication, rate limiting, and
   remote deployment
 
 ## Key Considerations
 
-- Mnemonic is under active development; CI/CD pipeline and repository
-  layer are functional, API and routing engine are in progress
-- ACE CLI will be developed in a separate repository after Mnemonic
-  reaches MVP
+- Mnemonic is under active development; CI/CD pipeline, repository
+  layer, and routing engine (with keyword matcher) are functional,
+  API endpoints and remaining matchers (regex, pattern, default) are
+  in progress
 - MVP targets local deployment with a single agent type
   (go-software-agent)
 - Mnemonic serves only ACE for MVP (not a general-purpose memory service)
@@ -156,3 +153,5 @@ development progress.
   Pattern enrichment and search pipeline
 - [Mnemonic Configuration](docs/design/mnemonic_service/configuration.md) -
   Server configuration reference
+- [Routing Engine](docs/design/routing-engine.md) -
+  Deterministic routing with keyword, regex, and pattern matchers
