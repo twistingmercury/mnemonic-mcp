@@ -1,5 +1,3 @@
-// Package middleware provides HTTP middleware for the Mnemonic server.
-// It includes tracing and metrics middleware for observability.
 package middleware
 
 import (

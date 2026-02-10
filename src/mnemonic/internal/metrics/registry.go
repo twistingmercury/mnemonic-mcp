@@ -1,5 +1,3 @@
-// Package metrics provides centralized metric instrumentation for the Mnemonic service.
-// It defines domain-specific metrics for routing, patterns, and database operations.
 package metrics
 
 import (

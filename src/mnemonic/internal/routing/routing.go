@@ -1,6 +1,3 @@
-// Package routing implements the deterministic routing engine for Mnemonic.
-// It evaluates routing rules in priority order and returns a routing decision
-// that determines which agent should handle a given prompt.
 package routing
 
 import (

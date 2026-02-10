@@ -1,5 +1,3 @@
-// Package config provides configuration loading and validation for the Mnemonic server.
-// It supports layered configuration from defaults, YAML files, and environment variables.
 package config
 
 import "time"
