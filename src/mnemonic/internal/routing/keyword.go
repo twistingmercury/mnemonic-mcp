@@ -57,6 +57,8 @@ func NewKeywordMatcher() *KeywordMatcher {
 // newKeywordMatcherForTest creates a KeywordMatcher with a custom TTL and clock
 // function for deterministic testing. The cleanup loop is NOT started; callers
 // must invoke cleanExpiredPatterns directly.
+//
+//nolint:unusedfunc // referenced via export_test.go (ExportNewKeywordMatcherForTest)
 func newKeywordMatcherForTest(ttl time.Duration, nowFunc func() time.Time) *KeywordMatcher {
 	return &KeywordMatcher{
 		patterns: make(map[string]*cachedPattern),
@@ -82,8 +84,9 @@ func (m *KeywordMatcher) Type() MatchType {
 	return MatchTypeKeyword
 }
 
-// Match evaluates the normalized prompt against the keyword match configuration.
-// The prompt is expected to be already normalized (lowercased and trimmed) by the engine.
+// Match evaluates the prompt against the keyword match configuration.
+// All matching is case-insensitive: the prompt is lowercased internally before
+// comparison, so callers do not need to pre-normalize case.
 //
 // Matching behavior:
 //   - Single-word keywords use word boundary regex (\bkeyword\b) to prevent
@@ -105,6 +108,9 @@ func (m *KeywordMatcher) Match(ctx context.Context, prompt string, config routin
 	if len(kwConfig.Keywords) == 0 || prompt == "" {
 		return MatchResult{Matched: false}, nil
 	}
+
+	// Lowercase the prompt for case-insensitive keyword matching.
+	prompt = strings.ToLower(prompt)
 
 	var matchedKeywords []string
 

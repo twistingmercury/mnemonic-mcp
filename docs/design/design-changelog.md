@@ -2,6 +2,8 @@
 
 This document tracks changes to design documents when implementation differs from original design. Each entry explains what changed and why.
 
+> **Architecture Reference:** [Observability Architecture](../architecture/07-observability-architecture.md) | [Deployment Architecture](../architecture/05-deployment-architecture.md)
+
 ## Format
 
 Each entry includes:
