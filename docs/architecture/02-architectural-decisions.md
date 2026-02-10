@@ -384,4 +384,12 @@ graph TB
 | ADR-005  | Separate repositories     | Independent development, focused scope, simpler CI/CD |
 | ADR-006  | Phased evolution          | Deliver value early, design for future               |
 
+## Related Design Docs
+
+- [Routing Engine](../design/routing-engine.md)
+- [API Specification](../design/api-specification.md)
+- [Pattern Processing](../design/pattern-processing.md)
+- [Configuration](../design/configuration.md)
+- [Observability Implementation](../design/observability-implementation.md)
+
 **Next:** [System Architecture](03-system-architecture.md)

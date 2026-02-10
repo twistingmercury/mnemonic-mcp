@@ -15,13 +15,13 @@ func TestNormalizePrompt(t *testing.T) {
 		input  string
 		expect string
 	}{
-		{name: "lowercase", input: "HELLO WORLD", expect: "hello world"},
+		{name: "preserves case", input: "HELLO WORLD", expect: "HELLO WORLD"},
 		{name: "trim whitespace", input: "  hello  ", expect: "hello"},
-		{name: "both", input: "  WRITE Go CODE  ", expect: "write go code"},
+		{name: "trims but preserves case", input: "  WRITE Go CODE  ", expect: "WRITE Go CODE"},
 		{name: "empty string", input: "", expect: ""},
 		{name: "only whitespace", input: "   ", expect: ""},
 		{name: "already normalized", input: "go code", expect: "go code"},
-		{name: "tabs and newlines", input: "\t\nHello\t\n", expect: "hello"},
+		{name: "tabs and newlines", input: "\t\nHello\t\n", expect: "Hello"},
 	}
 
 	for _, tt := range tests {

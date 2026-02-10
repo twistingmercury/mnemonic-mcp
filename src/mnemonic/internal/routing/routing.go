@@ -103,9 +103,12 @@ type Evaluator interface {
 	Route(ctx context.Context, req Request) (Decision, error)
 }
 
-// NormalizePrompt normalizes a prompt for matching by lowering case and trimming whitespace.
+// NormalizePrompt normalizes a prompt for matching by trimming whitespace.
+// Case folding is NOT performed here; individual matchers are responsible for
+// applying their own case-sensitivity rules (e.g., the keyword matcher always
+// lowercases, while the regex matcher honours the "i" flag).
 func NormalizePrompt(prompt string) string {
-	return strings.ToLower(strings.TrimSpace(prompt))
+	return strings.TrimSpace(prompt)
 }
 
 // NormalizeConfidence clamps a confidence score to the range [0.0, 1.0].

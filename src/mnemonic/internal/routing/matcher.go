@@ -15,6 +15,10 @@ type RuleMatcher interface {
 
 	// Type returns the MatchType this matcher handles.
 	Type() MatchType
+
+	// Close releases resources held by the matcher (e.g., background goroutines).
+	// Implementations must be safe to call multiple times.
+	Close()
 }
 
 // MatcherRegistry manages the mapping from MatchType to RuleMatcher implementations.
@@ -45,4 +49,15 @@ func (r *MatcherRegistry) GetMatcher(t MatchType) RuleMatcher {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.matchers[t]
+}
+
+// CloseAll closes all registered matchers, releasing their resources.
+// It is safe to call multiple times because each matcher's Close method
+// must be idempotent.
+func (r *MatcherRegistry) CloseAll() {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, matcher := range r.matchers {
+		matcher.Close()
+	}
 }

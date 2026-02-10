@@ -89,3 +89,44 @@ func TestMatcherRegistry_MultipleTypes(t *testing.T) {
 	assert.NotNil(t, registry.GetMatcher(routing.MatchTypePattern))
 	assert.Nil(t, registry.GetMatcher(routing.MatchTypeDefault))
 }
+
+func TestMatcherRegistry_CloseAll(t *testing.T) {
+	t.Parallel()
+
+	t.Run("closes all registered matchers without panic", func(t *testing.T) {
+		t.Parallel()
+
+		registry := routing.NewMatcherRegistry()
+		registry.Register(&mockRuleMatcher{matchType: routing.MatchTypeKeyword})
+		registry.Register(&mockRuleMatcher{matchType: routing.MatchTypeRegex})
+		registry.Register(&mockRuleMatcher{matchType: routing.MatchTypePattern})
+
+		assert.NotPanics(t, func() {
+			registry.CloseAll()
+		})
+	})
+
+	t.Run("idempotent double close does not panic", func(t *testing.T) {
+		t.Parallel()
+
+		registry := routing.NewMatcherRegistry()
+		registry.Register(&mockRuleMatcher{matchType: routing.MatchTypeKeyword})
+		registry.Register(&mockRuleMatcher{matchType: routing.MatchTypeRegex})
+
+		registry.CloseAll()
+
+		assert.NotPanics(t, func() {
+			registry.CloseAll()
+		})
+	})
+
+	t.Run("close all on empty registry does not panic", func(t *testing.T) {
+		t.Parallel()
+
+		registry := routing.NewMatcherRegistry()
+
+		assert.NotPanics(t, func() {
+			registry.CloseAll()
+		})
+	})
+}

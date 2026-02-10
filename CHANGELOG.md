@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repository error types: ErrAgentExists, ErrAgentNotFound, ErrAgentInUse
 - List options for pagination support in repository queries
 - Comprehensive unit tests for agent repository with pgxmock
+- RegexMatcher implementation with compiled pattern caching and sliding TTL
+- Background cleanup goroutine for expired regex patterns
+- `Close()` method added to `RuleMatcher` interface for resource cleanup
+- `CloseAll()` method added to `MatcherRegistry` for graceful matcher shutdown
 
 ### Changed
 
@@ -39,7 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configuration validation includes log level validation (fail-fast on invalid level)
 - Moved MetricsRegistry from server package to telemetry package for proper dependency direction
 - Refactored cmd/version to delegate to internal/version, fixing internal->cmd dependency violation
+- `NormalizePrompt` now trims only (no longer lowercases); matchers own case-folding for their specific needs
 
 ### Fixed
 
 - Typo in Mnemonic E2E tests docker-compose.yaml (`menmonic_tests` → `mnemonic_tests`)
+- `NormalizePrompt` changed from lowercase+trim to trim-only, fixing case-sensitive regex matching (regex flags now control case folding)
+- Unknown regex flags now rejected with clear error message instead of being silently ignored

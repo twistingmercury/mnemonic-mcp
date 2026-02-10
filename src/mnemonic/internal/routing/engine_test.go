@@ -268,7 +268,7 @@ func TestEngine_Route(t *testing.T) {
 			wantReasonContain: "Matched keywords: test",
 		},
 		{
-			name: "prompt normalization - uppercase and whitespace",
+			name: "prompt normalization - trimmed but case preserved",
 			rules: []*routingrule.Rule{
 				{
 					ID:          uuid.MustParse("00000000-0000-0000-0000-000000000001"),
@@ -284,8 +284,8 @@ func TestEngine_Route(t *testing.T) {
 				&mockRuleMatcher{
 					matchType: routing.MatchTypeKeyword,
 					matchFn: func(_ context.Context, prompt string, _ routingrule.MatchConfig) (routing.MatchResult, error) {
-						// Verify the prompt is normalized (lowercase + trimmed).
-						if prompt != "write go code" {
+						// Verify the prompt is trimmed but NOT lowercased.
+						if prompt != "Write GO Code" {
 							return routing.MatchResult{Matched: false}, nil
 						}
 						return routing.MatchResult{

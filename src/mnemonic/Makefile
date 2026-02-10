@@ -1,4 +1,4 @@
-.PHONY: local build tests-unit analyze help tests-db tests-db-agent tests-db-pattern tests-db-graph tests-e2e
+.PHONY: local build tests-unit tests-bench analyze help tests-db tests-db-agent tests-db-pattern tests-db-graph tests-e2e
 
 GIT_COMMIT := $(shell git rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
 GIT_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "dev")
@@ -40,6 +40,9 @@ tests-e2e: ## Runs the end-to-end tests
 tests-unit: ## Run the unit tests
 	go test ./internal/... -coverprofile=coverage.out
 	go tool cover -html=coverage.out
+
+tests-bench: ## Run benchmark tests
+	go test ./internal/... -bench=. -benchmem -run=^$
 
 image: ## Build the image locally
 	docker build --rm \

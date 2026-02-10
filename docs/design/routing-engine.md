@@ -131,6 +131,7 @@ classDiagram
         <<interface>>
         +Match(ctx context.Context, prompt string, config MatchConfig) MatchResult, error
         +Type() MatchType
+        +Close()
     }
 
     class MatchResult {
@@ -141,17 +142,29 @@ classDiagram
     }
 
     class KeywordMatcher {
-        -map[string]*regexp.Regexp patterns
+        -map[string]*cachedPattern patterns
+        -time.Duration ttl
+        -chan struct{} done
         +Match(ctx context.Context, prompt string, config MatchConfig) MatchResult, error
         +Type() MatchType
-        -containsKeyword(prompt string, keyword string) bool
+        +Close()
+        -containsKeyword(prompt string, keyword string) (bool, error)
+        -matchWordBoundary(prompt string, keyword string) (bool, error)
+        -getOrCompilePattern(keyword string) (*regexp.Regexp, error)
+        -cleanExpiredPatterns()
+        -cleanupLoop(interval time.Duration)
     }
 
     class RegexMatcher {
-        -map[string]*regexp.Regexp cache
+        -map[string]*cachedPattern cache
+        -time.Duration ttl
+        -chan struct{} done
         +Match(ctx context.Context, prompt string, config MatchConfig) MatchResult, error
         +Type() MatchType
-        -getOrCompile(pattern string, flags string) *regexp.Regexp, error
+        +Close()
+        -getOrCompile(pattern string, flags string) (*regexp.Regexp, error)
+        -cleanExpiredPatterns()
+        -cleanupLoop(interval time.Duration)
     }
 
     class PatternMatcher {
@@ -321,12 +334,14 @@ classDiagram
         -map[MatchType]RuleMatcher matchers
         +GetMatcher(t MatchType) RuleMatcher
         +Register(matcher RuleMatcher)
+        +CloseAll()
     }
 
     class RuleMatcher {
         <<interface>>
         +Match(ctx context.Context, prompt string, config MatchConfig) MatchResult, error
         +Type() MatchType
+        +Close()
     }
 
     class RuleLoader {
@@ -551,13 +566,15 @@ stateDiagram-v2
 **Algorithm pseudocode:**
 
 1. Retrieve pre-sorted rules from cache
-2. Normalize the prompt (lowercase, trim whitespace)
+2. Normalize the prompt (trim whitespace only; matchers handle case-folding)
 3. For each rule in priority order:
    - Skip if rule is disabled
    - Get the appropriate matcher for the rule's match type
    - Execute the match operation
    - If match result is true, build and return Decision
 4. If no rules matched, return default decision
+
+**Note on prompt normalization:** The routing engine performs minimal normalization (trim whitespace only). Case-folding is the responsibility of individual matchers. For example, the keyword matcher lowercases both prompt and keywords internally, while the regex matcher uses the `i` flag for case-insensitive matching.
 
 ### Short-Circuit Behavior
 
@@ -703,18 +720,26 @@ The regex matcher evaluates prompts against a regular expression pattern.
 
 **Matching behavior:**
 
-- Compiled regex patterns are cached for performance
+- Compiled regex patterns are cached for performance with sliding TTL
+- Background cleanup goroutine removes expired patterns to manage memory
 - Supports standard Go regex syntax
 - Optional flags: `i` (case-insensitive)
+- Unknown flags are rejected with a clear error message
 - Matches anywhere in the prompt (not anchored)
+- Prompt normalization (trim whitespace) is performed by the engine; case-folding is controlled by regex flags
 
 ```mermaid
 classDiagram
     class RegexMatcher {
-        -map[string]*regexp.Regexp cache
+        -map[string]*cachedPattern cache
+        -time.Duration ttl
+        -chan struct{} done
         +Match(ctx context.Context, prompt string, config MatchConfig) MatchResult, error
         +Type() MatchType
-        -getOrCompile(pattern string, flags string) *regexp.Regexp, error
+        +Close()
+        -getOrCompile(pattern string, flags string) (*regexp.Regexp, error)
+        -cleanExpiredPatterns()
+        -cleanupLoop(interval time.Duration)
     }
 
     class RegexMatchConfig {
