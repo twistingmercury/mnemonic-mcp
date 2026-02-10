@@ -75,7 +75,14 @@ If disagreements exist:
 
 ### Step 5: Compile unified findings
 
-Document the review using `agents/skills/code-review/templates/code-review-template.md`. Create a new file under `docs/code-reviews/` named for the scope, for example `docs/code-reviews/phase-09-routing-engine.md`. Use the template sections and fill them in completely. Keep the section order intact.
+**IMPORTANT**: Read the template at `agents/skills/code-review/templates/code-review-template.md` BEFORE delegating. When delegating to the documentation agent:
+
+1. Provide the **template path** so the agent reads it and follows its section order exactly
+2. Provide a **prior review** from `docs/code-reviews/` as a style reference (e.g., the most recent one)
+3. Provide the **review content** only (findings, metadata, compliance checks) — do NOT dictate document structure in the prompt
+4. The agent must use the template's sections, not invent its own
+
+Create a new file under `docs/code-reviews/` named for the scope, for example `docs/code-reviews/phase-09-routing-engine.md`. Keep the template section order intact.
 
 If you must show a summary to the user, include only a short synopsis plus a linkable file reference to the completed review document.
 
