@@ -98,6 +98,36 @@ Each entry includes:
 - **Implementation**: Created internal/version, cmd/version delegates to it
 - **Justification**: Internal packages should not import from cmd packages. Version info is build metadata needed by internal packages (telemetry, handlers).
 
+### 2026-02-10: Phase 12a Pattern Matcher Design Correction
+
+**Design Document**: `routing-engine.md`
+
+#### 1. Cosine Similarity Delegation
+
+- **Original**: PatternMatcher computes cosine similarity in Go using per-pattern embedding retrieval via `PatternStore.GetEmbedding`
+- **Implementation**: Cosine similarity delegated to pgvector via `<=>` operator; PatternStore uses `FindSimilarByIDs` for a single filtered query
+- **Justification**: pgvector's optimized C implementation is more efficient than Go-side vector arithmetic. Eliminates per-pattern round-trips. Aligns with existing `pattern.Repository.FindSimilar` infrastructure.
+
+#### 2. Vector Type Clarification
+
+- **Original**: Design doc discussed `[]float32` vs `[]float64` as a trade-off decision
+- **Implementation**: `[]float32` for embeddings (dictated by pgvector storage format); `float64` for similarity scores (returned by PostgreSQL)
+- **Justification**: pgvector stores vectors as `float32`. This is not a design choice — it is a constraint of the backing infrastructure.
+
+#### 3. SimilarityOptions Extension
+
+- **Original**: `SimilarityOptions` had `MinSimilarity`, `MaxResults`, `Tags` only
+- **Implementation**: Added `PatternIDs []uuid.UUID` field for filtering similarity search to specific pattern IDs
+- **Justification**: PatternMatcher needs to restrict similarity search to pattern IDs referenced in routing rules. Extends existing options-bag pattern for backward compatibility.
+
+**Design Document**: `data-storage.md`
+
+#### 4. SimilarityOptions PatternIDs Field
+
+- **Original**: `SimilarityOptions` struct had three fields: `MinSimilarity`, `MaxResults`, `Tags`
+- **Implementation**: Added `PatternIDs []uuid.UUID` field
+- **Justification**: Phase 12 PatternMatcher requires filtering FindSimilar results to specific pattern IDs referenced in routing rules. Zero value (nil) preserves existing behavior.
+
 ---
 
 Copyright (c) 2026 Jeremy K. Johnson. All rights reserved.

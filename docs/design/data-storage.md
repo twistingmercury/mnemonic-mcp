@@ -1074,9 +1074,10 @@ type Filter struct {
 
 // SimilarityOptions defines options for similarity search.
 type SimilarityOptions struct {
-    MinSimilarity float64 // Minimum similarity threshold (0.0-1.0)
-    MaxResults    int     // Maximum number of results
-    Tags          []string // Optional tag filter
+    MinSimilarity float64      // Minimum similarity threshold (0.0-1.0)
+    MaxResults    int          // Maximum number of results
+    Tags          []string     // Optional tag filter
+    PatternIDs    []uuid.UUID  // Optional filter to specific pattern IDs
 }
 
 // Match represents a similarity search result.

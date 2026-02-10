@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Background cleanup goroutine for expired regex patterns
 - `Close()` method added to `RuleMatcher` interface for resource cleanup
 - `CloseAll()` method added to `MatcherRegistry` for graceful matcher shutdown
+- `PatternIDs []uuid.UUID` field on `SimilarityOptions` for filtering similarity search to specific pattern IDs
+- Unit and integration tests for PatternIDs filter on `FindSimilar`
 
 ### Changed
 
@@ -44,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Moved MetricsRegistry from server package to telemetry package for proper dependency direction
 - Refactored cmd/version to delegate to internal/version, fixing internal->cmd dependency violation
 - `NormalizePrompt` now trims only (no longer lowercases); matchers own case-folding for their specific needs
+- Routing engine design doc updated: Pattern Matcher section corrected from in-Go cosine similarity to pgvector-delegated approach via `<=>` operator
+- `data-storage.md` updated: `SimilarityOptions` struct includes `PatternIDs` field
 
 ### Fixed
 

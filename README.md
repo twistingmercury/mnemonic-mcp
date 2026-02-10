@@ -59,9 +59,10 @@ via REST endpoints, allowing any client to consume its capabilities.
 ## Key Considerations
 
 - Mnemonic is under active development; CI/CD pipeline, repository
-  layer, and routing engine (with keyword and regex matchers) are
-  functional, API endpoints and remaining matchers (pattern, default)
-  are in progress
+  layer (including vector similarity search with pattern ID filtering),
+  and routing engine (with keyword and regex matchers) are functional,
+  API endpoints and remaining matchers (pattern, default) are in
+  progress
 - MVP targets local deployment with a single agent type
   (go-software-agent)
 - Mnemonic serves only ACE for MVP (not a general-purpose memory service)
