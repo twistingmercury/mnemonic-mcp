@@ -89,7 +89,7 @@ If you must show a summary to the user, include only a short synopsis plus a lin
 
 After user approves specific fixes, delegate to appropriate specialists:
 
-- Go issues → `go-software-agent`
+- Go issues → `go-software-agent`  
 - Shell issues → `shell-script-agent`
 - DevOps issues → `go-devops-agent`
 - Documentation → `documentation-agent`
