@@ -454,6 +454,13 @@ func (r *pgxRepository) FindSimilar(ctx context.Context, embedding []float32, op
 		argNum++
 	}
 
+	// Apply pattern ID filter if specified
+	if len(opts.PatternIDs) > 0 {
+		whereConditions = append(whereConditions, fmt.Sprintf("id = ANY($%d)", argNum))
+		args = append(args, opts.PatternIDs)
+		argNum++
+	}
+
 	whereClause := strings.Join(whereConditions, " AND ")
 
 	query := fmt.Sprintf(`
