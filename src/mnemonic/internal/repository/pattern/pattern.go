@@ -76,6 +76,10 @@ type SimilarityOptions struct {
 
 	// Tags optionally filters results by tag.
 	Tags []string
+
+	// PatternIDs filters results to only these specific pattern IDs.
+	// When set, only patterns whose ID is in this list are considered.
+	PatternIDs []uuid.UUID
 }
 
 // Match represents a similarity search result.

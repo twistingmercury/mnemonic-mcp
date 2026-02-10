@@ -732,6 +732,67 @@ func TestIntegration_FindSimilar(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, matches)
 	})
+
+	t.Run("filters to specific pattern IDs", func(t *testing.T) {
+		queryEmbedding := createSimilarEmbedding(embeddingA, 0.95)
+
+		// Query with PatternIDs containing only A and B (not C)
+		matches, err := repo.FindSimilar(ctx, queryEmbedding, pattern.SimilarityOptions{
+			PatternIDs: []uuid.UUID{patternA.ID, patternB.ID},
+			MaxResults: 10,
+		})
+
+		require.NoError(t, err)
+		require.Len(t, matches, 2, "should return exactly patterns A and B")
+
+		// Verify only A and B are returned
+		matchedIDs := make(map[uuid.UUID]bool)
+		for _, m := range matches {
+			matchedIDs[m.Pattern.ID] = true
+		}
+		assert.True(t, matchedIDs[patternA.ID], "pattern A should be in results")
+		assert.True(t, matchedIDs[patternB.ID], "pattern B should be in results")
+		assert.False(t, matchedIDs[patternC.ID], "pattern C should not be in results")
+	})
+
+	t.Run("returns empty when PatternIDs match no enriched patterns", func(t *testing.T) {
+		queryEmbedding := createSimilarEmbedding(embeddingA, 0.95)
+
+		// Query with PatternIDs containing only the pending pattern D
+		matches, err := repo.FindSimilar(ctx, queryEmbedding, pattern.SimilarityOptions{
+			PatternIDs: []uuid.UUID{patternD.ID},
+			MaxResults: 10,
+		})
+
+		require.NoError(t, err)
+		assert.Empty(t, matches, "pending patterns should not appear in results")
+	})
+
+	t.Run("combines PatternIDs and similarity threshold", func(t *testing.T) {
+		queryEmbedding := createSimilarEmbedding(embeddingA, 0.95)
+
+		// Combine PatternIDs and MinSimilarity
+		matches, err := repo.FindSimilar(ctx, queryEmbedding, pattern.SimilarityOptions{
+			PatternIDs:    []uuid.UUID{patternA.ID, patternB.ID, patternC.ID},
+			MinSimilarity: 0.5,
+			MaxResults:    10,
+		})
+
+		require.NoError(t, err)
+
+		// All results should have similarity >= 0.5 and be in the specified IDs
+		allowedIDs := map[uuid.UUID]bool{
+			patternA.ID: true,
+			patternB.ID: true,
+			patternC.ID: true,
+		}
+		for _, m := range matches {
+			assert.True(t, allowedIDs[m.Pattern.ID],
+				"pattern %s should be in the allowed IDs", m.Pattern.Name)
+			assert.GreaterOrEqual(t, m.Similarity, 0.5,
+				"similarity %f should be >= 0.5", m.Similarity)
+		}
+	})
 }
 
 func TestIntegration_AgentAssociations(t *testing.T) {

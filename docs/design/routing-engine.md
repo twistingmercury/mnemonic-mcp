@@ -802,29 +802,38 @@ The pattern matcher uses semantic similarity to match prompts against stored pat
 
 **Matching behavior:**
 
-- Generates an embedding for the prompt
-- Compares against embeddings of configured patterns
-- Returns a match if similarity exceeds threshold
-- Confidence reflects the similarity score
+- Generates an embedding for the prompt using the Embedder interface
+- Delegates similarity computation to pgvector via PatternStore.FindSimilarByIDs
+- The PatternStore filters to specific pattern IDs referenced in the routing rule and applies the threshold
+- Confidence reflects the highest cosine similarity score from pgvector
+- Vector type is `[]float32` to align with pgvector and the existing pattern repository
+
+**Implementation note:** Cosine similarity computation is delegated to pgvector via the `<=>` operator rather than computed in Go application code. This leverages pgvector's optimized C implementation, reduces per-pattern round-trips to a single filtered query, and aligns with the existing `pattern.Repository.FindSimilar` infrastructure. The `PatternStore` interface abstracts this so the matcher remains testable via mocks.
+
+**Vector type:** `[]float32` is used to align with pgvector's storage format and the existing `pattern.Pattern.Embedding` field. Cosine similarity computation is performed by pgvector, so there is no Go-side vector arithmetic.
 
 ```mermaid
 classDiagram
     class PatternMatcher {
         -Embedder embedder
         -PatternStore patternStore
-        -float64 threshold
         +Match(ctx context.Context, prompt string, config MatchConfig) MatchResult, error
         +Type() MatchType
     }
 
     class Embedder {
         <<interface>>
-        +Embed(ctx context.Context, text string) []float64, error
+        +Embed(ctx context.Context, text string) []float32, error
     }
 
     class PatternStore {
         <<interface>>
-        +GetEmbedding(ctx context.Context, patternID uuid.UUID) []float64, error
+        +FindSimilarByIDs(ctx context.Context, embedding []float32, patternIDs []uuid.UUID, threshold float64) []PatternMatch, error
+    }
+
+    class PatternMatch {
+        +uuid.UUID PatternID
+        +float64 Similarity
     }
 
     class PatternMatchConfig {
@@ -834,6 +843,7 @@ classDiagram
     PatternMatcher --> Embedder : uses
     PatternMatcher --> PatternStore : uses
     PatternMatcher ..> PatternMatchConfig : uses
+    PatternStore ..> PatternMatch : returns
 ```
 
 **Match algorithm:**
@@ -846,40 +856,21 @@ stateDiagram-v2
 
     state CheckEmbeddingError <<choice>>
     CheckEmbeddingError --> ReturnError: Error
-    CheckEmbeddingError --> InitializeBestScore: Success
+    CheckEmbeddingError --> CallPatternStore: Success
 
-    InitializeBestScore --> ProcessPattern: best = 0
+    CallPatternStore --> FindSimilarByIDs: embedding, patternIDs, threshold
+    FindSimilarByIDs --> CheckStoreError
 
-    state ProcessPattern {
-        [*] --> GetPatternEmbedding
-        GetPatternEmbedding --> CheckPatternError
+    state CheckStoreError <<choice>>
+    CheckStoreError --> ReturnError: Error
+    CheckStoreError --> CheckResults: Success
 
-        state CheckPatternError <<choice>>
-        CheckPatternError --> LogWarning: Error
-        CheckPatternError --> CalculateSimilarity: Success
+    state CheckResults <<choice>>
+    CheckResults --> ReturnMatchTrue: Results returned
+    CheckResults --> ReturnMatchFalse: No results
 
-        LogWarning --> [*]: Continue
-        CalculateSimilarity --> CheckScore
-
-        state CheckScore <<choice>>
-        CheckScore --> UpdateBestScore: score > best
-        CheckScore --> [*]: score <= best
-
-        UpdateBestScore --> [*]
-    }
-
-    ProcessPattern --> CheckAllPatterns
-
-    state CheckAllPatterns <<choice>>
-    CheckAllPatterns --> ProcessPattern: More patterns
-    CheckAllPatterns --> CheckThreshold: All checked
-
-    state CheckThreshold <<choice>>
-    CheckThreshold --> ReturnMatchTrue: best >= threshold
-    CheckThreshold --> ReturnMatchFalse: best < threshold
-
-    ReturnMatchTrue --> [*]: Confidence = similarity
-    ReturnMatchFalse --> [*]
+    ReturnMatchTrue --> [*]: match=true, confidence=best similarity
+    ReturnMatchFalse --> [*]: match=false
     ReturnError --> [*]
 ```
 
@@ -900,7 +891,7 @@ stateDiagram-v2
 }
 ```
 
-**Performance note:** Pattern matching requires embedding generation, which adds latency. Use pattern match rules at lower priorities than keyword/regex rules.
+**Performance note:** Pattern matching requires embedding generation (external API call or local model inference), which is the primary latency contributor. The pgvector similarity query adds minimal additional latency since it's a single indexed query. Use pattern match rules at lower priorities than keyword/regex rules.
 
 ### Default Matcher
 

@@ -852,6 +852,10 @@ func TestRepository_FindSimilar(t *testing.T) {
 	embedding := testEmbedding()
 	vec := pgvector.NewVector(embedding)
 
+	// Named UUIDs for PatternIDs test cases (matches existing convention in other test functions).
+	patternIDA := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	patternIDB := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+
 	tests := []struct {
 		name         string
 		embedding    []float32
@@ -929,6 +933,122 @@ func TestRepository_FindSimilar(t *testing.T) {
 					WillReturnRows(rows)
 			},
 			wantCount: 0,
+		},
+		{
+			name:      "find similar with PatternIDs filter",
+			embedding: embedding,
+			opts: pattern.SimilarityOptions{
+				MaxResults: 10,
+				PatternIDs: []uuid.UUID{patternIDA, patternIDB},
+			},
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				rows := pgxmock.NewRows([]string{
+					"id", "name", "description", "content", "tags", "embedding",
+					"enrichment_status", "enrichment_error", "enriched_at",
+					"created_at", "updated_at", "similarity",
+				}).
+					AddRow(patternIDA, "pattern-a", &desc, "Content A", tagsJSON, &vec,
+						"enriched", nil, &now, now, now, 0.92)
+				// Args: embedding (vector), patternIDs ([]uuid.UUID), limit (int)
+				mock.ExpectQuery("SELECT .* FROM patterns.*id = ANY.*ORDER BY embedding").
+					WithArgs(
+						pgxmock.AnyArg(), // embedding vector
+						[]uuid.UUID{patternIDA, patternIDB},
+						10,
+					).
+					WillReturnRows(rows)
+			},
+			wantCount: 1,
+			checkResults: func(t *testing.T, matches []*pattern.Match) {
+				assert.Equal(t, "pattern-a", matches[0].Pattern.Name)
+				assert.InDelta(t, 0.92, matches[0].Similarity, 0.001)
+			},
+		},
+		{
+			name:      "find similar with PatternIDs and MinSimilarity combined",
+			embedding: embedding,
+			opts: pattern.SimilarityOptions{
+				MaxResults:    10,
+				MinSimilarity: 0.7,
+				PatternIDs:    []uuid.UUID{patternIDA, patternIDB},
+			},
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				rows := pgxmock.NewRows([]string{
+					"id", "name", "description", "content", "tags", "embedding",
+					"enrichment_status", "enrichment_error", "enriched_at",
+					"created_at", "updated_at", "similarity",
+				}).
+					AddRow(patternIDA, "pattern-a", &desc, "Content A", tagsJSON, &vec,
+						"enriched", nil, &now, now, now, 0.91)
+				// Args: embedding ($1), distance threshold ($2), patternIDs ($3), limit ($4)
+				mock.ExpectQuery("SELECT .* FROM patterns.*id = ANY.*ORDER BY embedding").
+					WithArgs(
+						pgxmock.AnyArg(),                    // embedding vector
+						pgxmock.AnyArg(),                    // distance threshold (1 - 0.7 = 0.3)
+						[]uuid.UUID{patternIDA, patternIDB}, // patternIDs
+						10,
+					).
+					WillReturnRows(rows)
+			},
+			wantCount: 1,
+			checkResults: func(t *testing.T, matches []*pattern.Match) {
+				assert.Equal(t, "pattern-a", matches[0].Pattern.Name)
+				assert.InDelta(t, 0.91, matches[0].Similarity, 0.001)
+			},
+		},
+		{
+			name:      "find similar with PatternIDs and Tags combined",
+			embedding: embedding,
+			opts: pattern.SimilarityOptions{
+				MaxResults: 10,
+				Tags:       []string{"go"},
+				PatternIDs: []uuid.UUID{patternIDA},
+			},
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				rows := pgxmock.NewRows([]string{
+					"id", "name", "description", "content", "tags", "embedding",
+					"enrichment_status", "enrichment_error", "enriched_at",
+					"created_at", "updated_at", "similarity",
+				}).
+					AddRow(patternIDA, "pattern-a", &desc, "Content A", tagsJSON, &vec,
+						"enriched", nil, &now, now, now, 0.88)
+				// Args: embedding (vector), tags ([]string), patternIDs ([]uuid.UUID), limit (int)
+				mock.ExpectQuery("SELECT .* FROM patterns.*tags.*id = ANY.*ORDER BY embedding").
+					WithArgs(
+						pgxmock.AnyArg(),        // embedding vector
+						[]string{"go"},          // tags
+						[]uuid.UUID{patternIDA}, // patternIDs
+						10,
+					).
+					WillReturnRows(rows)
+			},
+			wantCount: 1,
+			checkResults: func(t *testing.T, matches []*pattern.Match) {
+				assert.Equal(t, "pattern-a", matches[0].Pattern.Name)
+				assert.InDelta(t, 0.88, matches[0].Similarity, 0.001)
+			},
+		},
+		{
+			name:      "find similar with empty PatternIDs behaves like unset",
+			embedding: embedding,
+			opts: pattern.SimilarityOptions{
+				MaxResults: 5,
+				PatternIDs: []uuid.UUID{},
+			},
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				rows := pgxmock.NewRows([]string{
+					"id", "name", "description", "content", "tags", "embedding",
+					"enrichment_status", "enrichment_error", "enriched_at",
+					"created_at", "updated_at", "similarity",
+				}).
+					AddRow(uuid.New(), "any-pattern", &desc, "Content", tagsJSON, &vec,
+						"enriched", nil, &now, now, now, 0.80)
+				// Empty PatternIDs should NOT generate ANY clause; same args as basic query
+				mock.ExpectQuery("SELECT .* FROM patterns.*ORDER BY embedding").
+					WithArgs(pgxmock.AnyArg(), 5).
+					WillReturnRows(rows)
+			},
+			wantCount: 1,
 		},
 	}
 
