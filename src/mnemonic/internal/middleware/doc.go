@@ -4,6 +4,7 @@
 // configurable path exclusions.
 //
 // Documentation:
-//   - Architecture: docs/architecture/07-observability-architecture.md (Request Metrics, Distributed Tracing > Trace Structure)
+//   - Architecture: docs/architecture/07-observability-architecture.md (Metrics (Prometheus) > Application Metrics)
+//   - Architecture: docs/architecture/07-observability-architecture.md (Distributed Tracing (Jaeger) > Trace Structure)
 //   - Design: docs/design/observability-implementation.md (Request Metrics Middleware, Tracing Middleware)
 package middleware

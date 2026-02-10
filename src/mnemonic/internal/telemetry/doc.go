@@ -4,6 +4,7 @@
 // structured logging via zerolog.
 //
 // Documentation:
-//   - Architecture: docs/architecture/07-observability-architecture.md (Observability Stage 1, Structured Logging, Metrics, Distributed Tracing, Observability Stack)
+//   - Architecture: docs/architecture/07-observability-architecture.md (Observability Stage 1: Application Instrumentation (MVP))
+//   - Architecture: docs/architecture/07-observability-architecture.md (Observability Stack, Metrics (Prometheus), Logs (Loki), Distributed Tracing (Jaeger))
 //   - Design: docs/design/observability-implementation.md (Telemetry Initialization, otelx Package Integration)
 package telemetry

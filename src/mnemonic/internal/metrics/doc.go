@@ -3,6 +3,6 @@
 // covering database, pattern, and routing operations.
 //
 // Documentation:
-//   - Architecture: docs/architecture/07-observability-architecture.md (Metrics: Database, Pattern, Routing, Application)
+//   - Architecture: docs/architecture/07-observability-architecture.md (Metrics (Prometheus) > Application Metrics)
 //   - Design: docs/design/observability-implementation.md (Metrics Implementation)
 package metrics
