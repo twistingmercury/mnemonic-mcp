@@ -5,6 +5,8 @@ project_skill: team-agentic-setup
 allowed-tools:
   - Task
   - Read
+  - "Write(**/*.md)"
+  - "Edit(**/*.md)"
   - Glob
   - Grep
   - Bash
@@ -73,38 +75,9 @@ If disagreements exist:
 
 ### Step 5: Compile unified findings
 
-Present to the user in this format:
+Document the review using `agents/skills/code-review/templates/code-review-template.md`. Create a new file under `docs/code-reviews/` named for the scope, for example `docs/code-reviews/phase-09-routing-engine.md`. Use the template sections and fill them in completely. Keep the section order intact.
 
-```markdown
-## Code Review: [scope description]
-
-### Summary
-
-[1-2 sentence overall assessment]
-
-### High Priority
-
-- [ ] **[Category]** `file:line` - [Description]
-  - Source: [which agent(s) flagged this]
-  - Suggested fix: [specific remediation]
-
-### Medium Priority
-
-- [ ] **[Category]** `file:line` - [Description]
-  - Suggested fix: [specific remediation]
-
-### Low Priority / Suggestions
-
-- [ ] **[Category]** `file:line` - [Description]
-
-### Good Patterns Observed
-
-- [Well-implemented patterns worth preserving]
-
-### Patterns to Document
-
-- [New patterns that should be added to Cognee]
-```
+If you must show a summary to the user, include only a short synopsis plus a linkable file reference to the completed review document.
 
 ### Step 6: Collaborate with user on resolution
 
