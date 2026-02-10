@@ -1,9 +1,3 @@
-// Package version provides build metadata information for the mnemonic service.
-// Version variables are populated at build time via ldflags:
-//
-//	go build -ldflags "-X github.com/twistingmercury/mnemonic/internal/version.version=1.0.0 \
-//	                   -X github.com/twistingmercury/mnemonic/internal/version.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-//	                   -X github.com/twistingmercury/mnemonic/internal/version.commit=$(git rev-parse --short HEAD)"
 package version
 
 var (

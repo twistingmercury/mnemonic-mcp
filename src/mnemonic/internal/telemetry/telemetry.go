@@ -1,6 +1,3 @@
-// Package telemetry provides unified observability initialization using otelx.
-// It wraps the otelx package to provide application-specific telemetry configuration
-// including tracing, metrics, and structured logging with trace correlation.
 package telemetry
 
 import (
