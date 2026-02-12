@@ -64,8 +64,9 @@ via REST endpoints, allowing any client to consume its capabilities.
   API endpoints and remaining matchers (pattern, default) are in
   progress
 - MVP targets local deployment with a single agent type
-  (go-software-agent)
 - Mnemonic serves only ACE for MVP (not a general-purpose memory service)
+- Claude Code agent and skill definitions are maintained separately in
+  [claude-code-setup](https://github.com/twistingmercury/claude-code-setup)
 - Authentication and multi-region deployment are post-MVP features
 
 ## Development Considerations
