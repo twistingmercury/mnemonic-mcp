@@ -57,7 +57,6 @@ const (
 const (
 	DefaultRoutingCacheRefreshTTL     = 5 * time.Minute
 	DefaultRoutingCacheStartupTimeout = 30 * time.Second
-	DefaultRoutingDefaultAgent        = "general-agent"
 )
 
 // Default values for enrichment configuration

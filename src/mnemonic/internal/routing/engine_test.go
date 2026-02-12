@@ -15,7 +15,7 @@ import (
 )
 
 // newTestEngine creates an Engine for testing with the given rules and registry.
-func newTestEngine(t *testing.T, rules []*routingrule.Rule, registry *routing.MatcherRegistry, defaultAgent string) *routing.Engine {
+func newTestEngine(t *testing.T, rules []*routingrule.Rule, registry *routing.MatcherRegistry) *routing.Engine {
 	t.Helper()
 
 	loader := &mockRuleLoader{
@@ -29,7 +29,7 @@ func newTestEngine(t *testing.T, rules []*routingrule.Rule, registry *routing.Ma
 
 	logger := zerolog.Nop()
 
-	return routing.NewEngine(cache, registry, defaultAgent, nil, logger)
+	return routing.NewEngine(cache, registry, nil, logger)
 }
 
 func TestEngine_Route(t *testing.T) {
@@ -39,12 +39,12 @@ func TestEngine_Route(t *testing.T) {
 		name              string
 		rules             []*routingrule.Rule
 		matchers          []routing.RuleMatcher
-		defaultAgent      string
 		prompt            string
 		wantAgent         string
 		wantMatchType     routing.MatchType
 		wantConfidence    float64
 		wantErr           bool
+		wantMatched       bool
 		wantKeywordsLen   int
 		wantReasonContain string
 	}{
@@ -83,11 +83,11 @@ func TestEngine_Route(t *testing.T) {
 					},
 				},
 			},
-			defaultAgent:      "general-agent",
 			prompt:            "write Go code",
 			wantAgent:         "go-agent",
 			wantMatchType:     routing.MatchTypeKeyword,
 			wantConfidence:    1.0,
+			wantMatched:       true,
 			wantKeywordsLen:   1,
 			wantReasonContain: "Matched keywords: go",
 		},
@@ -131,15 +131,15 @@ func TestEngine_Route(t *testing.T) {
 					},
 				},
 			},
-			defaultAgent:      "general-agent",
 			prompt:            "write Python code",
 			wantAgent:         "python-agent",
 			wantMatchType:     routing.MatchTypeRegex,
 			wantConfidence:    1.0,
+			wantMatched:       true,
 			wantReasonContain: "Matched regex pattern: python",
 		},
 		{
-			name: "falls through to default when no rules match",
+			name: "no match when no rules match prompt",
 			rules: []*routingrule.Rule{
 				{
 					ID:          uuid.MustParse("00000000-0000-0000-0000-000000000001"),
@@ -159,23 +159,21 @@ func TestEngine_Route(t *testing.T) {
 					},
 				},
 			},
-			defaultAgent:      "general-agent",
-			prompt:            "help me with something",
-			wantAgent:         "general-agent",
-			wantMatchType:     routing.MatchTypeDefault,
-			wantConfidence:    0.5,
-			wantReasonContain: "No specific rules matched",
+			prompt:         "help me with something",
+			wantAgent:      "",
+			wantMatchType:  routing.MatchType(""),
+			wantConfidence: 0.0,
+			wantMatched:    false,
 		},
 		{
-			name:              "no rules at all returns default decision",
-			rules:             []*routingrule.Rule{},
-			matchers:          []routing.RuleMatcher{},
-			defaultAgent:      "general-agent",
-			prompt:            "anything",
-			wantAgent:         "general-agent",
-			wantMatchType:     routing.MatchTypeDefault,
-			wantConfidence:    0.5,
-			wantReasonContain: "No specific rules matched",
+			name:           "no match when no rules exist",
+			rules:          []*routingrule.Rule{},
+			matchers:       []routing.RuleMatcher{},
+			prompt:         "anything",
+			wantAgent:      "",
+			wantMatchType:  routing.MatchType(""),
+			wantConfidence: 0.0,
+			wantMatched:    false,
 		},
 		{
 			name: "matcher error skips rule and continues",
@@ -217,11 +215,11 @@ func TestEngine_Route(t *testing.T) {
 					},
 				},
 			},
-			defaultAgent:      "general-agent",
 			prompt:            "help me",
 			wantAgent:         "fallback-agent",
 			wantMatchType:     routing.MatchTypeKeyword,
 			wantConfidence:    1.0,
+			wantMatched:       true,
 			wantKeywordsLen:   1,
 			wantReasonContain: "Matched keywords: help",
 		},
@@ -234,7 +232,7 @@ func TestEngine_Route(t *testing.T) {
 					Priority:    100,
 					AgentName:   "unknown-agent",
 					MatchType:   "nonexistent",
-					MatchConfig: routingrule.DefaultMatchConfig{},
+					MatchConfig: routingrule.KeywordMatchConfig{},
 					Enabled:     true,
 				},
 				{
@@ -259,11 +257,11 @@ func TestEngine_Route(t *testing.T) {
 					},
 				},
 			},
-			defaultAgent:      "general-agent",
 			prompt:            "test something",
 			wantAgent:         "known-agent",
 			wantMatchType:     routing.MatchTypeKeyword,
 			wantConfidence:    1.0,
+			wantMatched:       true,
 			wantKeywordsLen:   1,
 			wantReasonContain: "Matched keywords: test",
 		},
@@ -296,11 +294,11 @@ func TestEngine_Route(t *testing.T) {
 					},
 				},
 			},
-			defaultAgent:      "general-agent",
 			prompt:            "  Write GO Code  ",
 			wantAgent:         "go-agent",
 			wantMatchType:     routing.MatchTypeKeyword,
 			wantConfidence:    1.0,
+			wantMatched:       true,
 			wantKeywordsLen:   1,
 			wantReasonContain: "Matched keywords: go",
 		},
@@ -329,11 +327,11 @@ func TestEngine_Route(t *testing.T) {
 					},
 				},
 			},
-			defaultAgent:      "general-agent",
 			prompt:            "error handling patterns",
 			wantAgent:         "pattern-agent",
 			wantMatchType:     routing.MatchTypePattern,
 			wantConfidence:    0.87,
+			wantMatched:       true,
 			wantReasonContain: "Semantic match with confidence 87%",
 		},
 	}
@@ -347,7 +345,7 @@ func TestEngine_Route(t *testing.T) {
 				registry.Register(m)
 			}
 
-			engine := newTestEngine(t, tt.rules, registry, tt.defaultAgent)
+			engine := newTestEngine(t, tt.rules, registry)
 
 			decision, err := engine.Route(context.Background(), routing.Request{
 				Prompt: tt.prompt,
@@ -359,6 +357,7 @@ func TestEngine_Route(t *testing.T) {
 			}
 
 			require.NoError(t, err)
+			assert.Equal(t, tt.wantMatched, decision.Matched, "Decision.Matched")
 			assert.Equal(t, tt.wantAgent, decision.AgentName)
 			assert.Equal(t, tt.wantMatchType, decision.MatchType)
 			assert.InDelta(t, tt.wantConfidence, decision.Confidence, 0.001)
@@ -417,13 +416,14 @@ func TestEngine_Route_ShortCircuit(t *testing.T) {
 		},
 	})
 
-	engine := newTestEngine(t, rules, registry, "general-agent")
+	engine := newTestEngine(t, rules, registry)
 
 	decision, err := engine.Route(context.Background(), routing.Request{
 		Prompt: "write Go code",
 	})
 
 	require.NoError(t, err)
+	assert.True(t, decision.Matched)
 	assert.Equal(t, "first-agent", decision.AgentName)
 	assert.False(t, secondMatcherCalled.Load(), "second matcher should NOT be called due to short-circuit")
 }
@@ -457,7 +457,7 @@ func TestEngine_Route_NilMetrics(t *testing.T) {
 	})
 
 	// Engine created with nil metrics via newTestEngine (which passes nil).
-	engine := newTestEngine(t, rules, registry, "general-agent")
+	engine := newTestEngine(t, rules, registry)
 
 	// Should not panic.
 	decision, err := engine.Route(context.Background(), routing.Request{
@@ -465,6 +465,7 @@ func TestEngine_Route_NilMetrics(t *testing.T) {
 	})
 
 	require.NoError(t, err)
+	assert.True(t, decision.Matched)
 	assert.Equal(t, "test-agent", decision.AgentName)
 }
 
@@ -504,13 +505,14 @@ func TestEngine_Route_DisabledRulesSkipped(t *testing.T) {
 		},
 	})
 
-	engine := newTestEngine(t, rules, registry, "general-agent")
+	engine := newTestEngine(t, rules, registry)
 
 	decision, err := engine.Route(context.Background(), routing.Request{
 		Prompt: "write Go code",
 	})
 
 	require.NoError(t, err)
+	assert.True(t, decision.Matched)
 	assert.Equal(t, "enabled-agent", decision.AgentName, "disabled rule should be skipped")
 }
 
@@ -539,7 +541,7 @@ func TestEngine_Route_ContextCancellation(t *testing.T) {
 		},
 	})
 
-	engine := newTestEngine(t, rules, registry, "general-agent")
+	engine := newTestEngine(t, rules, registry)
 
 	// Create a cancelled context.
 	ctx, cancel := context.WithCancel(context.Background())

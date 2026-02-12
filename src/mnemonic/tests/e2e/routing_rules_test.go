@@ -13,7 +13,7 @@ import (
 //   - name: Human-readable rule name (max 128 chars)
 //   - priority: Evaluation order (0-1000, higher first)
 //   - agent_name: Target agent when rule matches
-//   - match_type: keyword, regex, pattern, or default
+//   - match_type: keyword, regex, or pattern
 //   - match_config: Type-specific configuration
 //   - enabled: Whether rule is active
 //
@@ -21,7 +21,6 @@ import (
 //   - keyword: Match against keyword list (any or all mode)
 //   - regex: Match using regular expression
 //   - pattern: Semantic matching using pattern IDs
-//   - default: Fallback when no other rules match
 //
 // Authorization:
 //   - GET operations: Any authenticated user
@@ -177,20 +176,19 @@ func TestCreateRoutingRule_PatternMatch(t *testing.T) {
 	// 4. Clean up
 }
 
-// TestCreateRoutingRule_DefaultMatch verifies creating default fallback rule.
+// TestCreateRoutingRule_InvalidMatchType verifies that the API rejects invalid match_type values.
 // OpenAPI: api/openapi/mnemonic-v1.yaml:2066 (POST /ace/routing-rules)
 //
 // Expected behavior:
-//   - Returns 201 Created
-//   - match_config is empty object {}
-//   - Only one default rule should exist (or be at priority 0)
-func TestCreateRoutingRule_DefaultMatch(t *testing.T) {
+//   - Returns 400 Bad Request when match_type is "default" (no longer valid)
+//   - Returns 400 Bad Request for other invalid match_type values
+func TestCreateRoutingRule_InvalidMatchType(t *testing.T) {
 	t.Skip("not implemented")
 
 	// TODO: Implement test
 	// 1. Create an agent first
-	// 2. POST with default match_type
-	// 3. Verify match_config is empty
+	// 2. POST with match_type: "default" - expect 400
+	// 3. POST with match_type: "invalid" - expect 400
 	// 4. Clean up
 }
 

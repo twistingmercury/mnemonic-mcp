@@ -210,12 +210,14 @@ erDiagram
         string name UK
         int priority "0-1000, higher first"
         string agent_name FK
-        enum match_type "keyword|regex|pattern|default"
+        enum match_type "keyword|regex|pattern"
         jsonb match_config "type-specific config"
         bool enabled
         timestamptz created_at
         timestamptz updated_at
     }
+
+    note for ROUTING_RULE "Note: 'default' is deprecated and will be removed from the database constraint in a future migration."
 
     PATTERN {
         uuid id PK
@@ -327,9 +329,6 @@ match_config:
   pattern_ids:
     - "550e8400-e29b-41d4-a716-446655440001"
     - "550e8400-e29b-41d4-a716-446655440002"
-
-# Default match (fallback)
-match_config: {}
 ```
 
 ### Enrichment Jobs
@@ -406,6 +405,8 @@ CREATE TABLE routing_rules (
     agent_name VARCHAR(64) NOT NULL REFERENCES agents(name) ON DELETE RESTRICT,
     match_type VARCHAR(20) NOT NULL
         CHECK (match_type IN ('keyword', 'regex', 'pattern', 'default')),
+        -- NOTE: 'default' is deprecated. The application no longer creates default-type rules.
+        -- A future migration (post-MVP) will remove 'default' from this constraint.
     match_config JSONB NOT NULL,
     enabled BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -925,9 +926,10 @@ ADD CONSTRAINT chk_match_config_valid
 CHECK (
     (match_type = 'keyword' AND match_config ? 'keywords' AND match_config ? 'match_mode') OR
     (match_type = 'regex' AND match_config ? 'pattern') OR
-    (match_type = 'pattern' AND match_config ? 'pattern_ids') OR
-    (match_type = 'default')
+    (match_type = 'pattern' AND match_config ? 'pattern_ids')
 );
+-- NOTE: 'default' match_type condition removed. Existing default-type rules are
+-- deprecated and will be skipped by the routing engine.
 ```
 
 **Application-Level Validation:**

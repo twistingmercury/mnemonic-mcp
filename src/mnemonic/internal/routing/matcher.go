@@ -8,7 +8,7 @@ import (
 )
 
 // RuleMatcher defines the interface for match type implementations.
-// Each concrete matcher (keyword, regex, pattern, default) implements this interface.
+// Each concrete matcher (keyword, regex, pattern) implements this interface.
 type RuleMatcher interface {
 	// Match evaluates the normalized prompt against the rule's match configuration.
 	Match(ctx context.Context, prompt string, config routingrule.MatchConfig) (MatchResult, error)

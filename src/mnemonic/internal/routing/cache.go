@@ -51,7 +51,7 @@ func NewRuleCache(ctx context.Context, loader RuleLoader) (*RuleCache, error) {
 // Safety invariant: the slice is copied so callers cannot reorder or replace
 // entries. The pointers themselves share the underlying Rule structs
 // with the cache, but this is safe because all MatchConfig implementations
-// (KeywordMatchConfig, RegexMatchConfig, PatternMatchConfig, DefaultMatchConfig)
+// (KeywordMatchConfig, RegexMatchConfig, PatternMatchConfig)
 // are value types -- structs whose fields are either primitive types or slices
 // that are never mutated after construction. If a new MatchConfig type is
 // introduced with pointer fields or mutable shared state, this method must be

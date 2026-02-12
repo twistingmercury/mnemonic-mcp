@@ -64,5 +64,4 @@ func TestMatchType_Constants(t *testing.T) {
 	assert.Equal(t, routing.MatchType("keyword"), routing.MatchTypeKeyword)
 	assert.Equal(t, routing.MatchType("regex"), routing.MatchTypeRegex)
 	assert.Equal(t, routing.MatchType("pattern"), routing.MatchTypePattern)
-	assert.Equal(t, routing.MatchType("default"), routing.MatchTypeDefault)
 }

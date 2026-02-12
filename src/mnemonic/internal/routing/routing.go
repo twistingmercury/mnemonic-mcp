@@ -17,7 +17,6 @@ const (
 	MatchTypeKeyword = routingrule.MatchTypeKeyword
 	MatchTypeRegex   = routingrule.MatchTypeRegex
 	MatchTypePattern = routingrule.MatchTypePattern
-	MatchTypeDefault = routingrule.MatchTypeDefault
 )
 
 // MatchResult contains the outcome of a single rule matcher evaluation.
@@ -74,7 +73,12 @@ type Options struct {
 
 // Decision is the result of routing evaluation.
 // It identifies the selected agent and the reasoning behind the decision.
+// When Matched is false, all other fields are zero-valued and should not be used.
 type Decision struct {
+	// Matched indicates whether a routing rule matched the prompt.
+	// When false, all other fields are zero-valued and should not be used.
+	Matched bool
+
 	// AgentName is the identifier of the selected agent.
 	AgentName string
 
@@ -94,7 +98,7 @@ type Decision struct {
 
 // Evaluator defines the primary routing contract.
 // It evaluates the prompt against all enabled routing rules in priority order
-// and returns the first match.
+// and returns the first match, or a Decision with Matched: false if no rules match.
 type Evaluator interface {
 	// Route evaluates the prompt against routing rules and returns a decision.
 	Route(ctx context.Context, req Request) (Decision, error)

@@ -835,32 +835,31 @@ components:
       type: object
       description: Routing decision details
       required:
-        - agent_name
-        - confidence
-        - method
-        - reasoning
+        - matched
       properties:
+        matched:
+          type: boolean
+          description: Whether a routing rule matched the prompt. When false, all other fields are absent.
         agent_name:
           type: string
-          description: Selected agent identifier
+          description: Selected agent identifier (present only when matched is true)
           examples:
             - go-software-agent
         confidence:
           type: number
           format: double
-          description: Routing confidence score (0-1, 1.0 for deterministic matches)
+          description: Routing confidence score (0-1, present only when matched is true)
           minimum: 0
           maximum: 1
           examples:
             - 1.0
         method:
           type: string
-          description: Routing method used
+          description: Routing method used (present only when matched is true)
           enum:
             - MatchMethodKeyword
             - MatchMethodRegex
             - MatchMethodPattern
-            - MatchMethodDefault
           examples:
             - MatchMethodKeyword
         matched_keywords:
@@ -873,7 +872,7 @@ components:
               - function
         reasoning:
           type: string
-          description: Human-readable routing explanation
+          description: Human-readable routing explanation (present only when matched is true)
           examples:
             - "Matched keywords: go, function"
 
@@ -934,15 +933,15 @@ components:
       description: Complete routing response with agent and patterns
       required:
         - routing
-        - agent
       properties:
         routing:
           $ref: "#/components/schemas/RoutingDecision"
         agent:
           $ref: "#/components/schemas/Agent"
+          description: Agent details (present only when routing.matched is true)
         patterns:
           type: array
-          description: Relevant patterns (if include_patterns is true)
+          description: Relevant patterns (if include_patterns is true and routing.matched is true)
           items:
             $ref: "#/components/schemas/RoutePatternResult"
         metadata:
@@ -956,12 +955,10 @@ components:
         - `keyword`: Match against a list of keywords
         - `regex`: Match using regular expression
         - `pattern`: Semantic pattern matching using pattern IDs
-        - `default`: Fallback when no other rules match
       enum:
         - keyword
         - regex
         - pattern
-        - default
 
     KeywordMatchConfig:
       type: object
@@ -1022,11 +1019,6 @@ components:
             type: string
             format: uuid
 
-    DefaultMatchConfig:
-      type: object
-      description: Configuration for default fallback (no configuration needed)
-      additionalProperties: false
-
     RoutingRule:
       type: object
       description: Routing rule definition
@@ -1074,7 +1066,6 @@ components:
             - $ref: "#/components/schemas/KeywordMatchConfig"
             - $ref: "#/components/schemas/RegexMatchConfig"
             - $ref: "#/components/schemas/PatternMatchConfig"
-            - $ref: "#/components/schemas/DefaultMatchConfig"
           description: Type-specific configuration
         enabled:
           type: boolean
@@ -1126,7 +1117,6 @@ components:
             - $ref: "#/components/schemas/KeywordMatchConfig"
             - $ref: "#/components/schemas/RegexMatchConfig"
             - $ref: "#/components/schemas/PatternMatchConfig"
-            - $ref: "#/components/schemas/DefaultMatchConfig"
         enabled:
           type: boolean
           default: true
@@ -1158,7 +1148,6 @@ components:
             - $ref: "#/components/schemas/KeywordMatchConfig"
             - $ref: "#/components/schemas/RegexMatchConfig"
             - $ref: "#/components/schemas/PatternMatchConfig"
-            - $ref: "#/components/schemas/DefaultMatchConfig"
         enabled:
           type: boolean
 
@@ -1405,7 +1394,7 @@ paths:
         **Routing Decision Process:**
         1. Evaluate routing rules in priority order (highest first)
         2. First matching rule determines the agent
-        3. If no rules match, fall back to default agent
+        3. If no rules match, return matched: false (client decides next steps)
         4. Retrieve relevant patterns based on agent and prompt context
       operationId: routePrompt
       requestBody:
@@ -1449,6 +1438,7 @@ paths:
                   summary: Successful Go agent match
                   value:
                     routing:
+                      matched: true
                       agent_name: go-software-agent
                       confidence: 1.0
                       method: MatchMethodKeyword
@@ -1491,12 +1481,19 @@ paths:
                       routing_duration_ms: 12
                       pattern_retrieval_duration_ms: 45
                       total_patterns_considered: 23
+                no_match:
+                  summary: No routing rules matched
+                  value:
+                    routing:
+                      matched: false
+                    metadata:
+                      routing_duration_ms: 8
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          description: No matching agent found (if strict routing)
+          description: Matched agent not found in database (data integrity issue)
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
@@ -1508,7 +1505,7 @@ paths:
                 type: https://mnemonic.example.com/problems/not-found
                 title: Not Found
                 status: 404
-                detail: No agent matched the prompt and no default agent configured
+                detail: Agent referenced by routing rule not found
                 traceId: 550e8400-e29b-41d4-a716-446655440000
         "500":
           $ref: "#/components/responses/InternalError"
@@ -2052,15 +2049,6 @@ paths:
                     enabled: true
                     created_at: "2024-01-10T08:00:00Z"
                     updated_at: "2024-01-10T08:00:00Z"
-                  - id: 550e8400-e29b-41d4-a716-446655440004
-                    name: default-fallback
-                    priority: 0
-                    agent_name: general-agent
-                    match_type: default
-                    match_config: {}
-                    enabled: true
-                    created_at: "2024-01-10T08:00:00Z"
-                    updated_at: "2024-01-10T08:00:00Z"
                 pagination:
                   limit: 50
                   cursor: null
@@ -2110,15 +2098,6 @@ paths:
                   match_config:
                     pattern: '\b(go|golang)\b.*\b(function|method|struct)\b'
                     flags: i
-                  enabled: true
-              default_rule:
-                summary: Default fallback rule
-                value:
-                  name: fallback
-                  priority: 0
-                  agent_name: general-agent
-                  match_type: default
-                  match_config: {}
                   enabled: true
       responses:
         "201":

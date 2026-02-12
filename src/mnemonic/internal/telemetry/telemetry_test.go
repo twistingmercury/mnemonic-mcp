@@ -58,7 +58,6 @@ func createTestConfig() *config.MnemonicConfig {
 			},
 		},
 		Routing: config.RoutingConfig{
-			DefaultAgent: "general-agent",
 			Cache: config.RoutingCacheConfig{
 				RefreshTTL:     5 * time.Minute,
 				StartupTimeout: 30 * time.Second,

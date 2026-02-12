@@ -70,7 +70,6 @@ func TestDefaultValues(t *testing.T) {
 	// Routing defaults
 	assert.Equal(t, config.DefaultRoutingCacheRefreshTTL, cfg.Routing.Cache.RefreshTTL)
 	assert.Equal(t, config.DefaultRoutingCacheStartupTimeout, cfg.Routing.Cache.StartupTimeout)
-	assert.Equal(t, config.DefaultRoutingDefaultAgent, cfg.Routing.DefaultAgent)
 
 	// Enrichment defaults
 	assert.Equal(t, config.DefaultEnrichmentWorkerCount, cfg.Enrichment.WorkerCount)
@@ -135,9 +134,6 @@ logging:
   level: debug
   format: text
   include_caller: true
-
-routing:
-  default_agent: custom-agent
 `
 
 	err := os.WriteFile(configPath, []byte(configContent), 0644)
@@ -178,8 +174,6 @@ routing:
 	assert.Equal(t, "debug", cfg.Logging.Level)
 	assert.Equal(t, "text", cfg.Logging.Format)
 	assert.True(t, cfg.Logging.IncludeCaller)
-
-	assert.Equal(t, "custom-agent", cfg.Routing.DefaultAgent)
 }
 
 // TestEnvironmentVariableOverrides verifies that environment variables override file values.
@@ -203,9 +197,6 @@ database:
 logging:
   level: info
   format: json
-
-routing:
-  default_agent: file-agent
 `
 
 	err := os.WriteFile(configPath, []byte(configContent), 0644)
@@ -240,7 +231,6 @@ routing:
 	// Verify file values are retained when no env override
 	assert.Equal(t, "pghost", cfg.Database.Postgres.Host)
 	assert.Equal(t, "json", cfg.Logging.Format)
-	assert.Equal(t, "file-agent", cfg.Routing.DefaultAgent)
 }
 
 // TestEnvironmentVariableNaming verifies correct environment variable naming conventions.
@@ -663,13 +653,6 @@ func TestValidation_RoutingConfig(t *testing.T) {
 		expectError string
 	}{
 		{
-			name: "empty default_agent",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Routing.DefaultAgent = ""
-			},
-			expectError: "routing.default_agent",
-		},
-		{
 			name: "negative cache.refresh_ttl",
 			modify: func(cfg *config.MnemonicConfig) {
 				cfg.Routing.Cache.RefreshTTL = -1 * time.Second
@@ -961,7 +944,6 @@ func TestValidation_MultipleErrors(t *testing.T) {
 	cfg := validConfig()
 	cfg.Server.Port = 0
 	cfg.Database.Postgres.Port = 0
-	cfg.Routing.DefaultAgent = ""
 
 	errs := cfg.Validate()
 	require.NotEmpty(t, errs, "expected validation errors")
@@ -969,7 +951,6 @@ func TestValidation_MultipleErrors(t *testing.T) {
 	errStr := errs.Error()
 	assert.Contains(t, errStr, "server.port")
 	assert.Contains(t, errStr, "database.postgres.port")
-	assert.Contains(t, errStr, "routing.default_agent")
 }
 
 // TestServerAddress tests the Address() helper method.
@@ -1242,14 +1223,10 @@ func TestConfigFileFlagOverride(t *testing.T) {
 	envConfig := `
 server:
   port: 9001
-routing:
-  default_agent: env-agent
 `
 	flagConfig := `
 server:
   port: 9002
-routing:
-  default_agent: flag-agent
 `
 
 	err := os.WriteFile(envConfigPath, []byte(envConfig), 0644)
@@ -1446,7 +1423,6 @@ func validConfig() *config.MnemonicConfig {
 				RefreshTTL:     5 * time.Minute,
 				StartupTimeout: 30 * time.Second,
 			},
-			DefaultAgent: "general-agent",
 		},
 		Enrichment: config.EnrichmentConfig{
 			WorkerCount:  2,
