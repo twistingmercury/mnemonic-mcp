@@ -87,7 +87,7 @@ func TestMatcherRegistry_MultipleTypes(t *testing.T) {
 	assert.NotNil(t, registry.GetMatcher(routing.MatchTypeKeyword))
 	assert.NotNil(t, registry.GetMatcher(routing.MatchTypeRegex))
 	assert.NotNil(t, registry.GetMatcher(routing.MatchTypePattern))
-	assert.Nil(t, registry.GetMatcher(routing.MatchTypeDefault))
+	assert.Nil(t, registry.GetMatcher(routing.MatchType("nonexistent")))
 }
 
 func TestMatcherRegistry_CloseAll(t *testing.T) {

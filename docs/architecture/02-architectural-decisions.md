@@ -11,6 +11,7 @@
 - [ADR-004: Unified Backend with REST API](#adr-004-unified-backend-with-rest-api)
 - [ADR-005: Separate Repositories for CLI and Backend](#adr-005-separate-repositories-for-cli-and-backend)
 - [ADR-006: Phased Evolution Path](#adr-006-phased-evolution-path)
+- [ADR-007: Explicit No-Match Signaling](#adr-007-explicit-no-match-signaling)
 - [Decision Summary](#decision-summary)
 
 ## Decision Record Format
@@ -373,6 +374,32 @@ graph TB
 - Must maintain two execution paths (at least during transition)
 - Phase 2 complexity is deferred, not eliminated
 
+## ADR-007: Explicit No-Match Signaling
+
+**Date:** 2026-02-12
+**Status:** Accepted
+**Supersedes:** Phase 13 original design (implement DefaultMatcher)
+
+### Context
+
+Phase 13 was originally scoped as "Implement default matcher (fallback routing)." During code review, finding H1 identified a dual-path default fallback: (1) an engine-level hardcoded fallback using `defaultAgent` and (2) a `DefaultMatcher` that always returns `Matched: true` with confidence 0.5.
+
+Both paths silently route unmatched prompts to a default agent, preventing the client from knowing that no rules actually matched. This violates separation of concerns: the routing engine's job is to evaluate rules, not to decide policy for unmatched prompts.
+
+### Decision
+
+"A default match is no match."
+
+When no routing rules match a prompt, the engine returns `Decision{Matched: false}, nil`. The `Matched bool` field on `Decision` provides an explicit, unambiguous signal. The client (ACE CLI) decides how to handle unmatched prompts: route to a general agent, ask the user to rephrase, or take any other action.
+
+### Consequences
+
+- The `DefaultMatcher`, `DefaultMatchConfig`, `MatchTypeDefault` constant, and `routing.default_agent` configuration are all removed.
+- The `Decision` struct gains a `Matched bool` field (zero-value `false` is the safe default).
+- The HTTP handler for `/api/route` returns 200 OK with `matched: false` for unmatched prompts.
+- The database `match_type CHECK` constraint still allows `'default'` for backward compatibility; a future migration will tighten it.
+- Downstream phases (14-16) are updated to work with the new signaling.
+
 ## Decision Summary
 
 | Decision | Choice                    | Rationale                                            |
@@ -383,6 +410,7 @@ graph TB
 | ADR-004  | Unified backend with REST | Simplicity, excellent tooling, easy debugging        |
 | ADR-005  | Separate repositories     | Independent development, focused scope, simpler CI/CD |
 | ADR-006  | Phased evolution          | Deliver value early, design for future               |
+| ADR-007  | Explicit no-match signaling | Separation of concerns, client decides fallback policy |
 
 ## Related Design Docs
 

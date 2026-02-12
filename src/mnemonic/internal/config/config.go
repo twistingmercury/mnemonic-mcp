@@ -96,8 +96,7 @@ type PerUserRateLimit struct {
 
 // RoutingConfig contains routing engine settings.
 type RoutingConfig struct {
-	Cache        RoutingCacheConfig `mapstructure:"cache" yaml:"cache"`
-	DefaultAgent string             `mapstructure:"default_agent" yaml:"default_agent"`
+	Cache RoutingCacheConfig `mapstructure:"cache" yaml:"cache"`
 }
 
 // RoutingCacheConfig contains routing cache settings.
@@ -296,7 +295,6 @@ func SetDefaults(v *viper.Viper) {
 	// Routing defaults
 	v.SetDefault("routing.cache.refresh_ttl", DefaultRoutingCacheRefreshTTL)
 	v.SetDefault("routing.cache.startup_timeout", DefaultRoutingCacheStartupTimeout)
-	v.SetDefault("routing.default_agent", DefaultRoutingDefaultAgent)
 
 	// Enrichment defaults
 	v.SetDefault("enrichment.worker_count", DefaultEnrichmentWorkerCount)
@@ -630,13 +628,6 @@ func (c *RateLimitConfig) validate() ValidationErrors {
 
 func (c *RoutingConfig) validate() ValidationErrors {
 	var errs ValidationErrors
-
-	if c.DefaultAgent == "" {
-		errs = append(errs, ValidationError{
-			Field:   "routing.default_agent",
-			Message: "required",
-		})
-	}
 
 	if c.Cache.RefreshTTL < 0 {
 		errs = append(errs, ValidationError{

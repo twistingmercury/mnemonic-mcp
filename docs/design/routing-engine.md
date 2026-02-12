@@ -24,7 +24,6 @@
   - [Keyword Matcher](#keyword-matcher)
   - [Regex Matcher](#regex-matcher)
   - [Pattern Matcher (Semantic)](#pattern-matcher-semantic)
-  - [Default Matcher](#default-matcher)
 - [Confidence Scoring](#confidence-scoring)
   - [Scoring Logic by Match Type](#scoring-logic-by-match-type)
   - [Score Normalization](#score-normalization)
@@ -61,7 +60,7 @@ The routing engine implements the logic described in the [OpenAPI specification]
 
 1. **Determinism over intelligence**: The routing engine uses explicit rules, not LLM inference. This ensures predictable, auditable, and fast routing decisions.
 
-2. **Fail-safe defaults**: If no rules match, a default agent handles the request. The system never fails to route.
+2. **Explicit no-match signaling**: If no rules match, the engine returns `Decision{Matched: false}` and lets the client decide how to handle unmatched prompts. This separates routing logic from fallback policy.
 
 3. **Separation of concerns**: The router evaluates rules; matchers implement match logic; the repository handles persistence.
 
@@ -117,11 +116,11 @@ classDiagram
 
 - Evaluates rules in descending priority order
 - Returns immediately when a rule matches (short-circuit evaluation)
-- If no rules match, returns a default routing decision using the configured default agent
+- If no rules match, returns `Decision{Matched: false}, nil` to signal no routing rule matched the prompt
 
 ### RuleMatcher Interface
 
-Each match type implements the `RuleMatcher` interface. Different implementations handle keyword, regex, pattern, and default matching.
+Each match type implements the `RuleMatcher` interface. Different implementations handle keyword, regex, and pattern matching.
 
 Note: `MatchConfig` is an interface implemented by concrete types (`KeywordMatchConfig`, `RegexMatchConfig`, `PatternMatchConfig`, `DefaultMatchConfig`), not a union struct.
 
@@ -175,15 +174,9 @@ classDiagram
         +Type() MatchType
     }
 
-    class DefaultMatcher {
-        +Match(ctx context.Context, prompt string, config MatchConfig) MatchResult, error
-        +Type() MatchType
-    }
-
     RuleMatcher <|.. KeywordMatcher : implements
     RuleMatcher <|.. RegexMatcher : implements
     RuleMatcher <|.. PatternMatcher : implements
-    RuleMatcher <|.. DefaultMatcher : implements
     RuleMatcher ..> MatchResult : returns
 ```
 
@@ -234,7 +227,6 @@ classDiagram
         MatchTypeKeyword
         MatchTypeRegex
         MatchTypePattern
-        MatchTypeDefault
     }
 
     class Rule {
@@ -277,15 +269,10 @@ classDiagram
         +Type() string
     }
 
-    class DefaultMatchConfig {
-        +Type() string
-    }
-
     Rule --> MatchConfig : contains
     MatchConfig <|.. KeywordMatchConfig : implements
     MatchConfig <|.. RegexMatchConfig : implements
     MatchConfig <|.. PatternMatchConfig : implements
-    MatchConfig <|.. DefaultMatchConfig : implements
     KeywordMatchConfig --> KeywordMatchMode : uses
 ```
 
@@ -296,7 +283,6 @@ classDiagram
 - `MatchType: keyword` -> `KeywordMatchConfig` implements MatchConfig
 - `MatchType: regex` -> `RegexMatchConfig` implements MatchConfig
 - `MatchType: pattern` -> `PatternMatchConfig` implements MatchConfig
-- `MatchType: default` -> `DefaultMatchConfig` implements MatchConfig
 
 Note: `Rule.MatchType` is stored as a plain `string` in the database. The routing engine explicitly converts it to the typed `MatchType` constant during evaluation: `matchType := MatchType(rule.MatchType)`.
 
@@ -316,7 +302,6 @@ classDiagram
     class Engine {
         -RuleCache cache
         -MatcherRegistry registry
-        -string defaultAgent
         -Routing metrics
         -zerolog.Logger logger
         -trace.Tracer tracer
@@ -356,6 +341,7 @@ classDiagram
     }
 
     class Decision {
+        +bool Matched
         +string AgentName
         +float64 Confidence
         +MatchType MatchType
@@ -893,39 +879,6 @@ stateDiagram-v2
 
 **Performance note:** Pattern matching requires embedding generation (external API call or local model inference), which is the primary latency contributor. The pgvector similarity query adds minimal additional latency since it's a single indexed query. Use pattern match rules at lower priorities than keyword/regex rules.
 
-### Default Matcher
-
-The default matcher always matches and serves as a fallback when no other rules match.
-
-**Matching behavior:**
-
-- Always returns `Matched: true`
-- Confidence is set to a baseline value (0.5)
-- Should have the lowest priority (typically 0)
-- Only one default rule should be active
-
-```mermaid
-classDiagram
-    class DefaultMatcher {
-        +Match(ctx context.Context, prompt string, config MatchConfig) MatchResult, error
-        +Type() MatchType
-    }
-
-    note for DefaultMatcher "Always returns:\nMatched: true\nConfidence: 0.5\nDetails: 'no specific rules matched'"
-```
-
-**Example rule:**
-
-```json
-{
-  "name": "default-fallback",
-  "priority": 0,
-  "agent_name": "general-agent",
-  "match_type": "default",
-  "match_config": {}
-}
-```
-
 ## Confidence Scoring
 
 [↑ Table of Contents](#table-of-contents)
@@ -939,7 +892,6 @@ classDiagram
 | keyword    | 1.0              | Explicit keyword match  |
 | regex      | 1.0              | Explicit pattern match  |
 | pattern    | 0.0 - 1.0        | Cosine similarity score |
-| default    | 0.5              | Baseline for fallback   |
 
 Deterministic match types (keyword, regex) always return 1.0 confidence because the match is binary - either the pattern matches or it does not.
 
@@ -953,7 +905,6 @@ flowchart LR
         K[Keyword<br/>1.0]
         R[Regex<br/>1.0]
         P[Pattern<br/>0.0 - 1.0]
-        D[Default<br/>0.5]
     end
 ```
 
@@ -987,7 +938,6 @@ Every routing decision includes a human-readable reasoning string based on the m
 | keyword    | `"Matched keywords: go, function"`                 |
 | regex      | `"Matched regex pattern: \b(go\|golang)\b"`        |
 | pattern    | `"Semantic match with confidence 87%"`             |
-| default    | `"No specific rules matched; using default agent"` |
 
 ## Performance Considerations
 
@@ -1011,13 +961,12 @@ This is why the Design Principles section references "<50ms" while pattern match
 | Keyword | <5ms | <20ms | <50ms | String matching only |
 | Regex | <5ms | <20ms | <50ms | Compiled regex, cached |
 | Pattern (semantic) | <300ms | <800ms | <2s | Embedding generation + vector search |
-| Default | <1ms | <5ms | <10ms | No-op, always matches |
 
 **Operation-Level Targets:**
 
 | Operation                      | Target  | Maximum | Applies To |
 | ------------------------------ | ------- | ------- | ---------- |
-| Rule evaluation (cache hit)    | < 10ms  | 50ms    | Keyword, Regex, Default |
+| Rule evaluation (cache hit)    | < 10ms  | 50ms    | Keyword, Regex |
 | Full route request (deterministic) | < 50ms  | 200ms   | When pattern rules not triggered |
 | Full route request (with pattern fallback) | < 500ms | 2s      | When pattern matching required |
 
@@ -1079,7 +1028,6 @@ Pattern matching (which requires embedding) should have lower priority than keyw
 | 100+     | keyword    | Fast, explicit matches first       |
 | 50-99    | regex      | Fast, pattern-based matches second |
 | 1-49     | pattern    | Slow, semantic matches last        |
-| 0        | default    | Fallback only                      |
 
 ### Benchmarking Guidelines
 
@@ -1105,7 +1053,7 @@ The routing engine handles errors gracefully to ensure requests are never droppe
 | ----------------------- | -------------------------------- |
 | Invalid regex pattern   | Skip rule, log warning, continue |
 | Pattern embedding fails | Skip rule, log error, continue   |
-| All rules fail          | Return default agent             |
+| All rules fail          | Return no-match decision         |
 | Unknown match type      | Skip rule, log warning           |
 | Startup rule load fails | Service fails to start (fail-fast) |
 
@@ -1133,13 +1081,13 @@ stateDiagram-v2
 
     state CheckMoreRules <<choice>>
     CheckMoreRules --> EvaluateRule: More rules
-    CheckMoreRules --> ReturnDefaultDecision: No more rules
+    CheckMoreRules --> ReturnNoMatch: No more rules
 
     ReturnDecision --> [*]
-    ReturnDefaultDecision --> [*]
+    ReturnNoMatch --> [*]
 ```
 
-**Key principle:** The routing engine should never fail to return a routing decision. If all rules fail or error, the default agent handles the request.
+**Key principle:** The routing engine returns a no-match decision when no rules match or all rules fail. The client decides how to handle unmatched prompts.
 
 ## References
 

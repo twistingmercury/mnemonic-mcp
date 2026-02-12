@@ -159,9 +159,6 @@ routing:
     refresh_ttl: 5m       # IGNORED IN MVP: How often Mnemonic refreshes rules from database
     startup_timeout: 30s  # IGNORED IN MVP: Timeout for initial cache load
 
-  # Default agent when no rules match
-  default_agent: general-agent
-
 # Enrichment worker
 enrichment:
   # Number of concurrent workers
@@ -298,7 +295,6 @@ The otelx package handles the complexity of OpenTelemetry SDK setup, allowing Mn
 | `rate_limit.burst_size`                   | int      | `200`                    | `MNEMONIC_RATE_LIMIT_BURST_SIZE`                   | Burst size (Post-MVP)                                                            |
 | `rate_limit.per_user.requests_per_minute` | int      | `60`                     | `MNEMONIC_RATE_LIMIT_PER_USER_REQUESTS_PER_MINUTE` | Per-user RPM (Post-MVP)                                                          |
 | `routing.cache.refresh_ttl`               | duration | `5m`                     | `MNEMONIC_ROUTING_CACHE_REFRESH_TTL`               | Server-side cache TTL (how often Mnemonic refreshes rules from database; Post-MVP: not used in MVP; rules loaded once at startup) |
-| `routing.default_agent`                   | string   | `general-agent`          | `MNEMONIC_ROUTING_DEFAULT_AGENT`                   | Default fallback agent                                                           |
 | `enrichment.worker_count`                 | int      | `2`                      | `MNEMONIC_ENRICHMENT_WORKER_COUNT`                 | Concurrent workers                                                               |
 | `enrichment.poll_interval`                | duration | `5s`                     | `MNEMONIC_ENRICHMENT_POLL_INTERVAL`                | Job poll interval                                                                |
 | `enrichment.max_attempts`                 | int      | `3`                      | `MNEMONIC_ENRICHMENT_MAX_ATTEMPTS`                 | Max retry attempts                                                               |
@@ -572,7 +568,6 @@ classDiagram
 
     class MnemonicRoutingConfig {
         +RoutingCacheConfig Cache
-        +string DefaultAgent
     }
 
     class RoutingCacheConfig {

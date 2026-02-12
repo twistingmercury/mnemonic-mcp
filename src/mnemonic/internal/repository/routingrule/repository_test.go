@@ -48,16 +48,18 @@ func testRegexRule() *routingrule.Rule {
 	}
 }
 
-// testDefaultRule returns a sample default rule for testing.
-func testDefaultRule() *routingrule.Rule {
+// testPatternRule returns a sample pattern rule for testing.
+func testPatternRule() *routingrule.Rule {
 	return &routingrule.Rule{
-		ID:          uuid.New(),
-		Name:        "default-fallback",
-		Priority:    0,
-		AgentName:   "general-agent",
-		MatchType:   "default",
-		MatchConfig: routingrule.DefaultMatchConfig{},
-		Enabled:     true,
+		ID:        uuid.New(),
+		Name:      "pattern-rule",
+		Priority:  0,
+		AgentName: "general-agent",
+		MatchType: "pattern",
+		MatchConfig: routingrule.PatternMatchConfig{
+			PatternIDs: []uuid.UUID{uuid.New()},
+		},
+		Enabled: true,
 	}
 }
 
@@ -113,18 +115,18 @@ func TestRepository_Create(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name: "successful creation with default config",
-			rule: testDefaultRule(),
+			name: "successful creation with pattern config",
+			rule: testPatternRule(),
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{"created_at", "updated_at"}).
 					AddRow(now, now)
 				mock.ExpectQuery("INSERT INTO routing_rules").
 					WithArgs(
 						pgxmock.AnyArg(),
-						"default-fallback",
+						"pattern-rule",
 						0,
 						"general-agent",
-						"default",
+						"pattern",
 						pgxmock.AnyArg(),
 						true,
 					).
@@ -225,12 +227,15 @@ func TestRepository_Create_GeneratesUUID(t *testing.T) {
 
 	rule := &routingrule.Rule{
 		// ID is not set - should be generated
-		Name:        "test-rule",
-		Priority:    50,
-		AgentName:   "test-agent",
-		MatchType:   "default",
-		MatchConfig: routingrule.DefaultMatchConfig{},
-		Enabled:     true,
+		Name:      "test-rule",
+		Priority:  50,
+		AgentName: "test-agent",
+		MatchType: "keyword",
+		MatchConfig: routingrule.KeywordMatchConfig{
+			Keywords:  []string{"test"},
+			MatchMode: routingrule.MatchModeAny,
+		},
+		Enabled: true,
 	}
 
 	rows := pgxmock.NewRows([]string{"created_at", "updated_at"}).
@@ -241,7 +246,7 @@ func TestRepository_Create_GeneratesUUID(t *testing.T) {
 			"test-rule",
 			50,
 			"test-agent",
-			"default",
+			"keyword",
 			pgxmock.AnyArg(),
 			true,
 		).
@@ -307,7 +312,7 @@ func TestRepository_Get(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:   "successful retrieval of default rule",
+			name:   "successful retrieval of regex rule",
 			ruleID: ruleID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
@@ -315,11 +320,11 @@ func TestRepository_Get(t *testing.T) {
 					"match_config", "enabled", "created_at", "updated_at",
 				}).AddRow(
 					ruleID,
-					"default-fallback",
-					0,
-					"general-agent",
-					"default",
-					[]byte(`{}`),
+					"python-regex-rule",
+					90,
+					"python-agent",
+					"regex",
+					[]byte(`{"pattern":"\\b(python|py)\\b","flags":"i"}`),
 					true,
 					now,
 					now,
@@ -329,15 +334,18 @@ func TestRepository_Get(t *testing.T) {
 					WillReturnRows(rows)
 			},
 			wantRule: &routingrule.Rule{
-				ID:          ruleID,
-				Name:        "default-fallback",
-				Priority:    0,
-				AgentName:   "general-agent",
-				MatchType:   "default",
-				MatchConfig: routingrule.DefaultMatchConfig{},
-				Enabled:     true,
-				CreatedAt:   now,
-				UpdatedAt:   now,
+				ID:        ruleID,
+				Name:      "python-regex-rule",
+				Priority:  90,
+				AgentName: "python-agent",
+				MatchType: "regex",
+				MatchConfig: routingrule.RegexMatchConfig{
+					Pattern: `\b(python|py)\b`,
+					Flags:   "i",
+				},
+				Enabled:   true,
+				CreatedAt: now,
+				UpdatedAt: now,
 			},
 			wantErr: nil,
 		},
@@ -673,8 +681,8 @@ func TestRepository_List(t *testing.T) {
 				}).
 					AddRow(uuid.New(), "rule-a", 100, "agent-a", "keyword",
 						[]byte(`{"keywords":["go"],"match_mode":"any"}`), true, now, now, int64(2)).
-					AddRow(uuid.New(), "rule-b", 50, "agent-b", "default",
-						[]byte(`{}`), true, now, now, int64(2))
+					AddRow(uuid.New(), "rule-b", 50, "agent-b", "regex",
+						[]byte(`{"pattern":"test","flags":"i"}`), true, now, now, int64(2))
 
 				mock.ExpectQuery("SELECT .* FROM routing_rules ORDER BY priority DESC").
 					WillReturnRows(rows)
@@ -716,8 +724,8 @@ func TestRepository_List(t *testing.T) {
 					"id", "name", "priority", "agent_name", "match_type",
 					"match_config", "enabled", "created_at", "updated_at", "total_count",
 				}).
-					AddRow(uuid.New(), "enabled-rule", 100, "agent", "default",
-						[]byte(`{}`), true, now, now, int64(1))
+					AddRow(uuid.New(), "enabled-rule", 100, "agent", "keyword",
+						[]byte(`{"keywords":["test"],"match_mode":"any"}`), true, now, now, int64(1))
 
 				mock.ExpectQuery("SELECT .* FROM routing_rules WHERE enabled").
 					WithArgs(true).
@@ -736,8 +744,8 @@ func TestRepository_List(t *testing.T) {
 					"id", "name", "priority", "agent_name", "match_type",
 					"match_config", "enabled", "created_at", "updated_at", "total_count",
 				}).
-					AddRow(uuid.New(), "rule-b", 50, "agent-b", "default",
-						[]byte(`{}`), true, now, now, int64(2))
+					AddRow(uuid.New(), "rule-b", 50, "agent-b", "keyword",
+						[]byte(`{"keywords":["test"],"match_mode":"any"}`), true, now, now, int64(2))
 
 				mock.ExpectQuery("SELECT .* FROM routing_rules ORDER BY priority DESC, id ASC LIMIT").
 					WithArgs(1, 1).
@@ -816,8 +824,8 @@ func TestRepository_ListEnabled(t *testing.T) {
 				}).
 					AddRow(uuid.New(), "high-priority", 100, "agent-a", "keyword",
 						[]byte(`{"keywords":["go"],"match_mode":"any"}`), true, now, now).
-					AddRow(uuid.New(), "low-priority", 10, "agent-b", "default",
-						[]byte(`{}`), true, now, now)
+					AddRow(uuid.New(), "low-priority", 10, "agent-b", "regex",
+						[]byte(`{"pattern":"fallback"}`), true, now, now)
 
 				mock.ExpectQuery("SELECT .* FROM routing_rules WHERE enabled = true ORDER BY priority DESC").
 					WillReturnRows(rows)
@@ -1044,12 +1052,6 @@ func TestMatchConfig_UnmarshalMarshal(t *testing.T) {
 			jsonData:  []byte(`{"pattern_ids":["550e8400-e29b-41d4-a716-446655440000"]}`),
 			wantType:  "pattern",
 		},
-		{
-			name:      "default config",
-			matchType: "default",
-			jsonData:  []byte(`{}`),
-			wantType:  "default",
-		},
 	}
 
 	for _, tt := range tests {
@@ -1095,7 +1097,7 @@ func TestIsValidMatchType(t *testing.T) {
 		{"keyword", true},
 		{"regex", true},
 		{"pattern", true},
-		{"default", true},
+		{"default", false},
 		{"invalid", false},
 		{"KEYWORD", false},
 		{"", false},

@@ -16,14 +16,13 @@ const tracerName = "mnemonic/routing"
 
 // Engine implements the Evaluator interface. It evaluates routing rules in priority
 // order using registered matchers and returns the first matching decision, or a
-// default decision if no rules match.
+// Decision with Matched: false if no rules match.
 type Engine struct {
-	cache        *RuleCache
-	registry     *MatcherRegistry
-	defaultAgent string
-	metrics      *metrics.Routing
-	logger       zerolog.Logger
-	tracer       trace.Tracer
+	cache    *RuleCache
+	registry *MatcherRegistry
+	metrics  *metrics.Routing
+	logger   zerolog.Logger
+	tracer   trace.Tracer
 }
 
 // NewEngine creates a new routing Engine.
@@ -31,22 +30,20 @@ type Engine struct {
 func NewEngine(
 	cache *RuleCache,
 	registry *MatcherRegistry,
-	defaultAgent string,
 	routingMetrics *metrics.Routing,
 	logger zerolog.Logger,
 ) *Engine {
 	return &Engine{
-		cache:        cache,
-		registry:     registry,
-		defaultAgent: defaultAgent,
-		metrics:      routingMetrics,
-		logger:       logger,
-		tracer:       otel.Tracer(tracerName),
+		cache:    cache,
+		registry: registry,
+		metrics:  routingMetrics,
+		logger:   logger,
+		tracer:   otel.Tracer(tracerName),
 	}
 }
 
 // Route evaluates the prompt against all enabled routing rules in priority order.
-// It returns the first match or a default decision if no rules match.
+// It returns the first match or Decision{Matched: false} if no rules match.
 func (e *Engine) Route(ctx context.Context, req Request) (Decision, error) {
 	ctx, span := e.tracer.Start(ctx, "Engine.Route",
 		trace.WithAttributes(
@@ -93,6 +90,7 @@ func (e *Engine) Route(ctx context.Context, req Request) (Decision, error) {
 
 		if result.Matched {
 			decision := Decision{
+				Matched:         true,
 				AgentName:       rule.AgentName,
 				Confidence:      NormalizeConfidence(result.Confidence),
 				MatchType:       matchType,
@@ -101,6 +99,7 @@ func (e *Engine) Route(ctx context.Context, req Request) (Decision, error) {
 			}
 
 			span.SetAttributes(
+				attribute.Bool("routing.matched", true),
 				attribute.String("routing.agent", decision.AgentName),
 				attribute.String("routing.match_type", string(decision.MatchType)),
 				attribute.Float64("routing.confidence", decision.Confidence),
@@ -119,27 +118,17 @@ func (e *Engine) Route(ctx context.Context, req Request) (Decision, error) {
 		}
 	}
 
-	// No rules matched; return default decision.
-	decision := Decision{
-		AgentName:  e.defaultAgent,
-		Confidence: 0.5,
-		MatchType:  MatchTypeDefault,
-		Reasoning:  "No specific rules matched; using default agent",
-	}
-
+	// No rules matched.
 	span.SetAttributes(
-		attribute.String("routing.agent", decision.AgentName),
-		attribute.String("routing.match_type", string(MatchTypeDefault)),
-		attribute.Float64("routing.confidence", decision.Confidence),
+		attribute.Bool("routing.matched", false),
 	)
 
-	e.recordMetrics(ctx, decision)
+	e.recordNoMatch(ctx)
 
 	e.logger.Debug().
-		Str("agent", decision.AgentName).
-		Msg("no rules matched, using default agent")
+		Msg("no rules matched")
 
-	return decision, nil
+	return Decision{}, nil
 }
 
 // recordMetrics records routing metrics if a metrics recorder is available.
@@ -149,6 +138,14 @@ func (e *Engine) recordMetrics(ctx context.Context, decision Decision) {
 	}
 	e.metrics.RecordRoutingDecision(ctx, decision.AgentName)
 	e.metrics.RecordRuleMatch(ctx, string(decision.MatchType))
+}
+
+// recordNoMatch records a no-match metric if a metrics recorder is available.
+func (e *Engine) recordNoMatch(ctx context.Context) {
+	if e.metrics == nil {
+		return
+	}
+	e.metrics.RecordRuleMatch(ctx, "no_match")
 }
 
 // buildReasoning generates a human-readable explanation for a routing decision.
@@ -166,8 +163,6 @@ func buildReasoning(matchType MatchType, result MatchResult) string {
 		return "Matched regex rule"
 	case MatchTypePattern:
 		return fmt.Sprintf("Semantic match with confidence %.0f%%", result.Confidence*100)
-	case MatchTypeDefault:
-		return "No specific rules matched; using default agent"
 	default:
 		return fmt.Sprintf("Matched rule (type: %s)", matchType)
 	}

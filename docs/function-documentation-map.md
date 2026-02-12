@@ -240,7 +240,6 @@ Cross-reference of all exported functions/methods (in `internal/` packages) to t
 | [internal/repository/routingrule/routingrule.go](../src/mnemonic/internal/repository/routingrule/routingrule.go) | (KeywordMatchConfig) Type()     | [Routing Rules](architecture/08-data-architecture.md#routing-rules)             | [Keyword Matcher](design/routing-engine.md#keyword-matcher)                     |
 | [internal/repository/routingrule/routingrule.go](../src/mnemonic/internal/repository/routingrule/routingrule.go) | (RegexMatchConfig) Type()       | [Routing Rules](architecture/08-data-architecture.md#routing-rules)             | [Regex Matcher](design/routing-engine.md#regex-matcher)                         |
 | [internal/repository/routingrule/routingrule.go](../src/mnemonic/internal/repository/routingrule/routingrule.go) | (PatternMatchConfig) Type()     | [Routing Rules](architecture/08-data-architecture.md#routing-rules)             | [Pattern Matcher (Semantic)](design/routing-engine.md#pattern-matcher-semantic) |
-| [internal/repository/routingrule/routingrule.go](../src/mnemonic/internal/repository/routingrule/routingrule.go) | (DefaultMatchConfig) Type()     | [Routing Rules](architecture/08-data-architecture.md#routing-rules)             | [Default Matcher](design/routing-engine.md#default-matcher)                     |
 
 ## internal/routing
 

@@ -28,7 +28,6 @@ import (
 //   - MatchMethodKeyword: Matched against agent/rule keywords
 //   - MatchMethodRegex: Matched against regex rule
 //   - MatchMethodPattern: Semantic pattern matching
-//   - MatchMethodDefault: Fallback to default agent
 //
 // Authorization:
 //   - Any authenticated user can use this endpoint
@@ -198,33 +197,37 @@ func TestRoute_PatternMatch(t *testing.T) {
 	// This test depends on pattern enrichment being complete
 }
 
-// TestRoute_DefaultMatch verifies fallback to default agent.
+// TestRoute_NoMatch verifies no-match behavior when no rules match.
 // OpenAPI: api/openapi/mnemonic-v1.yaml:1392 (POST /ace/route)
 //
 // Expected behavior:
-//   - When no rules match, falls back to default agent
-//   - routing.method is "MatchMethodDefault"
-func TestRoute_DefaultMatch(t *testing.T) {
+//   - When no rules match, returns 200 OK with routing.matched = false
+//   - Agent field is absent when matched is false
+func TestRoute_NoMatch(t *testing.T) {
 	t.Skip("not implemented")
 
 	// TODO: Implement test
-	// 1. Ensure default routing rule exists
-	// 2. POST /ace/route with prompt that doesn't match any keywords/regex
-	// 3. Assert routing.method == "MatchMethodDefault"
+	// 1. POST /ace/route with prompt that doesn't match any keywords/regex/pattern
+	// 2. Assert status code 200
+	// 3. Assert routing.matched == false
+	// 4. Assert agent field is not present
 }
 
-// TestRoute_NoMatchNoDefault verifies 404 when no agent matches.
+// TestRoute_UnmatchedPrompt verifies behavior when prompt doesn't match any enabled rules.
 // OpenAPI: api/openapi/mnemonic-v1.yaml:1392 (POST /ace/route)
 //
 // Expected behavior:
-//   - Returns 404 Not Found if strict routing enabled and no match
-//   - detail indicates no agent matched
-//
-// Note: This may depend on server configuration for strict mode.
-func TestRoute_NoMatchNoDefault(t *testing.T) {
-	t.Skip("not implemented - behavior depends on server config")
+//   - When enabled rules exist but none match the prompt, returns 200 OK with routing.matched = false
+//   - This differs from TestRoute_NoMatch which tests when no rules exist at all
+func TestRoute_UnmatchedPrompt(t *testing.T) {
+	t.Skip("not implemented")
 
-	// TODO: Implement test if strict routing mode exists
+	// TODO: Implement test
+	// 1. Create several rules that won't match the test prompt
+	// 2. POST /ace/route with prompt that doesn't match any of them
+	// 3. Assert status code 200
+	// 4. Assert routing.matched == false
+	// 5. Clean up rules
 }
 
 // TestRoute_PriorityOrder verifies higher priority rules match first.
@@ -256,7 +259,7 @@ func TestRoute_DisabledRulesSkipped(t *testing.T) {
 	// TODO: Implement test
 	// 1. Create agent and rule with enabled: false
 	// 2. POST /ace/route with prompt that would match disabled rule
-	// 3. Assert it doesn't match that rule (routes to default instead)
+	// 3. Assert it doesn't match that rule (returns no-match)
 	// 4. Clean up
 }
 
@@ -488,7 +491,6 @@ func TestRoute_AgentIncludesAllFields(t *testing.T) {
 // Expected behavior:
 //   - routing.reasoning provides human-readable explanation
 //   - For keyword match: "Matched keywords: go, function"
-//   - For default: indicates fallback
 func TestRoute_ReasoningExplains(t *testing.T) {
 	t.Skip("not implemented")
 
@@ -505,12 +507,11 @@ func TestRoute_ReasoningExplains(t *testing.T) {
 //   - Keyword match: confidence is 1.0 (deterministic)
 //   - Regex match: confidence is 1.0 (deterministic)
 //   - Pattern match: confidence varies (semantic similarity)
-//   - Default match: confidence may be lower
 func TestRoute_ConfidenceValues(t *testing.T) {
 	t.Skip("not implemented")
 
 	// TODO: Implement test
 	// 1. Test keyword match - expect confidence == 1.0
 	// 2. Test regex match - expect confidence == 1.0
-	// 3. Test default match - verify confidence is valid
+	// 3. Test pattern match - verify confidence is valid (0-1)
 }

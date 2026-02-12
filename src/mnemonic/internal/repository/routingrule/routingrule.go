@@ -18,7 +18,6 @@ const (
 	MatchTypeKeyword MatchType = "keyword"
 	MatchTypeRegex   MatchType = "regex"
 	MatchTypePattern MatchType = "pattern"
-	MatchTypeDefault MatchType = "default"
 )
 
 // Rule represents a routing rule definition stored in the database.
@@ -36,7 +35,7 @@ type Rule struct {
 	AgentName string `db:"agent_name"`
 
 	// MatchType determines how MatchConfig is interpreted.
-	// Valid values: keyword, regex, pattern, default
+	// Valid values: keyword, regex, pattern
 	MatchType string `db:"match_type"`
 
 	// MatchConfig contains type-specific match configuration.
@@ -59,7 +58,6 @@ var ValidMatchTypes = []string{
 	string(MatchTypeKeyword),
 	string(MatchTypeRegex),
 	string(MatchTypePattern),
-	string(MatchTypeDefault),
 }
 
 // IsValidMatchType checks if the given match type string is valid.
@@ -128,13 +126,6 @@ type PatternMatchConfig struct {
 // Type returns the match type identifier.
 func (p PatternMatchConfig) Type() string { return "pattern" }
 
-// DefaultMatchConfig is the configuration for match_type = 'default'.
-// The default match type always matches and is used as a fallback.
-type DefaultMatchConfig struct{}
-
-// Type returns the match type identifier.
-func (d DefaultMatchConfig) Type() string { return "default" }
-
 // UnmarshalMatchConfig unmarshals a JSONB match_config based on the match_type.
 func UnmarshalMatchConfig(matchType string, data []byte) (MatchConfig, error) {
 	switch matchType {
@@ -158,9 +149,6 @@ func UnmarshalMatchConfig(matchType string, data []byte) (MatchConfig, error) {
 			return nil, fmt.Errorf("unmarshaling pattern config: %w", err)
 		}
 		return cfg, nil
-
-	case "default":
-		return DefaultMatchConfig{}, nil
 
 	default:
 		return nil, fmt.Errorf("unknown match type: %s", matchType)
