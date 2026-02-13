@@ -157,7 +157,7 @@ routing:
     # in MVP. Rules are loaded once at startup and cached indefinitely. Restart the
     # service to reload rules after database changes. Background refresh is Post-MVP.
     refresh_ttl: 5m       # IGNORED IN MVP: How often Mnemonic refreshes rules from database
-    startup_timeout: 30s  # IGNORED IN MVP: Timeout for initial cache load
+    startup_timeout: 30s  # Timeout for initial rule cache load at startup
 
 # Enrichment worker
 enrichment:
@@ -295,6 +295,7 @@ The otelx package handles the complexity of OpenTelemetry SDK setup, allowing Mn
 | `rate_limit.burst_size`                   | int      | `200`                    | `MNEMONIC_RATE_LIMIT_BURST_SIZE`                   | Burst size (Post-MVP)                                                            |
 | `rate_limit.per_user.requests_per_minute` | int      | `60`                     | `MNEMONIC_RATE_LIMIT_PER_USER_REQUESTS_PER_MINUTE` | Per-user RPM (Post-MVP)                                                          |
 | `routing.cache.refresh_ttl`               | duration | `5m`                     | `MNEMONIC_ROUTING_CACHE_REFRESH_TTL`               | Server-side cache TTL (how often Mnemonic refreshes rules from database; Post-MVP: not used in MVP; rules loaded once at startup) |
+| `routing.cache.startup_timeout`           | duration | `30s`                    | `MNEMONIC_ROUTING_CACHE_STARTUP_TIMEOUT`           | Timeout for initial rule cache load at startup; 0 disables                       |
 | `enrichment.worker_count`                 | int      | `2`                      | `MNEMONIC_ENRICHMENT_WORKER_COUNT`                 | Concurrent workers                                                               |
 | `enrichment.poll_interval`                | duration | `5s`                     | `MNEMONIC_ENRICHMENT_POLL_INTERVAL`                | Job poll interval                                                                |
 | `enrichment.max_attempts`                 | int      | `3`                      | `MNEMONIC_ENRICHMENT_MAX_ATTEMPTS`                 | Max retry attempts                                                               |

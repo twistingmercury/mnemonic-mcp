@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -77,7 +78,7 @@ func TestNewRuleCache(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			cache, err := routing.NewRuleCache(context.Background(), tt.loader)
+			cache, err := routing.NewRuleCache(context.Background(), tt.loader, 0)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -112,7 +113,7 @@ func TestRuleCache_GetRules_ReturnsCopy(t *testing.T) {
 		},
 	}
 
-	cache, err := routing.NewRuleCache(context.Background(), loader)
+	cache, err := routing.NewRuleCache(context.Background(), loader, 0)
 	require.NoError(t, err)
 
 	// Get rules and replace an entry in the returned slice.
@@ -156,10 +157,95 @@ func TestRuleCache_RuleCount(t *testing.T) {
 				},
 			}
 
-			cache, err := routing.NewRuleCache(context.Background(), loader)
+			cache, err := routing.NewRuleCache(context.Background(), loader, 0)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.ruleCount, cache.RuleCount())
+		})
+	}
+}
+
+func TestNewRuleCache_StartupTimeout(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		timeout        time.Duration
+		loaderDelay    time.Duration
+		loaderFn       func(ctx context.Context) ([]*routingrule.Rule, error)
+		wantErr        bool
+		wantErrContain string
+		wantCount      int
+	}{
+		{
+			name:        "load completes within timeout",
+			timeout:     1 * time.Second,
+			loaderDelay: 0,
+			wantErr:     false,
+			wantCount:   1,
+		},
+		{
+			name:    "load exceeds timeout",
+			timeout: 10 * time.Millisecond,
+			loaderFn: func(ctx context.Context) ([]*routingrule.Rule, error) {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			},
+			wantErr:        true,
+			wantErrContain: "failed to load rules at startup",
+		},
+		{
+			name:        "zero timeout means no limit",
+			timeout:     0,
+			loaderDelay: 10 * time.Millisecond,
+			wantErr:     false,
+			wantCount:   1,
+		},
+		{
+			name:        "negative timeout means no limit",
+			timeout:     -1 * time.Second,
+			loaderDelay: 10 * time.Millisecond,
+			wantErr:     false,
+			wantCount:   1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var loadFn func(ctx context.Context) ([]*routingrule.Rule, error)
+			if tt.loaderFn != nil {
+				loadFn = tt.loaderFn
+			} else {
+				loadFn = func(ctx context.Context) ([]*routingrule.Rule, error) {
+					if tt.loaderDelay > 0 {
+						select {
+						case <-time.After(tt.loaderDelay):
+						case <-ctx.Done():
+							return nil, ctx.Err()
+						}
+					}
+					return []*routingrule.Rule{
+						{ID: uuid.New(), Name: "rule-1", Priority: 100, Enabled: true},
+					}, nil
+				}
+			}
+			loader := &mockRuleLoader{loadFn: loadFn}
+
+			cache, err := routing.NewRuleCache(context.Background(), loader, tt.timeout)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErrContain)
+				assert.Nil(t, cache)
+				assert.ErrorIs(t, err, context.DeadlineExceeded)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, cache)
+			assert.Equal(t, tt.wantCount, cache.RuleCount())
 		})
 	}
 }

@@ -24,7 +24,7 @@ func newTestEngine(t *testing.T, rules []*routingrule.Rule, registry *routing.Ma
 		},
 	}
 
-	cache, err := routing.NewRuleCache(context.Background(), loader)
+	cache, err := routing.NewRuleCache(context.Background(), loader, 0)
 	require.NoError(t, err)
 
 	logger := zerolog.Nop()

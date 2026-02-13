@@ -122,7 +122,7 @@ classDiagram
 
 Each match type implements the `RuleMatcher` interface. Different implementations handle keyword, regex, and pattern matching.
 
-Note: `MatchConfig` is an interface implemented by concrete types (`KeywordMatchConfig`, `RegexMatchConfig`, `PatternMatchConfig`, `DefaultMatchConfig`), not a union struct.
+Note: `MatchConfig` is an interface implemented by concrete types (`KeywordMatchConfig`, `RegexMatchConfig`, `PatternMatchConfig`), not a union struct.
 
 ```mermaid
 classDiagram
@@ -420,7 +420,13 @@ type RuleCache struct {
     mu    sync.RWMutex
 }
 
-func NewRuleCache(ctx context.Context, loader RuleLoader) (*RuleCache, error) {
+func NewRuleCache(ctx context.Context, loader RuleLoader, startupTimeout time.Duration) (*RuleCache, error) {
+    if startupTimeout > 0 {
+        var cancel context.CancelFunc
+        ctx, cancel = context.WithTimeout(ctx, startupTimeout)
+        defer cancel()
+    }
+
     rules, err := loader.LoadRules(ctx)
     if err != nil {
         return nil, fmt.Errorf("failed to load rules at startup: %w", err)
@@ -480,6 +486,8 @@ stateDiagram-v2
 - If rules cannot be loaded, the service fails to start immediately (fail-fast)
 - This prevents routing requests with missing rules
 - Health checks report unhealthy until rules are loaded
+- The initial load is bounded by `startup_timeout` (default 30s); a hung database
+  triggers a timeout error rather than blocking indefinitely
 
 **Reloading rules (MVP):**
 
@@ -496,14 +504,12 @@ stateDiagram-v2
 - Explicit cache invalidation when rules are modified via admin API
 - Graceful degradation for refresh failures (use stale cache)
 - `Engine.ReloadRules(ctx context.Context) error` method for on-demand refresh
-- Configurable `startup_timeout` for initial rule load
 
 **Planned configuration:**
 
 | Setting           | Default | Description                            |
 | ----------------- | ------- | -------------------------------------- |
 | `refresh_interval`| 5m      | Background refresh interval            |
-| `startup_timeout` | 30s     | Max time to wait for initial rule load |
 
 These features enable rule changes to propagate without service restarts, which is important for:
 
