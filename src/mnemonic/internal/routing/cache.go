@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/twistingmercury/mnemonic/internal/repository/routingrule"
 )
@@ -27,7 +28,16 @@ type RuleCache struct {
 // NewRuleCache creates a new RuleCache by loading rules from the provided loader.
 // Rules are sorted by priority DESC, then by ID ASC (lexicographic) for deterministic
 // tie-breaking. Returns an error if loading fails (fail-fast on startup).
-func NewRuleCache(ctx context.Context, loader RuleLoader) (*RuleCache, error) {
+//
+// If startupTimeout is positive, the initial load is bounded by that duration.
+// A zero or negative startupTimeout means no timeout is applied.
+func NewRuleCache(ctx context.Context, loader RuleLoader, startupTimeout time.Duration) (*RuleCache, error) {
+	if startupTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, startupTimeout)
+		defer cancel()
+	}
+
 	rules, err := loader.LoadRules(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load rules at startup: %w", err)

@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CloseAll()` method added to `MatcherRegistry` for graceful matcher shutdown
 - `PatternIDs []uuid.UUID` field on `SimilarityOptions` for filtering similarity search to specific pattern IDs
 - Unit and integration tests for PatternIDs filter on `FindSimilar`
+- Startup timeout for rule cache (`routing.cache.startup_timeout`) bounds
+  initial rule load to prevent indefinite hangs (default 30s)
 
 ### Changed
 
