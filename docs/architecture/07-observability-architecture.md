@@ -17,7 +17,7 @@
 
 ## Overview
 
-Observability enables understanding system behavior through external outputs. For ACE, observability focuses on the server-side components (Mnemonic and its storage layer) since LLM execution happens locally on user workstations.
+Observability enables understanding system behavior through external outputs. For Mnemonic, observability focuses on the server-side components (Mnemonic and its storage layer) since LLM execution happens locally on user workstations via Claude Code.
 
 **Scope:**
 
@@ -27,15 +27,13 @@ Observability enables understanding system behavior through external outputs. Fo
 | Postgres + PGVector | Database metrics and query logging         |
 | Neo4j               | Query metrics and performance              |
 
-**Note:** The ACE CLI will be developed in a separate repository with its own observability strategy to be designed.
-
-**Key Characteristic:** Mnemonic is a lightweight service (no LLM inference), so observability focuses on routing performance, pattern retrieval efficiency, and database health rather than compute-intensive operations.
+**Key Characteristic:** Mnemonic is a lightweight service (no LLM inference), so observability focuses on pattern search performance, MCP tool serving, admin API operations, and database health rather than compute-intensive operations.
 
 ## Implementation Stages
 
 [Back to Table of Contents](#table-of-contents)
 
-> **Note:** This document uses "Observability Stages" to describe the observability rollout milestones. These are independent of the main ACE execution phases (Phase 1: Claude Code, Phase 2: Direct API, Phase 3: Auth) described in the [Architecture Overview](00-overview.md#phased-approach).
+> **Note:** This document uses "Observability Stages" to describe the observability rollout milestones. These are independent of the main Mnemonic execution phases (Phase 1: MVP Local Deployment, Phase 2: Production Deployment) described in the [Architecture Overview](00-overview.md#phased-approach).
 
 Observability is implemented in stages, starting with application instrumentation before building out the full observability stack.
 
@@ -134,21 +132,23 @@ Mnemonic exposes metrics across several categories:
 
 **Request metrics** - Track HTTP requests including:
 
-- Request count by endpoint and status code
+- MCP tool invocations by tool name
+- Admin API operations by endpoint and status code
 - Request duration histograms (for percentile calculations)
 - In-flight request count
 
-**Routing metrics** - Track routing engine activity:
+**Pattern metrics** - Track pattern operations:
 
-- Routing decisions by agent
-- Pattern matches by rule type (keyword, regex, semantic)
-- Cache hit/miss ratios for routing rules
-
-**Pattern metrics** - Track pattern retrieval:
-
-- Pattern query latency (Postgres, PGVector, Neo4j)
-- Patterns returned per request
+- Pattern search latency (semantic search via PGVector)
+- Pattern query latency (Neo4j relationship traversal)
+- Patterns returned per search request
 - Pattern cache effectiveness
+
+**Tooling metrics** - Track agent/skill/command operations:
+
+- List operations by type (agents, skills, commands)
+- Get operations by resource type
+- Admin API write operations (create, update, delete)
 
 **Database metrics** - Track storage layer health:
 
@@ -172,9 +172,9 @@ We alert on conditions that require attention:
 
 **Warning alerts** (investigate soon):
 
-- Elevated latency (P95 > 200ms for routing requests)
+- Elevated latency (P95 > 200ms for pattern searches)
 - Connection pool saturation (>80% utilization)
-- High cache miss rate (routing efficiency degraded)
+- High cache miss rate (pattern search efficiency degraded)
 
 **Alert routing:**
 
@@ -209,9 +209,10 @@ All logs use structured JSON format for consistent parsing and querying. Every l
 
 **Request events:**
 
-- Request received (method, path, request ID)
-- Routing decision made (agent selected, rule matched)
-- Pattern query executed (patterns retrieved)
+- MCP tool invoked (tool name, parameters, request ID)
+- Admin API operation (method, path, request ID)
+- Pattern search executed (query, results count)
+- Tooling operation executed (resource type, operation)
 - Request completed (status, duration)
 
 **System events:**
@@ -240,25 +241,23 @@ A routing request trace shows the journey through Mnemonic:
 ```mermaid
 flowchart TB
     subgraph Trace["Trace ID: abc123"]
-        HTTP["POST /v1/api/route<br/>45ms"]
+        MCP["MCP: search_patterns<br/>45ms"]
 
-        subgraph HTTPSpans[" "]
-            Valid["Validate Request<br/>2ms"]
-            Route["Apply Routing Rules<br/>8ms"]
-            Pattern["Fetch Patterns<br/>30ms"]
+        subgraph MCPSpans[" "]
+            Valid["Validate Parameters<br/>2ms"]
+            Embed["Generate Embedding<br/>8ms"]
+            Search["Search Patterns<br/>30ms"]
             Resp["Build Response<br/>5ms"]
         end
 
-        subgraph PatternSpans[" "]
-            PG["Postgres Query<br/>10ms"]
-            PGV["PGVector Search<br/>12ms"]
-            Neo["Neo4j Query<br/>8ms"]
+        subgraph SearchSpans[" "]
+            PGV["PGVector Semantic Search<br/>15ms"]
+            NEO["Neo4j Relationship Fetch<br/>15ms"]
         end
 
-        HTTP --> Valid --> Route --> Pattern --> Resp
-        Pattern --> PG
-        Pattern --> PGV
-        Pattern --> Neo
+        MCP --> Valid --> Embed --> Search --> Resp
+        Search --> PGV
+        Search --> NEO
     end
 ```
 
@@ -268,18 +267,18 @@ Traces flow from CLI through Mnemonic:
 
 ```mermaid
 sequenceDiagram
-    participant CLI as ACE CLI
-    participant MN as Mnemonic
-    participant PG as Postgres
+    participant CC as Claude Code
+    participant MCP as MCP Server
+    participant PGV as PGVector
     participant NEO as Neo4j
 
-    Note over CLI: Generate trace ID
-    CLI->>MN: POST /v1/api/route<br/>traceparent: 00-abc123-...
-    MN->>PG: Query patterns<br/>(child span)
-    PG-->>MN: Results
-    MN->>NEO: Query relationships<br/>(child span)
-    NEO-->>MN: Results
-    MN-->>CLI: Response<br/>(trace complete)
+    Note over CC: Generate trace ID
+    CC->>MCP: search_patterns(query)<br/>traceparent: 00-abc123-...
+    MCP->>PGV: Semantic search<br/>(child span)
+    PGV-->>MCP: Top N results
+    MCP->>NEO: Fetch relationships<br/>(child span)
+    NEO-->>MCP: Related patterns
+    MCP-->>CC: Response<br/>(trace complete)
 ```
 
 **W3C Trace Context** headers propagate trace IDs across service boundaries.
@@ -323,18 +322,19 @@ Answers: "Is the system healthy right now?"
 
 This is the first dashboard to check during incidents.
 
-### Routing Dashboard
+### Pattern Search Dashboard
 
-Answers: "How is routing behaving?"
+Answers: "How is pattern search behaving?"
 
 **What it shows:**
 
-- Routing decisions by agent (which agents are selected)
-- Rule match distribution (keyword vs. regex vs. semantic)
+- Pattern searches over time (search volume)
+- Top search queries (what users search for)
+- Search result quality (patterns returned per query)
 - Cache hit rates (are we efficiently caching?)
-- Pattern query performance
+- Pattern search performance (semantic search latency)
 
-This dashboard helps understand routing patterns and optimization opportunities.
+This dashboard helps understand pattern usage and search optimization opportunities.
 
 ### Database Dashboard
 
@@ -359,7 +359,7 @@ For dashboard configuration and queries, see operations documentation (TBD).
 
 ### Mnemonic SLOs
 
-For Mnemonic (a lightweight routing service):
+For Mnemonic (a lightweight knowledge synchronization service):
 
 **Availability SLO:** 99.9%
 
@@ -373,7 +373,7 @@ successful requests / total requests >= 0.999
 requests completing < 100ms / total requests >= 0.99
 ```
 
-Note: These are aggressive targets because Mnemonic does no LLM inference. Routing and pattern retrieval should be fast.
+Note: These are aggressive targets because Mnemonic does no LLM inference. Knowledge graph queries and MCP serving should be fast.
 
 ## Runbooks
 
@@ -381,7 +381,7 @@ Note: These are aggressive targets because Mnemonic does no LLM inference. Routi
 
 **Note:** Runbooks are implemented in Observability Stage 3 alongside alerting.
 
-Every alert links to a runbook. ACE requires the following runbooks:
+Every alert links to a runbook. Mnemonic requires the following runbooks:
 
 **Required runbooks:**
 
@@ -403,7 +403,7 @@ For runbook templates and content, see operations documentation (TBD).
 - **Staged approach** - MVP instruments the application; observability stack and operational tooling come later
 - **OpenTelemetry** - Standard collection layer for metrics, logs, and traces (MVP foundation)
 - **Correlation** - Trace IDs connect signals for root cause analysis
-- **Lightweight focus** - Mnemonic observability focuses on routing efficiency, not LLM costs
+- **Lightweight focus** - Mnemonic observability focuses on knowledge graph query performance and MCP serving efficiency, not LLM costs
 - **SLOs matter** - Track what users care about (availability, latency)
 - **Runbooks** - Every alert has documented recovery steps (Stage 3)
 

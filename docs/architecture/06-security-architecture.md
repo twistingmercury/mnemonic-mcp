@@ -2,6 +2,8 @@
 
 [Back to Overview](00-overview.md) | [Back to Project README](../../README.md)
 
+> **Note:** This document describes Phase 2 (Production Deployment) security architecture. MVP (Phase 1) runs in a trusted environment without authentication.
+
 ## Table of Contents
 
 - [Introduction](#introduction)
@@ -14,7 +16,7 @@
   - [RBAC Model](#rbac-model)
   - [OPA Policy Structure](#opa-policy-structure)
 - [Component Architecture](#component-architecture)
-- [CLI Authentication Flow](#cli-authentication-flow)
+- [Admin Authentication Flow (Phase 2 Only)](#admin-authentication-flow-phase-2-only)
   - [Device Code Flow](#device-code-flow)
   - [Token Storage](#token-storage)
 - [Identity Headers](#identity-headers)
@@ -25,13 +27,18 @@
 
 ## Introduction
 
-Phase 3 adds enterprise-grade security to ACE using infrastructure-layer components. Authentication and authorization are handled outside Mnemonic's application code, keeping the service lightweight and focused on routing and pattern retrieval.
+Phase 2 (Production Deployment) adds enterprise-grade security to Mnemonic using infrastructure-layer components. Authentication and authorization are handled outside Mnemonic's application code, keeping the service lightweight and focused on team knowledge synchronization.
 
 This approach follows the principle of separation of concerns: security infrastructure handles identity verification and access control, while Mnemonic remains focused on its core responsibilities.
 
+**Security Scope:**
+
+- **Admin REST API** (`:8080`): Protected by Envoy + OPA for write operations (patterns, agents, skills, commands)
+- **MCP Server** (`:8081`): Read-only access in trusted environment (no authentication for MVP/Phase 2)
+
 ## Security Model Overview
 
-ACE security operates at the infrastructure layer rather than the application layer. This design choice provides several benefits:
+Mnemonic security operates at the infrastructure layer rather than the application layer. This design choice provides several benefits:
 
 - **Separation of concerns**: Security policies managed independently from application code
 - **Policy updates without deployment**: Security rules can change without redeploying Mnemonic
@@ -46,8 +53,8 @@ The security stack consists of:
 
 ```mermaid
 graph TB
-    subgraph "User Workstation"
-        CLI[ACE CLI]
+    subgraph "Admin Workstation (Phase 2)"
+        ADMIN[Admin curl/scripts]
         STORE[(Token Store)]
     end
 
@@ -70,10 +77,10 @@ graph TB
         end
     end
 
-    CLI -->|"1. Login"| IDP
-    IDP -->|"Tokens"| CLI
-    CLI -->|"Store"| STORE
-    CLI -->|"2. REST + JWT"| ENV
+    ADMIN -->|"1. Login"| IDP
+    IDP -->|"Tokens"| ADMIN
+    ADMIN -->|"Store"| STORE
+    ADMIN -->|"2. REST + JWT"| ENV
     ENV -->|"3. ext_authz"| OPA
     OPA -->|"Load"| BUNDLE
     ENV -->|"4. Headers"| MN
@@ -127,7 +134,7 @@ API keys provide authentication for service-to-service communication and automat
 
 ### Supported Identity Providers
 
-ACE supports standard OAuth2/OIDC identity providers. The choice depends on organizational requirements.
+Mnemonic supports standard OAuth2/OIDC identity providers. The choice depends on organizational requirements.
 
 | Provider | Use Case                | Complexity | Notes                                   |
 | -------- | ----------------------- | ---------- | --------------------------------------- |
@@ -142,7 +149,7 @@ Authorization determines what authenticated users can do. OPA (Open Policy Agent
 
 ### RBAC Model
 
-ACE uses Role-Based Access Control with team-scoped resources.
+Mnemonic uses Role-Based Access Control with team-scoped resources.
 
 **Scope Hierarchy:**
 
@@ -153,10 +160,12 @@ graph TB
     ORG --> TEAM2[Team B]
     TEAM1 --> R1[Agents]
     TEAM1 --> R2[Patterns]
-    TEAM1 --> R3[Routing Rules]
-    TEAM2 --> R4[Agents]
-    TEAM2 --> R5[Patterns]
-    TEAM2 --> R6[Routing Rules]
+    TEAM1 --> R3[Skills]
+    TEAM1 --> R4[Commands]
+    TEAM2 --> R5[Agents]
+    TEAM2 --> R6[Patterns]
+    TEAM2 --> R7[Skills]
+    TEAM2 --> R8[Commands]
 ```
 
 **Roles:**
@@ -169,33 +178,35 @@ graph TB
 
 **Resource Types:**
 
-| Resource      | Description                            |
-| ------------- | -------------------------------------- |
-| agents        | Agent definitions and configurations   |
-| patterns      | Context patterns for prompt enrichment |
-| routing_rules | Rules that determine agent selection   |
+| Resource | Description                                      |
+| -------- | ------------------------------------------------ |
+| agents   | Agent definitions and configurations             |
+| patterns | Context patterns for prompt enrichment           |
+| skills   | Reusable Claude Code skills (MCP)                |
+| commands | Reusable Claude Code slash commands (MCP)        |
 
 ### OPA Policy Structure
 
 OPA policies are written in Rego and evaluated for each request. Policies are loaded from bundles that can be updated independently of deployments.
 
 ```rego
-package ace.authz
+package mnemonic.authz
 
 import rego.v1
 
 default allow := false
 
-# Allow authenticated users to route requests
+# Allow authenticated users to read patterns via MCP
 allow if {
-    input.method == "POST"
-    input.path == ["v1", "ace", "route"]
+    input.method == "GET"
+    startswith(input.path[0], "mcp")
     input.user.team_id != ""
 }
 
 # Admin operations require admin role
 allow if {
-    input.method in ["PUT", "DELETE"]
+    input.method in ["PUT", "DELETE", "POST"]
+    startswith(input.path[0], "v1")
     "admin" in input.user.roles
 }
 
@@ -225,12 +236,12 @@ sequenceDiagram
 
 ## Component Architecture
 
-The security components integrate with the existing ACE architecture.
+The security components integrate with the existing Mnemonic architecture.
 
 ```mermaid
 graph TB
-    subgraph "User Workstation"
-        CLI[ACE CLI]
+    subgraph "Admin Workstation (Phase 2)"
+        ADMIN[Admin curl/scripts]
         TS[(Token Store)]
     end
 
@@ -255,8 +266,8 @@ graph TB
         end
     end
 
-    CLI <--> TS
-    CLI -->|"JWT/API Key"| ENV
+    ADMIN <--> TS
+    ADMIN -->|"JWT/API Key"| ENV
     ENV <-->|"ext_authz"| OPA
     OPA <-->|"Load"| BUNDLES
     ENV <-->|"Validate JWT"| IDP
@@ -275,23 +286,25 @@ graph TB
 | Identity Provider | User authentication, token issuance, JWKS hosting                     |
 | Policy Bundles    | Store and distribute Rego policies                                    |
 
-## CLI Authentication Flow
+## Admin Authentication Flow (Phase 2 Only)
+
+> **Note:** This section describes authentication for the Admin REST API in Phase 2 (Production Deployment). MVP uses Claude Code via MCP with no CLI and no authentication.
 
 ### Device Code Flow
 
-The Device Code Flow is recommended for CLI authentication. It allows users to authenticate via a web browser without exposing credentials to the terminal.
+The Device Code Flow is recommended for admin authentication when a CLI is introduced. It allows users to authenticate via a web browser without exposing credentials to the terminal.
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant CLI as ACE CLI
+    participant ADMIN as Admin Tool/CLI
     participant Browser
     participant IDP as Identity Provider
 
-    User->>CLI: ace login
-    CLI->>IDP: POST /oauth/device/code
-    IDP-->>CLI: device_code, user_code, verification_uri
-    CLI-->>User: Visit {verification_uri}, Enter code: {user_code}
+    User->>ADMIN: mnemonic login
+    ADMIN->>IDP: POST /oauth/device/code
+    IDP-->>ADMIN: device_code, user_code, verification_uri
+    ADMIN-->>User: Visit {verification_uri}, Enter code: {user_code}
 
     User->>Browser: Open verification_uri
     Browser->>IDP: Enter user_code
@@ -300,22 +313,22 @@ sequenceDiagram
     IDP-->>Browser: Authorization granted
 
     loop Poll for token
-        CLI->>IDP: POST /oauth/token (grant_type=device_code)
-        IDP-->>CLI: access_token, refresh_token
+        ADMIN->>IDP: POST /oauth/token (grant_type=device_code)
+        IDP-->>ADMIN: access_token, refresh_token
     end
 
-    CLI->>CLI: Store tokens securely
-    CLI-->>User: Login successful
+    ADMIN->>ADMIN: Store tokens securely
+    ADMIN-->>User: Login successful
 ```
 
 **Flow Steps:**
 
-1. User runs `ace login`
-2. CLI requests device code from identity provider
-3. CLI displays verification URL and user code
+1. User runs admin login command
+2. Admin tool requests device code from identity provider
+3. Admin tool displays verification URL and user code
 4. User opens browser, enters code, authenticates
-5. CLI polls for token completion
-6. CLI stores tokens in secure storage
+5. Admin tool polls for token completion
+6. Admin tool stores tokens in secure storage
 7. User can now make authenticated requests
 
 ### Token Storage
@@ -333,11 +346,11 @@ Tokens are stored using platform-native secure storage mechanisms.
 ```mermaid
 stateDiagram-v2
     [*] --> NoToken: Initial state
-    NoToken --> ValidToken: ace login
+    NoToken --> ValidToken: admin login
     ValidToken --> ExpiredToken: Token expires
     ExpiredToken --> ValidToken: Auto-refresh
     ExpiredToken --> NoToken: Refresh fails
-    ValidToken --> NoToken: ace logout
+    ValidToken --> NoToken: admin logout
 ```
 
 ## Identity Headers
@@ -358,25 +371,25 @@ After successful authentication and authorization, Envoy injects identity header
 
 ```mermaid
 graph LR
-    CLI[CLI] -->|"Authorization: Bearer ..."| ENV[Envoy]
+    ADMIN[Admin Tool] -->|"Authorization: Bearer ..."| ENV[Envoy]
     ENV -->|"X-User-ID, X-Team-ID, X-User-Roles"| MN[Mnemonic]
 
-    style CLI fill:#f9f
+    style ADMIN fill:#f9f
     style ENV fill:#9f9
     style MN fill:#99f
 ```
 
 ## Architectural Decisions
 
-### ADR-007: Infrastructure-Layer Security
+### SEC-ADR-001: Infrastructure-Layer Security
 
-**Context:** ACE needs authentication and authorization for multi-tenant operation.
+**Context:** Mnemonic needs authentication and authorization for multi-tenant operation.
 
 **Decision:** Handle authentication and authorization at infrastructure layer using Envoy and OPA. Mnemonic receives only pre-validated identity headers.
 
 **Rationale:**
 
-- Mnemonic stays lightweight and focused on routing
+- Mnemonic stays lightweight and focused on knowledge synchronization
 - Security policies update without application deployment
 - Consistent security across all endpoints
 - Clear separation of concerns
@@ -388,9 +401,9 @@ graph LR
 - Network hop for authorization decisions
 - Requires Rego expertise for policy management
 
-### ADR-008: Authentication Strategy
+### SEC-ADR-002: Authentication Strategy
 
-**Context:** ACE needs to support both interactive users and automated systems.
+**Context:** Mnemonic needs to support both interactive admin users and automated systems.
 
 **Decision:** Support both JWT tokens and API keys with JWT as primary authentication method.
 
@@ -406,9 +419,9 @@ graph LR
 - Two authentication paths to maintain
 - API key management adds operational complexity
 
-### ADR-009: Authorization Model
+### SEC-ADR-003: Authorization Model
 
-**Context:** ACE needs fine-grained access control for team resources.
+**Context:** Mnemonic needs fine-grained access control for team resources.
 
 **Decision:** Use RBAC with team-scoped resources, extensible to ABAC if needed.
 
@@ -516,7 +529,7 @@ graph TB
 
 ## Migration Path
 
-Security can be added incrementally to an existing ACE deployment.
+Security can be added incrementally to an existing Mnemonic deployment.
 
 ```mermaid
 graph LR
@@ -535,7 +548,7 @@ graph LR
 ### Phase 2: Add JWT Authentication
 
 - Configure identity provider
-- Update CLI with `ace login` command
+- Provide admin authentication mechanism
 - Configure Envoy JWT validation
 - Allow both authenticated and unauthenticated requests
 
@@ -548,7 +561,7 @@ graph LR
 
 ### Phase 4: Enforce Security
 
-- Require authentication for all requests
+- Require authentication for all Admin API requests
 - Remove direct Mnemonic access
 - Enable fail-closed mode
 - Monitor and alert on authorization failures

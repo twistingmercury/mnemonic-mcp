@@ -5,13 +5,8 @@
 ## Table of Contents
 
 - [Decision Record Format](#decision-record-format)
-- [ADR-001: Orchestrator Model](#adr-001-orchestrator-model)
-- [ADR-002: Routing Location](#adr-002-routing-location)
-- [ADR-003: Claude Code Integration Strategy](#adr-003-claude-code-integration-strategy)
-- [ADR-004: Unified Backend with REST API](#adr-004-unified-backend-with-rest-api)
-- [ADR-005: Separate Repositories for CLI and Backend](#adr-005-separate-repositories-for-cli-and-backend)
-- [ADR-006: Phased Evolution Path](#adr-006-phased-evolution-path)
-- [ADR-007: Explicit No-Match Signaling](#adr-007-explicit-no-match-signaling)
+- [ADR-008: Architectural Pivot from Agent Routing to Team Knowledge Graph](#adr-008-architectural-pivot-from-agent-routing-to-team-knowledge-graph) (ACTIVE)
+- [ADR-009: MCP Protocol for Claude Code Integration](#adr-009-mcp-protocol-for-claude-code-integration) (ACTIVE)
 - [Decision Summary](#decision-summary)
 
 ## Decision Record Format
@@ -22,400 +17,125 @@ Each architectural decision follows this structure:
 - **Decision**: What we decided to do
 - **Consequences**: The results of the decision, both positive and negative
 
-## ADR-001: Orchestrator Model
+## ADR-008: Architectural Pivot from Agent Routing to Team Knowledge Graph
 
-### Context
-
-We needed to decide whether ACE should:
-
-1. Replace Claude Code entirely with a custom implementation
-2. Wrap Claude Code with additional functionality
-3. Orchestrate Claude Code as an execution engine
-
-Teams already use Claude Code effectively. The challenge is coordination and shared knowledge, not the underlying LLM capabilities.
-
-### Decision
-
-**ACE is an orchestration layer on top of Claude Code, not a replacement.**
-
-ACE provides:
-
-- Deterministic routing logic (code-based, not LLM-driven)
-- Dynamic patterns from Mnemonic (the unified backend)
-- Local execution via Claude Code (Phase 1) or direct Anthropic API (Phase 2)
-
-### Consequences
-
-**Positive:**
-
-- Preserves existing Claude Code workflows and capabilities
-- Teams can adopt ACE incrementally
-- Reduces implementation complexity significantly
-- Benefits from Claude Code's tool ecosystem and updates
-
-**Negative:**
-
-- Depends on Claude Code for Phase 1 (external dependency)
-- Limited control over Claude Code's internal behavior
-- Must design for eventual Phase 2 transition
-
-## ADR-002: Routing Location
-
-### Context
-
-Routing logic could live in:
-
-1. **Client-side (CLI)**: Each workstation has its own routing rules
-2. **Server-side (API)**: Centralized routing service
-3. **Hybrid**: Basic routing client-side, complex routing server-side
-
-Key considerations:
-
-- Team collaboration requires shared routing rules
-- Routing updates should not require client deployments
-- Routing decisions should be auditable
-
-### Decision
-
-**Routing logic lives server-side in Mnemonic.**
-
-The CLI sends requests to Mnemonic, which determines the appropriate route and returns enriched context. The CLI then invokes Claude Code locally.
-
-```mermaid
-graph LR
-    CLI[ACE CLI] -->|"REST"| MN[Mnemonic]
-    MN -->|"Routing Logic"| MN
-    MN -->|"Route + Context"| CLI
-    CLI -->|"Execute"| CC[Claude Code]
-```
-
-### Consequences
-
-**Positive:**
-
-- Centralized routing enables team-wide consistency
-- Routing updates deploy once, affect all users immediately
-- Routing decisions can be logged and analyzed centrally
-- No client updates needed for routing changes
-
-**Negative:**
-
-- Requires network connectivity to Mnemonic
-- Mnemonic becomes a dependency for all operations
-- Must handle Mnemonic unavailability gracefully
-
-## ADR-003: Claude Code Integration Strategy
-
-### Context
-
-Claude Code can be invoked in several ways:
-
-1. **Direct CLI invocation**: ACE CLI spawns Claude Code as a subprocess
-2. **API integration**: ACE CLI calls Claude Code's API (if available)
-3. **Wrapper script**: ACE provides a script that wraps Claude Code commands
-
-The integration must:
-
-- Pass enriched context (routing + patterns) to Claude Code
-- Capture and return results to the user
-- Work with Claude Code's existing interface
-
-### Decision
-
-**ACE CLI invokes Claude Code directly as the execution engine.**
-
-The CLI:
-
-1. Receives routing decision and patterns from Mnemonic
-2. Constructs an enriched prompt with context
-3. Invokes Claude Code with the enriched prompt
-4. Returns results to the user
-
-```mermaid
-graph TB
-    subgraph "ACE CLI Process"
-        A[Receive User Input]
-        B[Call Mnemonic]
-        C[Construct Enriched Prompt]
-        D[Invoke Claude Code]
-        E[Return Results]
-    end
-
-    A --> B --> C --> D --> E
-```
-
-### Consequences
-
-**Positive:**
-
-- Leverages Claude Code's full capabilities
-- Minimal wrapper complexity
-- Users see familiar Claude Code behavior
-- File operations handled natively by Claude Code
-
-**Negative:**
-
-- Claude Code must be installed and configured
-- Limited control over Claude Code's internal processing
-- Must handle Claude Code version differences
-
-## ADR-004: Unified Backend with REST API
-
-### Context
-
-We needed to decide how to structure the backend services and what protocol to use for CLI-to-server communication.
-
-Options considered:
-
-1. **Separate services**: ACE API for routing + separate Shared Memory Service for patterns
-2. **Unified backend**: Single service (Mnemonic) handling both routing and patterns
-3. **Protocol options**: REST, gRPC, or MCP for external API
-
-Key considerations:
-
-- Simplicity of deployment and operations
-- Developer experience for CLI integration
-- Debugging and tooling support
-- Future extensibility
-
-### Decision
-
-**Mnemonic is the unified backend providing both routing and pattern retrieval via REST API.**
-
-For MVP, Mnemonic serves only ACE (not a general-purpose memory service). This keeps the scope focused while the architecture matures.
-
-```mermaid
-graph TB
-    CLI[ACE CLI] -->|"REST"| MN[Mnemonic]
-
-    subgraph "Mnemonic"
-        ROUTE[Routing Engine]
-        PATTERN[Pattern Enrichment Service]
-    end
-
-    subgraph "Storage Layer"
-        PG[(Postgres)]
-        PGV[(PGVector)]
-        NEO[(Neo4j)]
-    end
-
-    MN --> ROUTE
-    MN --> PATTERN
-    PATTERN <--> PG
-    PATTERN <--> PGV
-    PATTERN <--> NEO
-```
-
-See [Communication Patterns](04-communication-patterns.md#rest-endpoints) for REST endpoint details.
-
-### Consequences
-
-**Positive:**
-
-- Single backend simplifies deployment and operations
-- REST is universally understood with excellent tooling
-- Easy to debug with curl, Postman, browser dev tools
-- No protocol translation between services
-- MVP scope keeps complexity manageable
-
-**Negative:**
-
-- REST less efficient than gRPC for internal communication
-- Single service means single point of failure
-- MVP scope limits immediate reusability for other tools
-
-### Future Extensibility
-
-While MVP scope limits Mnemonic to serving ACE only, the architecture accommodates future expansion:
-
-| Aspect | MVP (Current) | Future Possibility |
-| ------ | ------------- | ------------------ |
-| Clients | ACE CLI only | Multiple tools/services |
-| Tenancy | Single-tenant | Multi-tenant capable |
-| Authentication | Basic/none | Per-tenant auth, API keys |
-| Data isolation | Shared | Tenant-separated storage |
-
-**Privacy consideration:** Full prompts are sent to Mnemonic for routing but are not persisted. This design choice supports potential future multi-tenant scenarios where prompt data privacy becomes critical.
-
-**Expansion requirements:** Moving beyond ACE-only would require additional design work:
-
-- Authentication and authorization framework
-- Tenant isolation in storage layers (Postgres, PGVector, Neo4j)
-- Rate limiting and quota management per tenant
-- Audit logging for compliance
-
-The current architecture does not preclude these additions, but they are explicitly out of scope for MVP to keep initial complexity manageable.
-
-## ADR-005: Separate Repositories for CLI and Backend
-
-### Context
-
-We needed to decide how to organize the codebase for ACE CLI and Mnemonic backend.
-
-Options considered:
-
-1. **Monorepo**: Single repository containing both CLI and Mnemonic
-2. **Separate repos**: Distinct repositories for CLI and backend
-
-Key considerations:
-
-- Independent development lifecycles
-- Focus repository scope on backend service
-- Deployment and release independence
-- CI/CD simplicity
-
-### Decision
-
-**Mnemonic backend and ACE CLI are developed in separate repositories.**
-
-This repository contains only Mnemonic, the backend service providing routing and pattern retrieval via REST API. The ACE CLI will be developed in a separate repository once Mnemonic reaches sufficient maturity.
-
-| Repository | Purpose                                                             |
-| ---------- | ------------------------------------------------------------------- |
-| **mnemonic** (this repo) | Backend server providing routing and pattern retrieval via REST API |
-| **ace-cli** (future) | CLI client that orchestrates routing decisions and Claude Code execution |
-
-```mermaid
-graph TB
-    subgraph "mnemonic repository (this repo)"
-        subgraph "src/mnemonic/"
-            MN_API[REST API]
-            MN_ROUTE[Routing Engine]
-            MN_PATTERN[Pattern Enrichment Service]
-        end
-    end
-
-    subgraph "ace-cli repository (future)"
-        ACE_CLI[CLI]
-        ACE_CLIENT[Mnemonic Client]
-        ACE_EXEC[Execution Engine]
-    end
-
-    ACE_CLI --> ACE_CLIENT
-    ACE_CLIENT -->|"REST"| MN_API
-```
-
-### Consequences
-
-**Positive:**
-
-- Backend development can proceed independently of CLI
-- Simpler CI/CD with single component per repository
-- Clear separation of concerns and ownership
-- Backend can be used by multiple clients in the future
-- Focused repository scope reduces complexity
-
-**Negative:**
-
-- API changes require coordination across repositories
-- Cannot make atomic commits across CLI and server
-- Versioning requires careful API compatibility management
-- Integration testing requires multi-repository setup
-
-## ADR-006: Phased Evolution Path
-
-### Context
-
-The architecture must support:
-
-- **Phase 1**: Claude Code as the execution engine (MVP)
-- **Phase 2**: Direct Anthropic API calls (future)
-
-This transition should be:
-
-- Transparent to users
-- Achievable without architectural rewrites
-- Optional (teams can stay on Phase 1 if preferred)
-
-### Decision
-
-**Design for Phase 2 from the start, implement Phase 1 first.**
-
-The CLI abstracts the execution layer:
-
-- Phase 1: Execution layer calls Claude Code
-- Phase 2: Execution layer calls Anthropic API directly
-
-```mermaid
-graph TB
-    subgraph "ACE CLI"
-        UI[User Interface]
-        RT[Routing Client]
-        EX[Execution Layer]
-    end
-
-    subgraph "Phase 1"
-        CC[Claude Code]
-    end
-
-    subgraph "Phase 2"
-        ANT[Anthropic API]
-        TOOLS[Local Tool Executor]
-    end
-
-    UI --> RT --> EX
-    EX -.->|"Phase 1"| CC
-    EX -.->|"Phase 2"| ANT
-    EX -.->|"Phase 2"| TOOLS
-```
-
-### Consequences
-
-**Positive:**
-
-- Clear evolution path reduces future rework
-- Phase 1 delivers value quickly
-- Phase 2 removes Claude Code dependency
-- Teams can choose their preferred execution model
-
-**Negative:**
-
-- Phase 2 requires implementing tool execution locally
-- Must maintain two execution paths (at least during transition)
-- Phase 2 complexity is deferred, not eliminated
-
-## ADR-007: Explicit No-Match Signaling
-
-**Date:** 2026-02-12
+**Date:** 2026-02-14
 **Status:** Accepted
-**Supersedes:** Phase 13 original design (implement DefaultMatcher)
+**Supersedes:** ADR-001, ADR-002, ADR-003, ADR-005, ADR-006
 
 ### Context
 
-Phase 13 was originally scoped as "Implement default matcher (fallback routing)." During code review, finding H1 identified a dual-path default fallback: (1) an engine-level hardcoded fallback using `defaultAgent` and (2) a `DefaultMatcher` that always returns `Matched: true` with confidence 0.5.
+The original Mnemonic architecture focused on agent routing: accepting prompts, applying routing rules, and returning which agent to invoke. Development through Phase 13 revealed fundamental issues with this approach:
 
-Both paths silently route unmatched prompts to a default agent, preventing the client from knowing that no rules actually matched. This violates separation of concerns: the routing engine's job is to evaluate rules, not to decide policy for unmatched prompts.
+1. **User is the orchestrator**: Manual orchestration is valuable, not a problem to solve. Users know their workflows best.
+2. **Routing is overkill**: The real problems are inconsistent tooling (different agent/skill versions) and knowledge silos.
+3. **~6,300 lines of routing code**: Significant complexity for questionable value.
+4. **Claude Code already has orchestration**: Skills provide workflow coordination; Mnemonic should support, not replace.
 
 ### Decision
 
-"A default match is no match."
+**Mnemonic pivots from "agent routing orchestrator" to "team knowledge graph + tooling synchronization service."**
 
-When no routing rules match a prompt, the engine returns `Decision{Matched: false}, nil`. The `Matched bool` field on `Decision` provides an explicit, unambiguous signal. The client (ACE CLI) decides how to handle unmatched prompts: route to a general agent, ask the user to rephrase, or take any other action.
+New core capabilities:
+
+1. **Team knowledge graph**: Curated patterns with semantic search (PGVector) and knowledge relationships (Neo4j)
+2. **Tooling synchronization**: Agents, skills, commands synchronized across team members via MCP protocol
+3. **User is the orchestrator**: Mnemonic provides memory and consistent tools; user decides workflow
+
+Removed capabilities:
+
+- Agent routing (remove routing_rules table, routing engine code)
+- ACE CLI (separate repository no longer needed)
 
 ### Consequences
 
-- The `DefaultMatcher`, `DefaultMatchConfig`, `MatchTypeDefault` constant, and `routing.default_agent` configuration are all removed.
-- The `Decision` struct gains a `Matched bool` field (zero-value `false` is the safe default).
-- The HTTP handler for `/api/route` returns 200 OK with `matched: false` for unmatched prompts.
-- The database `match_type CHECK` constraint still allows `'default'` for backward compatibility; a future migration will tighten it.
-- Downstream phases (14-16) are updated to work with the new signaling.
+**Positive:**
+
+- Simpler architecture focused on real team pain points
+- ~6,300 lines of routing code removed
+- MCP protocol provides natural Claude Code integration
+- Manual orchestration reframed as intentional, supported by team knowledge
+- Single server with two listeners simplifies deployment
+
+**Negative:**
+
+- Existing routing work (Phases 1-13) becomes foundation but not primary feature
+- Must educate users: Mnemonic provides knowledge/tools, not routing decisions
+- Pattern_agent_associations table kept (supports "which agents use this pattern")
+
+## ADR-009: MCP Protocol for Claude Code Integration
+
+**Date:** 2026-02-15
+**Status:** Accepted
+**Supersedes:** ADR-003, ADR-004
+
+### Context
+
+The original architecture used REST API for CLI-to-Mnemonic communication, requiring a separate ACE CLI repository. The pivot to knowledge graph + tooling sync enables direct Claude Code integration.
+
+Options considered:
+
+1. **Continue REST + separate CLI**: Build ACE CLI consuming REST endpoints
+2. **MCP protocol**: Leverage Claude Code's native Model Context Protocol support
+3. **Claude Code skills + shell scripts**: Wrapper scripts calling REST API
+
+Key considerations:
+
+- Seamless Claude Code integration without separate CLI
+- Native protocol support vs. custom integration
+- Read-only access pattern for Claude Code
+- Admin operations still need programmatic interface
+
+### Decision
+
+**Use MCP (Model Context Protocol) over Streamable HTTP for Claude Code integration.**
+
+Architecture:
+
+- **MCP Server** (`:8081`): Read-only access to patterns, agents, skills, commands
+- **Admin REST API** (`:8080`): Write operations for data loading
+- **Single server**: Two HTTP listeners on one Go server
+
+MCP tools (11 total):
+
+- `search_patterns`: Semantic search over team knowledge graph
+- `find_related_patterns`: Find patterns related to a given pattern
+- `get_pattern`: Retrieve specific pattern by ID
+- `list_agents`: List all available agents
+- `list_skills`: List all available skills
+- `list_commands`: List all available commands
+- `get_agent`: Get detailed agent information
+- `get_skill`: Get detailed skill information
+- `get_command`: Get detailed command information
+- `get_sync_manifest`: Get synchronization manifest for tooling
+- `get_skill_files`: Get skill child files (scripts, references, assets)
+
+### Consequences
+
+**Positive:**
+
+- No separate CLI repository needed
+- Native Claude Code integration via MCP
+- Read-only MCP pattern keeps Claude Code safe
+- Admin REST API for data loading via curl/scripts
+- Single server simplifies deployment
+
+**Negative:**
+
+- Must implement MCP server in Go (new protocol support)
+- Two protocol surfaces to maintain (REST admin + MCP read-only)
+- MCP is less mature than REST for debugging/tooling
 
 ## Decision Summary
 
-| Decision | Choice                    | Rationale                                            |
-| -------- | ------------------------- | ---------------------------------------------------- |
-| ADR-001  | Orchestrator model        | Leverage existing Claude Code capabilities           |
-| ADR-002  | Server-side routing       | Enable team collaboration and central management     |
-| ADR-003  | Direct CLI invocation     | Minimize wrapper complexity                          |
-| ADR-004  | Unified backend with REST | Simplicity, excellent tooling, easy debugging        |
-| ADR-005  | Separate repositories     | Independent development, focused scope, simpler CI/CD |
-| ADR-006  | Phased evolution          | Deliver value early, design for future               |
-| ADR-007  | Explicit no-match signaling | Separation of concerns, client decides fallback policy |
+| Decision | Choice                    | Rationale                                            | Status |
+| -------- | ------------------------- | ---------------------------------------------------- | ------ |
+| ADR-008  | Pivot to knowledge graph  | User is orchestrator; solve real problems (tooling, knowledge) | ACTIVE |
+| ADR-009  | MCP protocol integration  | Native Claude Code integration, dual protocol architecture | ACTIVE |
 
 ## Related Design Docs
 
-- [Routing Engine](../design/routing-engine.md)
-- [API Specification](../design/api-specification.md)
+- [Pivot API Specification](../design/2026-02-15-pivot-api-specification.md) - Current API design
 - [Pattern Processing](../design/pattern-processing.md)
 - [Configuration](../design/configuration.md)
 - [Observability Implementation](../design/observability-implementation.md)

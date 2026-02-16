@@ -2,7 +2,7 @@
 
 [Back to Architecture Overview](../../architecture/00-overview.md) | [Back to Project README](../../../README.md)
 
-**Note:** This document reflects the actual Phase 3 implementation. See [Design Change Log](design-changelog.md) for details on how implementation differs from original design.
+**Note:** This document reflects the post-pivot implementation following the architectural change from routing to knowledge graph + tooling sync (see [2026-02-14-mnemonic-pivot-knowledge-sync.md](../plans/2026-02-14-mnemonic-pivot-knowledge-sync.md)).
 
 ## Table of Contents
 
@@ -50,19 +50,20 @@ src/mnemonic/
 │   └── version/version.go     # Version information
 └── internal/
     ├── handlers/
-    │   ├── agents/            # Agent CRUD endpoints
+    │   ├── agents/            # Agent CRUD endpoints (Admin API)
+    │   ├── patterns/          # Pattern CRUD endpoints (Admin API)
+    │   ├── skills/            # Skill CRUD endpoints (Admin API)
+    │   ├── commands/          # Command CRUD endpoints (Admin API)
+    │   ├── search/            # Search endpoints (Admin API)
     │   ├── operations/        # Health and version endpoints
-    │   ├── patterns/          # Pattern CRUD endpoints
-    │   └── routes/
-    │       ├── routes.go      # Routing endpoint
-    │       └── rules/         # Routing rules CRUD
-    └── server/server.go       # HTTP server setup
+    │   └── mcp/               # MCP server handlers
+    └── server/server.go       # HTTP server setup (Admin API + MCP)
 ```
 
 **Key Integration Points:**
 
 1. `cmd/main/main.go` - Telemetry initialization and shutdown
-2. `internal/server/server.go` - Middleware registration
+2. `internal/server/server.go` - Middleware registration (Admin API and MCP listeners)
 3. All handler packages - Span creation and logging
 
 ## otelx Package Integration
@@ -332,13 +333,21 @@ The `main.go` remains simple and delegates to the server package.
 Based on the architecture document, traces should capture:
 
 ```text
-POST /v1/api/route (45ms)
+MCP search_patterns (45ms)
 ├── Validate Request (2ms)
-├── Apply Routing Rules (8ms)
 ├── Fetch Patterns (30ms)
 │   ├── Postgres Query (10ms)
 │   ├── PGVector Search (12ms)
 │   └── Neo4j Query (8ms)
+└── Build Response (13ms)
+```
+
+```text
+POST /v1/api/patterns (50ms)
+├── Validate Request (2ms)
+├── Store Pattern (10ms)
+│   └── Postgres Insert (8ms)
+├── Queue Enrichment Job (3ms)
 └── Build Response (5ms)
 ```
 
@@ -397,7 +406,7 @@ The implementation provides two functions for flexibility:
 Handlers create child spans for logical operations:
 
 ```go
-package routes
+package search
 
 import (
     "context"
@@ -409,14 +418,14 @@ import (
     "go.opentelemetry.io/otel/trace"
 )
 
-var tracer = otel.Tracer("mnemonic/handlers/routes")
+var tracer = otel.Tracer("mnemonic/handlers/search")
 
-func RoutePrompt(c *gin.Context) {
+func SearchPatterns(c *gin.Context) {
     ctx := c.Request.Context()
 
     // Validate request
     ctx, validateSpan := tracer.Start(ctx, "validate_request")
-    req, err := validateRouteRequest(ctx, c)
+    req, err := validateSearchRequest(ctx, c)
     if err != nil {
         validateSpan.RecordError(err)
         validateSpan.SetStatus(codes.Error, err.Error())
@@ -425,30 +434,13 @@ func RoutePrompt(c *gin.Context) {
         return
     }
     validateSpan.SetAttributes(
-        attribute.String("prompt.preview", truncate(req.Prompt, 100)),
+        attribute.String("query.preview", truncate(req.Query, 100)),
     )
     validateSpan.End()
 
-    // Apply routing rules
-    ctx, routeSpan := tracer.Start(ctx, "apply_routing_rules")
-    agent, rule, err := applyRoutingRules(ctx, req)
-    if err != nil {
-        routeSpan.RecordError(err)
-        routeSpan.SetStatus(codes.Error, err.Error())
-        routeSpan.End()
-        // Return error response...
-        return
-    }
-    routeSpan.SetAttributes(
-        attribute.String("routing.agent", agent.Name),
-        attribute.String("routing.rule_type", rule.Type),
-        attribute.Int("routing.rule_priority", rule.Priority),
-    )
-    routeSpan.End()
-
     // Fetch patterns
     ctx, patternSpan := tracer.Start(ctx, "fetch_patterns")
-    patterns, err := fetchPatterns(ctx, agent, req)
+    patterns, err := fetchPatterns(ctx, req)
     patternSpan.SetAttributes(
         attribute.Int("patterns.count", len(patterns)),
     )
@@ -464,15 +456,15 @@ func RoutePrompt(c *gin.Context) {
 
 ### Span Naming Conventions
 
-| Operation          | Span Name               | Attributes                           |
-| ------------------ | ----------------------- | ------------------------------------ |
-| HTTP request       | `HTTP {METHOD} {route}` | Auto by otelgin                      |
-| Request validation | `validate_request`      | `prompt.preview`                     |
-| Routing rules      | `apply_routing_rules`   | `routing.agent`, `routing.rule_type` |
-| Pattern fetch      | `fetch_patterns`        | `patterns.count`                     |
-| Postgres query     | `postgres.query`        | `db.statement`, `db.operation`       |
-| PGVector search    | `pgvector.search`       | `db.statement`, `vector.dimensions`  |
-| Neo4j query        | `neo4j.query`           | `db.statement`, `db.operation`       |
+| Operation          | Span Name               | Attributes                          |
+| ------------------ | ----------------------- | ----------------------------------- |
+| HTTP request       | `HTTP {METHOD} {route}` | Auto by otelgin                     |
+| MCP tool call      | `mcp.{tool_name}`       | `tool.name`, `session.id`           |
+| Request validation | `validate_request`      | `query.preview`                     |
+| Pattern fetch      | `fetch_patterns`        | `patterns.count`                    |
+| Postgres query     | `postgres.query`        | `db.statement`, `db.operation`      |
+| PGVector search    | `pgvector.search`       | `db.statement`, `vector.dimensions` |
+| Neo4j query        | `neo4j.query`           | `db.statement`, `db.operation`      |
 
 ## Metrics Implementation
 
@@ -482,8 +474,8 @@ func RoutePrompt(c *gin.Context) {
 
 Based on the architecture document, implement these metric categories:
 
-1. **Request metrics** - HTTP request counts, durations, in-flight
-2. **Routing metrics** - Routing decisions, pattern matches, cache stats
+1. **Request metrics** - HTTP request counts, durations, in-flight (Admin API)
+2. **MCP server metrics** - Tool invocations, session counts, active sessions
 3. **Pattern metrics** - Query latency, patterns returned
 4. **Database metrics** - Connection pools, query latency, errors
 
@@ -573,9 +565,9 @@ func (m *RequestMetrics) Middleware() gin.HandlerFunc {
 }
 ```
 
-### Routing Metrics
+### MCP Server Metrics
 
-Create `internal/metrics/routing.go`:
+Create `internal/metrics/mcp.go`:
 
 ```go
 package metrics
@@ -587,82 +579,77 @@ import (
     "go.opentelemetry.io/otel/metric"
 )
 
-// Routing holds instruments for routing-related metrics.
-type Routing struct {
-    routingDecisions metric.Int64Counter
-    ruleMatches      metric.Int64Counter
-    cacheHits        metric.Int64Counter
-    cacheMisses      metric.Int64Counter
+// MCP holds instruments for MCP server metrics.
+type MCP struct {
+    toolInvocations metric.Int64Counter
+    toolDuration    metric.Float64Histogram
+    sessionCount    metric.Int64Counter
+    activeSessions  metric.Int64UpDownCounter
 }
 
-// NewRouting creates routing metric instruments.
-func NewRouting(meter metric.Meter) (*Routing, error) {
-    routingDecisions, err := meter.Int64Counter(
-        "mnemonic.routing.decisions",
-        metric.WithDescription("Number of routing decisions made"),
-        metric.WithUnit("{decision}"),
+// NewMCP creates MCP server metric instruments.
+func NewMCP(meter metric.Meter) (*MCP, error) {
+    toolInvocations, err := meter.Int64Counter(
+        "mnemonic.mcp.tool_invocations",
+        metric.WithDescription("Number of MCP tool invocations"),
+        metric.WithUnit("{invocation}"),
     )
     if err != nil {
         return nil, err
     }
 
-    ruleMatches, err := meter.Int64Counter(
-        "mnemonic.routing.rule_matches",
-        metric.WithDescription("Number of rule matches by type"),
-        metric.WithUnit("{match}"),
+    toolDuration, err := meter.Float64Histogram(
+        "mnemonic.mcp.tool_duration",
+        metric.WithDescription("MCP tool invocation duration in milliseconds"),
+        metric.WithUnit("ms"),
+        metric.WithExplicitBucketBoundaries(1, 5, 10, 25, 50, 100, 250, 500, 1000),
     )
     if err != nil {
         return nil, err
     }
 
-    cacheHits, err := meter.Int64Counter(
-        "mnemonic.routing.cache_hits",
-        metric.WithDescription("Number of routing cache hits"),
-        metric.WithUnit("{hit}"),
+    sessionCount, err := meter.Int64Counter(
+        "mnemonic.mcp.session_count",
+        metric.WithDescription("Number of MCP sessions created"),
+        metric.WithUnit("{session}"),
     )
     if err != nil {
         return nil, err
     }
 
-    cacheMisses, err := meter.Int64Counter(
-        "mnemonic.routing.cache_misses",
-        metric.WithDescription("Number of routing cache misses"),
-        metric.WithUnit("{miss}"),
+    activeSessions, err := meter.Int64UpDownCounter(
+        "mnemonic.mcp.active_sessions",
+        metric.WithDescription("Number of active MCP sessions"),
+        metric.WithUnit("{session}"),
     )
     if err != nil {
         return nil, err
     }
 
-    return &Routing{
-        routingDecisions: routingDecisions,
-        ruleMatches:      ruleMatches,
-        cacheHits:        cacheHits,
-        cacheMisses:      cacheMisses,
+    return &MCP{
+        toolInvocations: toolInvocations,
+        toolDuration:    toolDuration,
+        sessionCount:    sessionCount,
+        activeSessions:  activeSessions,
     }, nil
 }
 
-// RecordRoutingDecision records a routing decision was made.
-func (m *Routing) RecordRoutingDecision(ctx context.Context, agentName string) {
-    m.routingDecisions.Add(ctx, 1, metric.WithAttributes(
-        attribute.String("agent", agentName),
-    ))
+// RecordToolInvocation records an MCP tool invocation with its duration.
+func (m *MCP) RecordToolInvocation(ctx context.Context, toolName string, durationMS float64) {
+    attrs := metric.WithAttributes(attribute.String("tool", toolName))
+    m.toolInvocations.Add(ctx, 1, attrs)
+    m.toolDuration.Record(ctx, durationMS, attrs)
 }
 
-// RecordRuleMatch records a rule match by type.
-func (m *Routing) RecordRuleMatch(ctx context.Context, ruleType string) {
-    m.ruleMatches.Add(ctx, 1, metric.WithAttributes(
-        attribute.String("rule_type", ruleType),
-    ))
+// RecordSessionCreated records a new MCP session.
+func (m *MCP) RecordSessionCreated(ctx context.Context) {
+    m.sessionCount.Add(ctx, 1)
+    m.activeSessions.Add(ctx, 1)
 }
 
-// RecordCacheHit records a cache hit.
-func (m *Routing) RecordCacheHit(ctx context.Context) {
-    m.cacheHits.Add(ctx, 1)
-}
-
-// RecordCacheMiss records a cache miss.
-func (m *Routing) RecordCacheMiss(ctx context.Context) {
-    m.cacheMisses.Add(ctx, 1)
+// RecordSessionClosed records an MCP session closure.
+func (m *MCP) RecordSessionClosed(ctx context.Context) {
+    m.activeSessions.Add(ctx, -1)
 }
 ```
 
@@ -830,14 +817,14 @@ import (
 
 // Registry holds all metric instruments for the application.
 type Registry struct {
-    Routing  *Routing
+    MCP      *MCP
     Patterns *Pattern
     Database *Database
 }
 
 // NewRegistry creates all metric instruments.
 func NewRegistry(meter metric.Meter) (*Registry, error) {
-    routing, err := NewRouting(meter)
+    mcp, err := NewMCP(meter)
     if err != nil {
         return nil, err
     }
@@ -853,7 +840,7 @@ func NewRegistry(meter metric.Meter) (*Registry, error) {
     }
 
     return &Registry{
-        Routing:  routing,
+        MCP:      mcp,
         Patterns: patterns,
         Database: database,
     }, nil
@@ -968,7 +955,7 @@ All log entries automatically include (via otelx):
 | Request completed (2xx) | Info  | Successful response         |
 | Request completed (4xx) | Warn  | Client error                |
 | Request completed (5xx) | Error | Server error                |
-| Routing decision        | Info  | Agent selected              |
+| MCP tool invocation     | Info  | Tool called                 |
 | Pattern query           | Debug | Database query executed     |
 | Configuration loaded    | Info  | Startup configuration       |
 | Service lifecycle       | Info  | Start/stop events           |
@@ -1020,7 +1007,7 @@ func NewDependencies(tel *telemetry.Telemetry, metrics *metrics.Registry) *Depen
 Example of a fully instrumented handler:
 
 ```go
-package routes
+package search
 
 import (
     "net/http"
@@ -1034,15 +1021,15 @@ import (
     "github.com/twistingmercury/mnemonic/internal/handlers"
 )
 
-// RoutePrompt handles POST /v1/api/route with full observability.
-func RoutePrompt(deps *handlers.Dependencies) gin.HandlerFunc {
+// SearchPatterns handles GET /v1/api/patterns/search with full observability.
+func SearchPatterns(deps *handlers.Dependencies) gin.HandlerFunc {
     return func(c *gin.Context) {
         ctx := c.Request.Context()
         logger := otelgin.Logger(c, deps.Tel.Telemetry)
 
         // 1. Validate request with span
         ctx, validateSpan := deps.Tracer.Start(ctx, "validate_request")
-        req, err := validateRequest(c)
+        req, err := validateSearchRequest(c)
         if err != nil {
             validateSpan.RecordError(err)
             validateSpan.SetStatus(codes.Error, "validation failed")
@@ -1054,48 +1041,11 @@ func RoutePrompt(deps *handlers.Dependencies) gin.HandlerFunc {
         }
         validateSpan.End()
 
-        // 2. Apply routing rules with span and metrics
-        ctx, routeSpan := deps.Tracer.Start(ctx, "apply_routing_rules")
-        start := time.Now()
-
-        agent, rule, cached, err := applyRoutingRules(ctx, req)
-        if err != nil {
-            routeSpan.RecordError(err)
-            routeSpan.SetStatus(codes.Error, "routing failed")
-            routeSpan.End()
-
-            logger.Error().Err(err).Msg("routing rules failed")
-            c.JSON(http.StatusInternalServerError, gin.H{"error": "routing failed"})
-            return
-        }
-
-        routeSpan.SetAttributes(
-            attribute.String("routing.agent", agent.Name),
-            attribute.String("routing.rule_type", rule.Type),
-            attribute.Bool("routing.cached", cached),
-        )
-        routeSpan.End()
-
-        // Record routing metrics
-        deps.Metrics.Routing.RecordRoutingDecision(ctx, agent.Name)
-        deps.Metrics.Routing.RecordRuleMatch(ctx, rule.Type)
-        if cached {
-            deps.Metrics.Routing.RecordCacheHit(ctx)
-        } else {
-            deps.Metrics.Routing.RecordCacheMiss(ctx)
-        }
-
-        logger.Info().
-            Str("agent", agent.Name).
-            Str("rule_type", rule.Type).
-            Dur("duration", time.Since(start)).
-            Msg("routing decision made")
-
-        // 3. Fetch patterns with span and metrics
+        // 2. Fetch patterns with span and metrics
         ctx, patternSpan := deps.Tracer.Start(ctx, "fetch_patterns")
         patternStart := time.Now()
 
-        patterns, err := fetchPatterns(ctx, deps, agent, req)
+        patterns, err := fetchPatterns(ctx, deps, req)
         patternDuration := time.Since(patternStart)
 
         patternSpan.SetAttributes(attribute.Int("patterns.count", len(patterns)))
@@ -1107,8 +1057,8 @@ func RoutePrompt(deps *handlers.Dependencies) gin.HandlerFunc {
 
         deps.Metrics.Patterns.RecordQuery(ctx, "combined", patternDuration, len(patterns))
 
-        // 4. Build and return response
-        response := buildResponse(agent, patterns)
+        // 3. Build and return response
+        response := buildSearchResponse(patterns)
 
         logger.Debug().
             Int("pattern_count", len(patterns)).
@@ -1124,16 +1074,16 @@ func RoutePrompt(deps *handlers.Dependencies) gin.HandlerFunc {
 Update handler registration to use dependencies:
 
 ```go
-package routes
+package search
 
 import (
     "github.com/gin-gonic/gin"
     "github.com/twistingmercury/mnemonic/internal/handlers"
 )
 
-// SetupHandlers registers route handlers with dependencies.
+// SetupHandlers registers search handlers with dependencies.
 func SetupHandlers(r *gin.Engine, deps *handlers.Dependencies) {
-    r.POST("/v1/api/route", RoutePrompt(deps))
+    r.GET("/v1/api/patterns/search", SearchPatterns(deps))
 }
 ```
 

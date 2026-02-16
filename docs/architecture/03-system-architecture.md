@@ -6,27 +6,33 @@
 
 - [Architecture Overview](#architecture-overview)
 - [Component Breakdown](#component-breakdown)
-  - [ACE CLI](#ace-cli)
-  - [Mnemonic](#mnemonic)
+  - [Mnemonic Server](#mnemonic-server)
+  - [Claude Code Integration](#claude-code-integration)
 - [Data Flow](#data-flow)
-- [CLI-Centric Model](#cli-centric-model)
 - [Component Interactions](#component-interactions)
 - [Boundary Definitions](#boundary-definitions)
 
 ## Architecture Overview
 
-ACE follows a distributed architecture with clear separation between client-side execution and server-side orchestration.
+Mnemonic follows a single-server architecture with dual protocol interfaces: REST for administration and MCP for Claude Code integration.
 
 ```mermaid
 graph TB
-    subgraph "User Workstation"
-        CLI[ACE CLI]
-        CC[Claude Code]
-        FS[Local Filesystem]
+    subgraph "Claude Code"
+        CC[Claude Code MCP Client]
     end
 
-    subgraph "Service Tier"
-        MN[Mnemonic]
+    subgraph "Admin Tools"
+        CURL[curl/scripts]
+    end
+
+    subgraph "Mnemonic Server"
+        subgraph "Two HTTP Listeners"
+            ADMIN[Admin REST API :8080]
+            MCP[MCP Server :8081]
+        end
+        PATTERN[Pattern Enrichment Service]
+        TOOLING[Tooling Repository]
     end
 
     subgraph "Data Tier"
@@ -34,208 +40,209 @@ graph TB
         NEO[(Neo4j)]
     end
 
-    CLI <-->|"REST"| MN
-    MN <--> PG
-    MN <--> NEO
-    CLI <--> CC
-    CC <--> FS
+    CURL -->|"POST/PUT/DELETE"| ADMIN
+    CC -->|"MCP: Read-only"| MCP
+    ADMIN --> PATTERN
+    ADMIN --> TOOLING
+    MCP --> PATTERN
+    MCP --> TOOLING
+    PATTERN <--> PG
+    PATTERN <--> NEO
+    TOOLING <--> PG
 ```
 
 ## Component Breakdown
 
-### ACE CLI
+### Mnemonic Server
 
-The ACE CLI (to be developed in a separate repository) will be the primary user interface and orchestrate local execution.
-
-**Planned Responsibilities:**
-
-- Accept user prompts and commands
-- Request routing decisions from Mnemonic
-- Construct enriched prompts with patterns and context
-- Invoke Claude Code (Phase 1) or Anthropic API (Phase 2)
-- Display results to the user
-
-**Key Characteristics:**
-
-- Will run on user workstation
-- Stateless between invocations (state lives in Mnemonic)
-- Will handle authentication to external services
-- Will manage local execution environment
-
-```mermaid
-graph TB
-    subgraph "ACE CLI Internal Structure (Future)"
-        INPUT[Input Handler]
-        AUTH[Auth Manager]
-        ROUTE[Routing Client]
-        PROMPT[Prompt Builder]
-        EXEC[Execution Engine]
-        OUTPUT[Output Handler]
-    end
-
-    INPUT --> AUTH
-    AUTH --> ROUTE
-    ROUTE --> PROMPT
-    PROMPT --> EXEC
-    EXEC --> OUTPUT
-```
-
-**Note:** The ACE CLI will be developed in a separate repository once Mnemonic reaches sufficient maturity. For now, Mnemonic can be tested using REST API clients like curl or Postman.
-
-### Mnemonic
-
-Mnemonic is the backend server that provides routing decisions and pattern retrieval via REST API. For MVP, Mnemonic serves only ACE (not a general-purpose memory service).
+Mnemonic is a single Go server with two HTTP listeners providing team knowledge graph and tooling synchronization.
 
 **Responsibilities:**
 
-- Receive routing requests from CLI instances
-- Apply deterministic routing logic to select the appropriate agent
-- Retrieve relevant patterns for context enrichment
-- Return routing decision and patterns to CLI
+- **Admin REST API** (`:8080`): CRUD operations for patterns, agents, skills, commands
+- **MCP Server** (`:8081`): Read-only access to knowledge graph and tooling for Claude Code
+- **Pattern enrichment**: Semantic search via PGVector, knowledge graph via Neo4j
+- **Tooling synchronization**: Shared agent, skill, command definitions across team
 
 **Key Characteristics:**
 
+- Single server process, two HTTP listeners
 - Lightweight service (no LLM calls)
-- Deterministic routing (code-based logic)
 - Stateless request handling
-- REST API interface
+- Dual protocol architecture (REST admin + MCP read-only)
 - Full storage stack: Postgres + PGVector + Neo4j
 
 ```mermaid
 graph TB
     subgraph "Mnemonic Internal Structure"
-        REST[REST API Handler]
-        VALID[Request Validator]
-        ROUTER[Routing Engine]
-        PATTERN[Pattern Enrichment Service]
-        RESP[Response Builder]
+        subgraph "Admin REST API :8080"
+            REST_HANDLER[HTTP Handler]
+            REST_VALID[Request Validator]
+            ADMIN_SVC[Admin Service]
+        end
+
+        subgraph "MCP Server :8081"
+            MCP_HANDLER[MCP Handler]
+            MCP_TOOLS[Tool Implementations]
+        end
+
+        subgraph "Core Services"
+            PATTERN[Pattern Service]
+            AGENT[Agent Service]
+            SKILL[Skill Service]
+            COMMAND[Command Service]
+        end
+
+        subgraph "Storage Layer"
+            PG[(Postgres)]
+            PGV[(PGVector)]
+            NEO[(Neo4j)]
+        end
     end
 
-    subgraph "Storage Layer"
-        PG[(Postgres)]
-        PGV[(PGVector)]
-        NEO[(Neo4j)]
-    end
+    REST_HANDLER --> REST_VALID
+    REST_VALID --> ADMIN_SVC
+    ADMIN_SVC --> PATTERN
+    ADMIN_SVC --> AGENT
+    ADMIN_SVC --> SKILL
+    ADMIN_SVC --> COMMAND
 
-    REST --> VALID
-    VALID --> ROUTER
-    ROUTER --> PATTERN
-    PATTERN --> RESP
+    MCP_HANDLER --> MCP_TOOLS
+    MCP_TOOLS --> PATTERN
+    MCP_TOOLS --> AGENT
+    MCP_TOOLS --> SKILL
+    MCP_TOOLS --> COMMAND
+
     PATTERN <--> PG
     PATTERN <--> PGV
     PATTERN <--> NEO
+    AGENT <--> PG
+    SKILL <--> PG
+    COMMAND <--> PG
 ```
-
-See [Communication Patterns](04-communication-patterns.md#rest-endpoints) for REST endpoint details.
-
-**Routing Rule Cache (MVP):**
-
-- Routing rules are loaded once at startup from the database
-- Service restart is required to reload rules if they change
-- Background refresh with configurable TTL is planned for Post-MVP
 
 **What Mnemonic Does NOT Do:**
 
 - Make LLM API calls
 - Store user credentials
+- Route prompts to agents (user orchestrates)
 - Execute tools or file operations
 - Maintain session state
 
+### Claude Code Integration
+
+Claude Code integrates with Mnemonic via the MCP (Model Context Protocol) interface.
+
+**MCP Tools Provided (11 total):**
+
+| Tool | Purpose |
+| ---- | ------- |
+| `search_patterns` | Semantic search over team knowledge graph |
+| `find_related_patterns` | Find patterns related to a given pattern |
+| `get_pattern` | Retrieve specific pattern by ID |
+| `list_agents` | List all available agents |
+| `get_agent` | Get detailed agent information |
+| `list_skills` | List all available skills |
+| `get_skill` | Get detailed skill information |
+| `get_skill_files` | Get skill child files (scripts, references, assets) |
+| `list_commands` | List all available commands |
+| `get_command` | Get detailed command information |
+| `get_sync_manifest` | Get synchronization manifest for tooling |
+
+**Integration Characteristics:**
+
+- Read-only access via MCP
+- Runs in trusted environment (local network)
+- No authentication for MVP (Phase 1)
+- Searches team knowledge for workflow patterns
+- Discovers consistent tooling across team
+
 ## Data Flow
 
-The following diagram shows the complete data flow for a typical request.
+The following diagrams show data flow for the two primary use cases.
+
+### Pattern Search via MCP
 
 ```mermaid
 sequenceDiagram
-    participant U as User
-    participant CLI as ACE CLI
-    participant MN as Mnemonic
+    participant User
     participant CC as Claude Code
-    participant FS as Filesystem
+    participant MCP as MCP Server
+    participant PG as Postgres + PGVector
+    participant NEO as Neo4j
 
-    U->>CLI: Submit prompt
+    User->>CC: Ask question
+    CC->>CC: Determine need for team knowledge
 
-    Note over CLI: Parse and validate input
+    CC->>MCP: search_patterns(query, limit)
 
-    CLI->>MN: POST /v1/api/route
+    Note over MCP: Generate embedding
+    MCP->>PG: Semantic search (PGVector)
+    PG-->>MCP: Top N patterns
 
-    Note over MN: Apply routing rules
-    Note over MN: Fetch patterns from storage
+    MCP->>NEO: Fetch related patterns
+    NEO-->>MCP: Knowledge graph relationships
 
-    MN-->>CLI: {agent, patterns, metadata}
+    MCP-->>CC: {patterns with context}
 
-    Note over CLI: Construct enriched prompt
-
-    CLI->>CC: Invoke with enriched prompt
-
-    Note over CC: Process request
-
-    CC->>FS: Read/write files
-    FS-->>CC: File contents
-
-    CC-->>CLI: Execution results
-
-    Note over CLI: Format output
-
-    CLI-->>U: Display results
+    CC->>CC: Incorporate team knowledge
+    CC-->>User: Answer with team context
 ```
 
-## CLI-Centric Model
-
-ACE follows a CLI-centric model where:
-
-1. **CLI is the orchestrator**: The CLI coordinates between user, Mnemonic, and execution engine
-2. **Mnemonic is advisory**: Mnemonic provides routing decisions but does not execute
-3. **Execution is local**: All LLM interactions and tool execution happen on the workstation
+### Data Loading via Admin API
 
 ```mermaid
-graph TB
-    subgraph "Control Flow"
-        USER((User))
-        CLI[ACE CLI<br/>Orchestrator]
-        MN[Mnemonic<br/>Advisory]
-        EXEC[Execution<br/>Local]
-    end
+sequenceDiagram
+    participant Admin
+    participant REST as Admin REST API
+    participant SVC as Pattern Service
+    participant PG as Postgres
+    participant NEO as Neo4j
 
-    USER -->|"Commands"| CLI
-    CLI -->|"POST /v1/api/route"| MN
-    MN -->|"Agent + Patterns"| CLI
-    CLI -->|"Execute"| EXEC
-    EXEC -->|"Results"| CLI
-    CLI -->|"Output"| USER
+    Admin->>REST: POST /v1/api/patterns (JSON)
+
+    REST->>REST: Validate request
+
+    REST->>SVC: Create pattern
+
+    SVC->>SVC: Generate embedding
+    SVC->>PG: Store pattern + embedding
+    PG-->>SVC: Pattern ID
+
+    SVC->>NEO: Create knowledge graph nodes/relationships
+    NEO-->>SVC: Success
+
+    SVC-->>REST: Pattern created
+    REST-->>Admin: 201 Created
 ```
-
-**Benefits of CLI-Centric Model:**
-
-- No server-side LLM costs
-- User data stays local
-- Works offline after routing decision (with caching)
-- Leverages existing Claude Code setup
 
 ## Component Interactions
 
-### CLI to Mnemonic
+### Claude Code to MCP Server
+
+| Aspect            | Detail                                       |
+| ----------------- | -------------------------------------------- |
+| Protocol          | MCP over Streamable HTTP                     |
+| Authentication    | None (MVP, trusted environment)              |
+| Request contains  | MCP tool name, parameters                    |
+| Response contains | Search results, pattern details, tooling lists |
+
+### Admin Tools to REST API
 
 | Aspect            | Detail                                       |
 | ----------------- | -------------------------------------------- |
 | Protocol          | REST (HTTP/HTTPS)                            |
-| Authentication    | To be specified in design phase              |
-| Request contains  | Full prompt, context hints, user preferences |
-| Response contains | Agent identifier, patterns, execution hints  |
+| Authentication    | None (MVP), Envoy + OPA (Phase 2)            |
+| Request contains  | JSON payloads for CRUD operations            |
+| Response contains | Created/updated resources, success/error status |
 
-**Note:** Full prompts are sent to Mnemonic for routing but are not persisted. Mnemonic is organization-controlled infrastructure and requires the full prompt for accurate routing via keyword matching, regex, and semantic similarity.
+### Mnemonic to Storage Layer
 
-See [Communication Patterns](04-communication-patterns.md#rest-endpoints) for REST endpoint details.
-
-### CLI to Claude Code
-
-| Aspect            | Detail                                                                 |
-| ----------------- | ---------------------------------------------------------------------- |
-| Invocation method | Direct subprocess invocation (see ADR-003 in Architectural Decisions) |
-| Context passing   | Enriched prompt with routing decision and patterns from Mnemonic       |
-| Result capture    | Standard output/error streams from Claude Code process                 |
-
-See [ADR-003: Claude Code Integration Strategy](02-architectural-decisions.md#adr-003-claude-code-integration-strategy) for the full specification of the execution model.
+| Aspect            | Detail                                       |
+| ----------------- | -------------------------------------------- |
+| Postgres          | Relational data, pattern storage             |
+| PGVector          | Semantic search via embeddings               |
+| Neo4j             | Knowledge graph relationships                |
 
 ## Boundary Definitions
 
@@ -243,39 +250,39 @@ Clear boundaries separate concerns between components.
 
 ```mermaid
 graph TB
-    subgraph "User Domain"
-        UD1[User prompts]
-        UD2[Local files]
-        UD3[Credentials]
-    end
-
-    subgraph "CLI Domain"
-        CD1[Input parsing]
-        CD2[Prompt construction]
-        CD3[Execution orchestration]
-        CD4[Output formatting]
+    subgraph "Claude Code Domain"
+        CD1[User prompts]
+        CD2[Workflow orchestration]
+        CD3[Tool execution]
+        CD4[File operations]
     end
 
     subgraph "Mnemonic Domain"
-        MD1[Routing logic]
-        MD2[Pattern retrieval]
-        MD3[Request validation]
-        MD4[Pattern storage]
+        MD1[Team knowledge graph]
+        MD2[Pattern semantic search]
+        MD3[Tooling synchronization]
+        MD4[Knowledge graph relationships]
     end
 
-    UD1 --> CD1
-    UD3 --> CD3
-    CD1 --> MD3
-    MD1 --> CD2
-    MD2 --> CD2
-    CD3 --> UD2
+    subgraph "Admin Domain"
+        AD1[Pattern CRUD]
+        AD2[Agent CRUD]
+        AD3[Skill CRUD]
+        AD4[Command CRUD]
+    end
+
+    CD2 -->|"search_patterns"| MD2
+    CD2 -->|"list_agents"| MD3
+    AD1 --> MD1
+    AD2 --> MD3
 ```
 
 **Boundary Rules:**
 
-- User credentials never leave the CLI
-- Routing logic lives only in Mnemonic
-- Pattern storage lives only in Mnemonic
+- User credentials never leave Claude Code
+- Pattern storage and search live only in Mnemonic
+- Tooling definitions (agents, skills, commands) managed via admin API
 - File operations happen only on the workstation
+- User orchestrates workflow; Mnemonic provides knowledge and consistent tooling
 
 **Next:** [Communication Patterns](04-communication-patterns.md)

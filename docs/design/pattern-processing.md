@@ -8,10 +8,12 @@
 
 Pattern enrichment transforms raw pattern content into searchable, interconnected knowledge. When a pattern is created or updated, Mnemonic automatically enriches it to enable:
 
-1. **Semantic search** - Find patterns by meaning, not just keywords
+1. **Semantic search** - Find patterns by meaning, not just keywords via the MCP `search_patterns` tool and Admin API search endpoint
 2. **Relationship discovery** - Connect related patterns and agents via knowledge graph
 
 This design is inspired by Cognee's cognify pipeline (chunk, classify, extract, integrate, summarize) but adapted for Mnemonic's simpler use case: patterns are already curated documents, not raw data requiring extensive preprocessing.
+
+**Note:** Following the architectural pivot (see [2026-02-14-mnemonic-pivot-knowledge-sync.md](../plans/2026-02-14-mnemonic-pivot-knowledge-sync.md)), enriched patterns are consumed by the MCP server's search tools and the Admin API search endpoint, not by a routing engine.
 
 ## Enrichment Model
 
@@ -223,15 +225,15 @@ WHERE id = $patternId;
 
 ### Query-time Processing
 
-When patterns are retrieved via `POST /v1/api/route`:
+When patterns are retrieved via MCP `search_patterns` tool or Admin API `GET /v1/api/patterns/search`:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> EmbedQuery: Route Request
+    [*] --> EmbedQuery: Pattern Search Request
 
     state "1. Embed Query" as EmbedQuery
     note right of EmbedQuery
-        Generate embedding from prompt
+        Generate embedding from query
     end note
 
     EmbedQuery --> VectorSearch
@@ -270,7 +272,7 @@ Note: Query-time search only considers patterns with `enrichment_status = 'enric
 relevance = (0.7 * vector_similarity) + (0.3 * graph_score)
 ```
 
-> **Note:** This combined formula is used for pattern search and retrieval, providing richer relevance scoring by incorporating graph context. For routing decisions, the Routing Engine uses simple cosine similarity for speed. See [Routing Engine - Scoring Logic by Match Type](routing-engine.md#scoring-logic-by-match-type) for details.
+This combined scoring formula (0.7 vector similarity + 0.3 graph relevance) is used by the MCP `search_patterns` tool for pattern ranking.
 
 Where `graph_score` considers:
 
@@ -740,5 +742,4 @@ Pattern content:
 
 - [Architecture Overview](../../architecture/00-overview.md)
 - [System Architecture](../../architecture/03-system-architecture.md) - Storage stack details
-- [API Specification](api-specification.md) - Pattern endpoints
 - [Mnemonic OpenAPI Spec](../../../api/openapi/mnemonic-v1.yaml) - Full API definition

@@ -7,7 +7,6 @@
 - [Deployment Overview](#deployment-overview)
 - [Deployment Topology](#deployment-topology)
 - [Component Deployment](#component-deployment)
-  - [ACE CLI (Future - Separate Repository)](#ace-cli-future---separate-repository)
   - [Mnemonic](#mnemonic)
 - [Infrastructure Requirements](#infrastructure-requirements)
 - [Operational Considerations](#operational-considerations)
@@ -15,27 +14,37 @@
 
 ## Deployment Overview
 
-ACE uses a lightweight deployment model with minimal server-side infrastructure. The heavy lifting (LLM inference, tool execution) happens on user workstations.
+Mnemonic uses a lightweight deployment model with minimal server-side infrastructure. The heavy lifting (LLM inference, tool execution) happens on user workstations via Claude Code.
 
 ```mermaid
 graph TB
     subgraph "User Workstations"
-        WS1[Workstation 1<br/>ACE CLI + Claude Code]
-        WS2[Workstation 2<br/>ACE CLI + Claude Code]
-        WS3[Workstation N<br/>ACE CLI + Claude Code]
+        WS1[Workstation 1<br/>Claude Code]
+        WS2[Workstation 2<br/>Claude Code]
+        WS3[Workstation N<br/>Claude Code]
+    end
+
+    subgraph "Admin Tools"
+        ADMIN[curl/scripts]
     end
 
     subgraph "Server Infrastructure"
-        MN[Mnemonic]
+        subgraph "Mnemonic Container"
+            MCP[MCP Server :8081]
+            REST[Admin API :8080]
+        end
         PG[(Postgres + PGVector)]
         NEO[(Neo4j)]
     end
 
-    WS1 -->|"REST"| MN
-    WS2 -->|"REST"| MN
-    WS3 -->|"REST"| MN
-    MN --> PG
-    MN --> NEO
+    WS1 -->|"MCP"| MCP
+    WS2 -->|"MCP"| MCP
+    WS3 -->|"MCP"| MCP
+    ADMIN -->|"REST"| REST
+    MCP --> PG
+    MCP --> NEO
+    REST --> PG
+    REST --> NEO
 ```
 
 ## Deployment Topology
@@ -45,11 +54,12 @@ graph TB
 ```mermaid
 graph TB
     subgraph "Client Tier"
-        CLI[ACE CLI instances]
+        CC[Claude Code via MCP]
+        ADMIN[Admin via curl/REST]
     end
 
     subgraph "Service Tier"
-        MN[Mnemonic<br/>Routing + Patterns]
+        MN[Mnemonic<br/>Knowledge Sync + MCP Server]
     end
 
     subgraph "Data Tier"
@@ -57,7 +67,8 @@ graph TB
         NEO[(Neo4j)]
     end
 
-    CLI -->|"REST"| MN
+    CC -->|"MCP"| MN
+    ADMIN -->|"REST"| MN
     MN --> PG
     MN --> NEO
 ```
@@ -69,44 +80,29 @@ The physical deployment is intentionally simple.
 ```mermaid
 graph TB
     subgraph "Developer Machines"
-        D1[Dev 1]
-        D2[Dev 2]
-        DN[Dev N]
+        D1[Dev 1<br/>Claude Code MCP]
+        D2[Dev 2<br/>Claude Code MCP]
+        DN[Dev N<br/>Claude Code MCP]
+        ADMIN[Admin curl/scripts]
     end
 
     subgraph "Server Environment"
         subgraph "Container Runtime"
-            MN_C[Mnemonic Container]
+            MN_C[Mnemonic Container<br/>MCP :8081 + Admin :8080]
         end
         PG[(Postgres + PGVector)]
         NEO[(Neo4j)]
     end
 
-    D1 -->|"REST"| MN_C
-    D2 -->|"REST"| MN_C
-    DN -->|"REST"| MN_C
+    D1 -->|"MCP"| MN_C
+    D2 -->|"MCP"| MN_C
+    DN -->|"MCP"| MN_C
+    ADMIN -->|"REST"| MN_C
     MN_C --> PG
     MN_C --> NEO
 ```
 
 ## Component Deployment
-
-### ACE CLI (Future - Separate Repository)
-
-**Note:** The ACE CLI will be developed in a separate repository once Mnemonic reaches MVP status.
-
-**Planned Deployment Location:** User workstations
-
-**Planned Characteristics:**
-
-- Will be installed per-user or per-machine
-- No persistent state (stateless between invocations)
-- Will require network access to Mnemonic
-- Will require Claude Code installation (Phase 1)
-
-**Distribution:**
-
-Post-MVP: Distribution mechanism to be designed after CLI initial release.
 
 ### Mnemonic
 
@@ -114,26 +110,26 @@ Post-MVP: Distribution mechanism to be designed after CLI initial release.
 
 **Characteristics:**
 
-- Stateless service (routing rules and patterns from storage)
+- Single server process with two HTTP listeners (Admin REST :8080, MCP :8081)
+- Stateless service (patterns and tooling from storage)
 - Lightweight (no LLM inference)
 - Horizontally scalable (if needed)
-- Single point of contact for all CLI instances
-- REST API for external communication
+- Dual protocol architecture (REST admin + MCP read-only)
 
 **Resource Requirements:**
 
 | Resource | Expectation                                 |
 | -------- | ------------------------------------------- |
-| CPU      | Low to moderate (routing + pattern queries) |
+| CPU      | Low to moderate (pattern queries, MCP serving) |
 | Memory   | Moderate (caching, pattern indexing)        |
 | Storage  | Via external databases (Postgres, Neo4j)    |
-| Network  | Moderate (all CLI traffic)                  |
+| Network  | Moderate (all MCP + admin traffic)          |
 
 **Storage Stack:**
 
-- **Postgres** - Relational data (agents, routing rules, metadata)
+- **Postgres** - Relational data (patterns, agents, skills, commands, metadata)
 - **PGVector** - Vector embeddings for semantic search
-- **Neo4j** - Knowledge graph for pattern relationships
+- **Neo4j** - Knowledge graph for pattern relationships (required)
 
 ## Infrastructure Requirements
 
@@ -181,12 +177,20 @@ graph TB
 
 ### Client Requirements
 
-| Requirement       | Phase 1         | Phase 2                 |
-| ----------------- | --------------- | ----------------------- |
-| ACE CLI           | Required        | Required                |
-| Claude Code       | Required        | Optional                |
-| Anthropic API key | Via Claude Code | Direct                  |
-| Network access    | To Mnemonic     | To Mnemonic + Anthropic |
+| Requirement       | MVP Local Deployment | Production Deployment |
+| ----------------- | -------------------- | --------------------- |
+| Claude Code       | Required             | Required              |
+| MCP Support       | Required             | Required              |
+| Anthropic API key | Via Claude Code      | Via Claude Code       |
+| Network access    | To Mnemonic MCP :8081 | To Mnemonic MCP :8081 |
+
+### Admin Requirements
+
+| Requirement       | MVP Local Deployment | Production Deployment |
+| ----------------- | -------------------- | --------------------- |
+| curl/HTTP client  | Required             | Required              |
+| Network access    | To Admin API :8080   | To Admin API :8080 (via Envoy + OPA) |
+| Authentication    | None (trusted)       | OAuth2 tokens via Envoy |
 
 ## Operational Considerations
 
@@ -196,10 +200,10 @@ Key metrics to monitor:
 
 | Component        | Metrics                                            |
 | ---------------- | -------------------------------------------------- |
-| Mnemonic         | Request rate, latency, error rate, pattern queries |
+| Mnemonic MCP     | Request rate, latency, error rate, pattern searches |
+| Mnemonic Admin   | Write operations, data loading, tooling updates    |
 | Postgres         | Connection count, query latency, storage usage     |
 | Neo4j            | Query latency, memory usage, connection count      |
-| CLI (aggregated) | Usage patterns, version distribution               |
 
 ### Logging
 
@@ -207,19 +211,19 @@ Key metrics to monitor:
 
 | Component | Log Focus                                                               |
 | --------- | ----------------------------------------------------------------------- |
-| Mnemonic  | Routing decisions, pattern queries, errors (instrumented in MVP)        |
-| CLI       | Post-MVP: Aggregated usage telemetry and logging to be designed         |
+| Mnemonic MCP  | Pattern searches, tooling requests, errors (instrumented in MVP)    |
+| Mnemonic Admin | Data loading, CRUD operations, errors (instrumented in MVP)         |
 
-**Note:** "Post-MVP" for CLI logging refers to the entire CLI telemetry design. For Mnemonic, MVP includes log instrumentation (emitting logs); Post-MVP includes log collection infrastructure (Loki aggregation, querying, retention).
+**Note:** For Mnemonic, MVP includes log instrumentation (emitting logs); Post-MVP includes log collection infrastructure (Loki aggregation, querying, retention).
 
 ### Backup and Recovery
 
 | Component         | Strategy                                   |
 | ----------------- | ------------------------------------------ |
-| Routing rules     | Post-MVP: Backup procedures to be designed |
+| Patterns          | Post-MVP: Backup procedures to be designed |
+| Tooling (agents/skills/commands) | Post-MVP: Backup procedures to be designed |
 | Postgres data     | Post-MVP: Backup procedures to be designed |
 | Neo4j data        | Post-MVP: Backup procedures to be designed |
-| CLI configuration | Post-MVP: Backup procedures to be designed |
 
 ### Updates and Maintenance
 
@@ -228,7 +232,7 @@ graph TB
     subgraph "Update Strategy"
         MN_UP[Mnemonic Updates<br/>Rolling deployment]
         DB_UP[Database Updates<br/>Careful migration]
-        CLI_UP[CLI Updates<br/>User-controlled]
+        ADMIN_UP[Admin curl Updates<br/>User-controlled]
     end
 ```
 
@@ -236,7 +240,6 @@ graph TB
 | --------- | -------------------------------------------- |
 | Mnemonic  | Rolling deployment, backward compatible      |
 | Databases | Migration-aware, data preservation           |
-| CLI       | User-initiated, version compatibility checks |
 
 ### Independent Deployment Pipelines
 
@@ -337,18 +340,17 @@ graph LR
 
 ### Performance Considerations
 
-- Mnemonic latency should be minimal (routing is fast)
+- Mnemonic latency should be minimal (knowledge graph queries and MCP serving are fast)
 - Pattern queries should be cached where possible
-- CLI-side caching can reduce Mnemonic calls
-- Claude Code execution is the primary latency source (not ACE)
+- Claude Code execution is the primary latency source (not Mnemonic)
 
 ### Capacity Planning
 
-| Factor         | Consideration                  |
-| -------------- | ------------------------------ |
-| Team size      | Number of concurrent CLI users |
-| Request rate   | Queries per minute to Mnemonic |
-| Pattern volume | Total patterns in storage      |
-| Pattern size   | Average pattern complexity     |
+| Factor         | Consideration                       |
+| -------------- | ----------------------------------- |
+| Team size      | Number of concurrent MCP/API users |
+| Request rate   | Queries per minute to Mnemonic      |
+| Pattern volume | Total patterns in storage           |
+| Pattern size   | Average pattern complexity          |
 
 **Next:** Return to [Architecture Overview](00-overview.md)

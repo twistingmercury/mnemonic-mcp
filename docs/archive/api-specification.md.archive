@@ -1,5 +1,10 @@
 # Mnemonic REST API Design
 
+> **Note:** This document describes the pre-pivot API specification. For the current
+> API specification (post-pivot), see [Pivot API Specification](2026-02-15-pivot-api-specification.md).
+> The routing endpoints described below have been removed. The agents, patterns, and
+> operations endpoints have been redesigned.
+
 [Back to Architecture Overview](../../architecture/00-overview.md) | [Back to Project README](../../../README.md)
 
 ## Table of Contents

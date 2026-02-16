@@ -1,7 +1,9 @@
 # Phase 13 Implementation Plan: Remove Default Fallback, Implement Explicit No-Match Signaling
 
+> **SUPERSEDED (2026-02-15):** This plan addressed removing the default matcher from the routing engine. The entire routing engine was removed in the architectural pivot (see [Pivot Proposal](2026-02-14-mnemonic-pivot-knowledge-sync.md)). Phase 17 of the post-pivot plan handles routing code removal. Retained for historical reference.
+
 **Date:** 2026-02-12
-**Status:** Ready for implementation
+**Status:** Superseded
 **Prerequisite:** Solutions architect assessment approved (see `docs/architecture/design-change-remove-default-matcher.md`)
 **Branch:** `phase/13`
 

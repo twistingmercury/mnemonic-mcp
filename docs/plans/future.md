@@ -26,18 +26,18 @@ This means granular concept/relevance sync endpoints are **internal service endp
 
 #### Recommended admin endpoints
 
-Admin operations live under a distinct `/api/admin/` path, cleanly separated from the primary API surface. This makes authorization rules simpler (middleware can enforce admin role on the entire `/api/admin/` prefix) and prevents accidental exposure of maintenance operations.
+Admin operations live under a distinct `/v1/api/admin/` path, cleanly separated from the primary API surface. This makes authorization rules simpler (middleware can enforce admin role on the entire `/v1/api/admin/` prefix) and prevents accidental exposure of maintenance operations.
 
-| Method | Path                                          | Purpose                                                     |
-| ------ | --------------------------------------------- | ----------------------------------------------------------- |
-| POST   | `/api/admin/graph/sync/agents/{name}`         | Re-sync agent node from Postgres                            |
-| POST   | `/api/admin/graph/sync/patterns/{id}`         | Re-sync pattern metadata from Postgres                      |
-| POST   | `/api/admin/enrichment/patterns/{id}`         | Re-enrich pattern (new enrichment job, full pipeline rerun) |
-| POST   | `/api/admin/graph/cleanup/orphaned-concepts`  | Remove orphaned concept nodes                               |
-| GET    | `/api/admin/graph/health`                     | Graph health with node/relationship statistics              |
-| GET    | `/api/admin/graph/consistency`                | Drift detection (Postgres vs Neo4j)                         |
-| GET    | `/api/admin/graph/patterns/{id}/related`      | Query related patterns via shared concepts                  |
-| GET    | `/api/admin/graph/agents/{name}/patterns`     | Query patterns relevant to an agent                         |
+| Method | Path                                              | Purpose                                                     |
+| ------ | ------------------------------------------------- | ----------------------------------------------------------- |
+| POST   | `/v1/api/admin/graph/sync/agents/{name}`          | Re-sync agent node from Postgres                            |
+| POST   | `/v1/api/admin/graph/sync/patterns/{id}`          | Re-sync pattern metadata from Postgres                      |
+| POST   | `/v1/api/admin/enrichment/patterns/{id}`          | Re-enrich pattern (new enrichment job, full pipeline rerun) |
+| POST   | `/v1/api/admin/graph/cleanup/orphaned-concepts`   | Remove orphaned concept nodes                               |
+| GET    | `/v1/api/admin/graph/health`                      | Graph health with node/relationship statistics              |
+| GET    | `/v1/api/admin/graph/consistency`                 | Drift detection (Postgres vs Neo4j)                         |
+| GET    | `/v1/api/admin/graph/patterns/{id}/related`       | Query related patterns via shared concepts                  |
+| GET    | `/v1/api/admin/graph/agents/{name}/patterns`      | Query patterns relevant to an agent                         |
 
 All require `admin` role. A detailed API design was produced by the api-architect-agent and needs review before incorporation into `api/openapi/mnemonic-v1.yaml`.
 
@@ -51,7 +51,7 @@ These admin operations could live in a **separate maintenance service** rather t
 - Different deployment lifecycle — can be updated independently without redeploying Mnemonic
 - Shares the same Postgres and Neo4j databases but has its own process and API surface
 
-This would mean the `/api/admin/` path above becomes its own service (e.g., `mnemonic-admin` or `mnemonic-maintenance`) rather than routes within the Mnemonic process.
+This would mean the `/v1/api/admin/` path above becomes its own service (e.g., `mnemonic-admin` or `mnemonic-maintenance`) rather than routes within the Mnemonic process.
 
 #### Open questions
 

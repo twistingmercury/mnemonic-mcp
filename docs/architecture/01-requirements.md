@@ -1,10 +1,11 @@
-# ACE Requirements
+# Mnemonic Requirements
 
 [Back to Overview](00-overview.md) | [Back to Project README](../../README.md)
 
 ## Table of Contents
 
 - [Problem Statement](#problem-statement)
+- [How Mnemonic Addresses Original Problems](#how-mnemonic-addresses-original-problems)
 - [Goals](#goals)
 - [Non-Goals](#non-goals)
 - [Success Criteria](#success-criteria)
@@ -15,83 +16,113 @@
 
 Teams using Claude Code face several challenges when working at scale:
 
-1. **Inconsistent routing**: Without centralized logic, each team member makes ad-hoc decisions about which agent or approach to use for a given task
+1. **Inconsistent tooling**: Without centralized agent, skill, and command definitions, each team member has different versions and capabilities
 2. **Knowledge silos**: Patterns, prompts, and best practices remain isolated on individual workstations
 3. **No shared memory**: Teams cannot leverage collective learnings or maintain organizational knowledge
 4. **Manual orchestration**: Complex workflows require manual coordination between multiple Claude Code sessions
 
-ACE addresses these challenges by providing an orchestration layer that centralizes routing decisions and enables shared access to patterns and knowledge.
+Mnemonic addresses these challenges by providing a team knowledge graph with semantic search and synchronized tooling across team members.
+
+## How Mnemonic Addresses Original Problems
+
+The February 2026 architectural pivot reframed how Mnemonic solves these problems:
+
+### Problem 1: Inconsistent Tooling (Originally "Inconsistent Routing")
+
+**Original approach**: Centralized routing logic to route prompts to appropriate agents.
+
+**Pivot approach**: Synchronize agent, skill, and command definitions across team members via MCP protocol. Each team member has the same tooling capabilities. The user orchestrates which agent/skill to invoke based on team knowledge patterns.
+
+**Why the change**: User is the orchestrator. Mnemonic provides consistent tools and knowledge, not routing decisions.
+
+### Problem 2 & 3: Knowledge Silos and No Shared Memory
+
+**Approach remains consistent**: Team knowledge graph with semantic search via PGVector and knowledge relationships via Neo4j. Patterns are curated and enriched, searchable by all team members through Claude Code's MCP integration.
+
+### Problem 4: Manual Orchestration
+
+**Original framing**: Manual orchestration is a problem to solve with automated routing.
+
+**Pivot reframing**: Manual orchestration is intentional and valuable. The user knows their workflow best. Mnemonic provides:
+
+1. **Workflow patterns** in the knowledge graph describing common coordination approaches
+2. **Consistent tooling** so orchestration steps work the same for everyone
+3. **Shared memory** so orchestration decisions benefit from team knowledge
+
+Manual orchestration becomes informed orchestration supported by team knowledge and consistent tools.
 
 ## Goals
 
 ### Primary Goals
 
-- **Centralized routing**: Provide deterministic, auditable routing logic that ensures consistent task handling across the team
-- **Shared patterns**: Enable teams to store, retrieve, and evolve reusable patterns through a common service
-- **Claude Code integration**: Leverage existing Claude Code capabilities without requiring users to change their workflow significantly
-- **Team collaboration**: Allow routing rules and patterns to be managed centrally while execution remains local
+- **Team knowledge graph**: Provide semantic search over curated patterns with PGVector and knowledge relationships via Neo4j
+- **Tooling synchronization**: Ensure all team members have consistent agents, skills, and commands via MCP protocol
+- **Claude Code integration**: Seamless MCP integration without changing existing Claude Code workflows
+- **Informed orchestration**: Support manual orchestration with team knowledge patterns and consistent tooling
 
 ### Secondary Goals
 
-- **Gradual adoption**: Support incremental adoption where teams can start with basic routing and add complexity over time
-- **Future flexibility**: Design for eventual transition to direct Anthropic API integration (Phase 2)
-- **Minimal infrastructure**: Keep server-side components lightweight and easy to deploy
+- **Gradual adoption**: Teams can start with pattern search and add tooling sync incrementally
+- **Minimal infrastructure**: Keep server-side components lightweight and easy to deploy via Docker Compose
+- **Production-ready path**: Clear path from MVP to production with Envoy + OPA security layer
 
 ## Non-Goals
 
 The following are explicitly out of scope:
 
-- **Replacing Claude Code**: ACE orchestrates Claude Code; it does not replace its functionality
-- **Running LLM inference on server**: All LLM interactions happen locally via Claude Code or direct API calls from the CLI
-- **Managing user credentials**: ACE does not store or manage Anthropic API keys (the user's LLM credentials). Note: This non-goal refers specifically to external API keys. ACE does manage its own internal OAuth tokens for Mnemonic authentication (Phase 3), which are stored securely using platform-native mechanisms as described in the [Security Architecture](06-security-architecture.md#token-storage)
-- **File synchronization**: ACE does not sync files between workstations; file operations are strictly local
-- **Real-time collaboration**: ACE does not provide real-time collaborative editing or presence features
+- **Automated routing**: Mnemonic does not route prompts to agents; the user orchestrates their workflow
+- **Replacing Claude Code**: Mnemonic integrates with Claude Code via MCP; it does not replace functionality
+- **Running LLM inference on server**: All LLM interactions happen locally via Claude Code
+- **Managing user credentials**: Mnemonic does not store or manage Anthropic API keys
+- **File synchronization**: Mnemonic does not sync files between workstations; file operations are strictly local
+- **Real-time collaboration**: Mnemonic does not provide real-time collaborative editing or presence features
 
 ## Success Criteria
 
-### Phase 1 (MVP)
+### Phase 1 (MVP Local Deployment)
 
 | Criterion             | Measure                                                                   |
 | --------------------- | ------------------------------------------------------------------------- |
-| Routing functionality | CLI successfully routes requests through Mnemonic to appropriate handlers |
-| Pattern retrieval     | Patterns stored in Mnemonic are accessible to all team members            |
-| Claude Code execution | Local Claude Code invocation works seamlessly with enriched context       |
-| Team adoption         | Multiple team members can use the same centralized routing configuration  |
+| Pattern search        | Claude Code can search team knowledge graph via MCP                       |
+| Tooling sync          | Agents, skills, commands accessible to all team members via MCP           |
+| Data loading          | Patterns and tooling loadable via REST admin API                          |
+| Docker Compose deploy | Single server with two listeners runs locally without authentication      |
 
-### Phase 2 (Future)
+### Phase 2 (Production Deployment)
 
 | Criterion              | Measure                                                      |
 | ---------------------- | ------------------------------------------------------------ |
-| Direct API integration | CLI can call Anthropic API directly without Claude Code      |
-| Local tool execution   | CLI handles tool calls and file operations natively          |
-| Feature parity         | All Phase 1 capabilities work without Claude Code dependency |
+| Admin API auth         | Envoy + OPA protect write operations on admin API           |
+| TLS termination        | HTTPS for all external traffic                               |
+| Production config      | Postgres and Neo4j configured for production workloads       |
 
 ### Quality Attributes
 
-- **Reliability**: Routing decisions are deterministic and reproducible
-- **Performance**: API overhead does not significantly impact response times
-- **Maintainability**: Routing rules can be updated without client-side changes
-- **Observability**: Routing decisions and pattern usage are logged for analysis
+- **Reliability**: Pattern search and tooling sync work consistently
+- **Performance**: MCP protocol overhead does not significantly impact Claude Code workflow
+- **Maintainability**: Patterns and tooling can be updated via admin API without client changes
+- **Observability**: Pattern searches and tooling requests are logged for analysis
 
 ## Constraints
 
 ### Technical Constraints
 
-- **Claude Code dependency (Phase 1)**: Initial implementation requires Claude Code installation on user workstations
-- **Network connectivity**: CLI must reach Mnemonic for routing decisions
+- **Claude Code dependency**: Mnemonic integrates with Claude Code via MCP protocol
+- **Network connectivity**: Claude Code must reach Mnemonic MCP server for reads
+- **Neo4j required**: Knowledge graph functionality requires Neo4j (not optional)
 
 ### Organizational Constraints
 
-- **Existing workflows**: Must integrate with how teams currently use Claude Code
-- **Security requirements**: Patterns and routing rules may contain sensitive information
+- **Existing workflows**: Must integrate seamlessly with how teams currently use Claude Code
+- **Security requirements**: Patterns and tooling definitions may contain sensitive information
 - **Operational capacity**: Server infrastructure should be minimal and easy to maintain
 
 ## Assumptions
 
-1. **Claude Code availability**: Team members have Claude Code installed and configured (Phase 1)
-2. **Network access**: Workstations can reach the Mnemonic endpoint
-3. **Anthropic accounts**: Users have valid Anthropic API access (via Claude Code or direct API key)
+1. **Claude Code availability**: Team members have Claude Code installed and configured with MCP support
+2. **Network access**: Workstations can reach the Mnemonic MCP server endpoint
+3. **Anthropic accounts**: Users have valid Anthropic API access via Claude Code
 4. **Pattern quality**: Teams will maintain and curate patterns stored in Mnemonic
-5. **Routing rule governance**: Someone owns the responsibility for maintaining routing logic
+5. **Tooling governance**: Someone owns the responsibility for maintaining agent, skill, and command definitions
 
 **Next:** [Architectural Decisions](02-architectural-decisions.md)

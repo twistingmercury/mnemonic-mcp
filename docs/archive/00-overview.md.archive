@@ -179,6 +179,7 @@ The following design documents provide implementation details:
 | [pattern-processing.md](../design/pattern-processing.md)             | Pattern enrichment and search pipeline | Updated |
 | [configuration.md](../design/configuration.md)                       | Server configuration                   | Updated |
 | [observability-implementation.md](../design/observability-implementation.md) | Observability design           | Updated |
+| [routing-engine.md](../design/routing-engine.md)                     | Routing algorithm details              | DEPRECATED |
 
 ### Cross-References
 

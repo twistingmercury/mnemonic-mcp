@@ -1,89 +1,138 @@
 openapi: 3.1.0
 info:
-  title: Mnemonic API
+  title: Mnemonic Admin REST API
   description: |
-    Backend API for ACE (Agent Coordination Engine).
-    Provides routing decisions and pattern retrieval for Claude Code orchestration.
+    Admin REST API for Mnemonic, a knowledge graph and tooling synchronization server.
+    This API manages patterns, agents, skills, and commands. It is consumed by curl or
+    any HTTP client for data ingestion and administration.
 
-    ## Overview
+    The MCP server (port 8081) is a separate protocol for Claude Code integration and
+    is not documented in this OpenAPI specification.
 
-    Mnemonic is the backend server for ACE, providing routing decisions and pattern
-    retrieval via REST API. For MVP, Mnemonic serves only ACE.
+    ## Architecture
 
-    ## Authentication
+    Mnemonic is a single Go binary that exposes two protocols:
 
-    Authentication is handled by Envoy proxy. Mnemonic expects pre-validated identity
-    information in request headers after Envoy authenticates the request.
+    - **Admin REST API** (this spec) on port 8080: Read + Write via HTTP
+    - **MCP Server** on port 8081: Read-only tools for Claude Code via MCP over Streamable HTTP
 
-    Required headers (injected by Envoy):
-    - `X-User-ID`: Authenticated user identifier (UUID)
-    - `X-Team-ID`: Team/organization identifier (UUID)
-    - `X-User-Roles`: Comma-separated roles (e.g., `admin,developer`)
+    ## Authentication (MVP)
 
-    ### Authorization Rules
+    API key passed in the `Authorization: Bearer <key>` header. The server validates
+    against a configured key (environment variable). A single shared key suffices for
+    the single-user MVP.
 
-    | Operation | Required Role |
-    |-----------|---------------|
-    | `POST /api/route` | Any authenticated user |
-    | `GET /api/patterns` | Any authenticated user |
-    | `GET /api/agents` | Any authenticated user |
-    | Admin operations (PUT/DELETE) | `admin` role |
+    Post-MVP: Envoy proxy handles authentication. OPA evaluates authorization policies.
 
     ## Error Handling
 
-    Errors follow [RFC 7807 Problem Details](https://tools.ietf.org/html/rfc7807)
-    format with content type `application/problem+json`.
+    All errors follow [RFC 7807 Problem Details](https://tools.ietf.org/html/rfc7807)
+    with content type `application/problem+json`. Every response includes an
+    `X-Request-ID` correlation header.
 
     ## Pagination
 
-    List endpoints use cursor-based pagination for consistency and scalability.
-    Cursors are opaque base64-encoded strings that expire after 24 hours.
+    List endpoints use cursor-based pagination. Cursors are opaque base64-encoded
+    strings. The `has_more` field indicates whether additional pages exist.
 
     ## Request Correlation
 
-    Every request should include a correlation ID for tracing via the `X-Request-ID`
-    header. If not provided, the server generates a UUID v4 and returns it in the
-    response.
+    Every response includes an `X-Request-ID` header. If the client provides this
+    header on the request, the server echoes it back. Otherwise the server generates
+    a UUID v4.
   version: 1.0.0
   contact:
-    name: ACE Team
+    name: Mnemonic Team
   license:
     name: MIT
     identifier: MIT
 
 servers:
-  - url: https://mnemonic.example.com/v1
-    description: Production
-  - url: http://localhost:8080/v1
-    description: Development
+  - url: http://localhost:8080
+    description: Local development
 
 tags:
-  - name: Routing
-    description: Primary routing flow for ACE CLI
   - name: Agents
     description: Agent definition management
   - name: Patterns
-    description: Pattern management
-  - name: Routing Rules
-    description: Routing rule configuration
+    description: Pattern management and semantic search
+  - name: Pattern Associations
+    description: Pattern-to-agent association management
+  - name: Skills
+    description: Skill definition management
+  - name: Skill Files
+    description: Script, reference, and asset file management for skills
+  - name: Commands
+    description: Command definition management
   - name: Operations
-    description: Health and operational endpoints
+    description: Health, version, and metrics endpoints
+  - name: Removed
+    description: Endpoints removed in the pivot (return 410 Gone)
 
 components:
   securitySchemes:
-    envoyAuth:
-      type: apiKey
-      in: header
-      name: X-User-ID
+    bearerApiKey:
+      type: http
+      scheme: bearer
       description: |
-        User ID header injected by Envoy after authentication.
-        Mnemonic trusts these headers as Envoy has already validated the bearer token.
-
-        Additional headers expected:
-        - `X-Team-ID`: Team/organization identifier (UUID)
-        - `X-User-Roles`: Comma-separated roles (e.g., `admin,developer`)
+        API key passed as a Bearer token. The server validates the key against
+        a configured environment variable. Post-MVP, Envoy + OPA replaces this.
 
   parameters:
+    agentNameParam:
+      name: name
+      in: path
+      required: true
+      description: Agent unique identifier (lowercase letters, numbers, and hyphens)
+      schema:
+        type: string
+        pattern: ^[a-z][a-z0-9-]*$
+        maxLength: 64
+      example: go-software-engineer
+
+    patternIdParam:
+      name: id
+      in: path
+      required: true
+      description: Pattern unique identifier (UUID)
+      schema:
+        type: string
+        format: uuid
+      example: 550e8400-e29b-41d4-a716-446655440001
+
+    skillNameParam:
+      name: name
+      in: path
+      required: true
+      description: Skill unique identifier (lowercase letters, numbers, and hyphens; no leading/trailing hyphens, no consecutive hyphens)
+      schema:
+        type: string
+        pattern: ^[a-z]([a-z0-9](-[a-z0-9])*)*$
+        maxLength: 64
+      example: mnemonic-sync
+
+    skillFileNameParam:
+      name: filename
+      in: path
+      required: true
+      description: File name within the skill directory (e.g., "extract.py", "REFERENCE.md")
+      schema:
+        type: string
+        pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*$
+        maxLength: 255
+      example: extract.py
+
+    commandNameParam:
+      name: name
+      in: path
+      required: true
+      description: Command unique identifier (lowercase letters, numbers, and hyphens)
+      schema:
+        type: string
+        pattern: ^[a-z][a-z0-9-]*$
+        maxLength: 255
+      example: prime
+
     limitParam:
       name: limit
       in: query
@@ -91,61 +140,29 @@ components:
       schema:
         type: integer
         minimum: 1
-        maximum: 100
+        maximum: 200
         default: 20
 
     cursorParam:
       name: cursor
       in: query
-      description: Opaque pagination cursor for next page (base64 encoded, expires after 24 hours)
+      description: Opaque pagination cursor from a previous response
       schema:
         type: string
-
-    agentNameParam:
-      name: name
-      in: path
-      required: true
-      description: Agent unique identifier (lowercase with hyphens)
-      schema:
-        type: string
-        pattern: ^[a-z][a-z0-9-]*$
-        maxLength: 64
-      example: go-software-agent
-
-    patternIdParam:
-      name: id
-      in: path
-      required: true
-      description: Pattern unique identifier
-      schema:
-        type: string
-        format: uuid
-      example: 550e8400-e29b-41d4-a716-446655440001
-
-    routingRuleIdParam:
-      name: id
-      in: path
-      required: true
-      description: Routing rule unique identifier
-      schema:
-        type: string
-        format: uuid
-      example: 550e8400-e29b-41d4-a716-446655440002
 
   headers:
     X-Request-ID:
-      description: Correlation ID for request tracing. Echoed from request or generated by server if not provided.
+      description: Correlation ID for request tracing. Echoed from request or generated by server.
       schema:
         type: string
         format: uuid
       example: 550e8400-e29b-41d4-a716-446655440000
 
     Location:
-      description: URI of newly created resource
+      description: URI of the newly created resource
       schema:
         type: string
-        format: uri
-      example: /v1/api/agents/rust-software-agent
+        format: uri-reference
 
   schemas:
     # ==================== Error Schemas ====================
@@ -165,64 +182,31 @@ components:
           examples:
             - https://mnemonic.example.com/problems/validation-error
             - https://mnemonic.example.com/problems/not-found
-            - https://mnemonic.example.com/problems/unauthorized
-            - https://mnemonic.example.com/problems/forbidden
-            - https://mnemonic.example.com/problems/conflict
-            - https://mnemonic.example.com/problems/rate-limited
-            - https://mnemonic.example.com/problems/internal-error
-            - https://mnemonic.example.com/problems/service-unavailable
-            - https://mnemonic.example.com/problems/invalid-json
         title:
           type: string
           description: Human-readable summary of the problem type
           examples:
             - Validation Error
             - Not Found
-            - Unauthorized
-            - Forbidden
-            - Conflict
-            - Rate Limited
-            - Internal Error
-            - Service Unavailable
-            - Invalid JSON
         status:
           type: integer
           description: HTTP status code
           minimum: 400
           maximum: 599
-          examples:
-            - 400
-            - 401
-            - 403
-            - 404
-            - 409
-            - 429
-            - 500
-            - 503
         detail:
           type: string
           description: Human-readable explanation specific to this occurrence
-          examples:
-            - The request body contains invalid fields
-            - Agent with name 'unknown-agent' not found
-            - Missing required X-User-ID header
-            - Admin role required for this operation
         instance:
           type: string
           format: uri-reference
           description: URI reference identifying the specific occurrence
-          examples:
-            - /v1/api/agents
-            - /v1/api/agents/unknown-agent
         traceId:
           type: string
           format: uuid
           description: Correlation ID for debugging and log correlation
-          examples:
-            - 550e8400-e29b-41d4-a716-446655440000
         errors:
           type: array
-          description: Field-level validation errors (for 400 responses)
+          description: Field-level validation errors (present on 400 responses)
           items:
             $ref: "#/components/schemas/FieldError"
 
@@ -239,29 +223,23 @@ components:
           description: JSON path to the field with the error
           examples:
             - name
-            - model
-            - context.working_directory
-            - routing_keywords[0]
+            - system_prompt
         code:
           type: string
           description: Machine-readable error code
           enum:
             - REQUIRED
             - INVALID_FORMAT
-            - INVALID_ENUM
-            - TOO_SHORT
             - TOO_LONG
-            - DUPLICATE
-            - NOT_FOUND
+            - TOO_SHORT
+            - INVALID_VALUE
+            - CONTENT_TOO_LARGE
+            - NOT_UNIQUE
         message:
           type: string
           description: Human-readable error message
-          examples:
-            - Agent name is required
-            - Model must be one of: sonnet, opus, haiku, inherit
-            - Value exceeds maximum length of 64 characters
 
-    # ==================== Pagination Schemas ====================
+    # ==================== Pagination Schema ====================
     Pagination:
       type: object
       description: Cursor-based pagination metadata
@@ -271,55 +249,33 @@ components:
       properties:
         limit:
           type: integer
-          description: Number of items per page (echoed from request)
-          minimum: 1
-          maximum: 100
-          examples:
-            - 20
+          description: Items per page (echoed from request)
         cursor:
           type:
             - string
             - "null"
           description: Current cursor (echoed from request, null for first page)
-          examples:
-            - eyJpZCI6IjEyMyJ9
-            - null
         next_cursor:
           type:
             - string
             - "null"
-          description: Cursor for next page (null if no more pages)
-          examples:
-            - eyJpZCI6IjEzMyJ9
-            - null
+          description: Cursor for next page (null when no more pages exist)
         has_more:
           type: boolean
           description: Whether more pages exist after this one
 
-    # ==================== Model Enum ====================
-    ModelType:
-      type: string
-      description: |
-        Claude model to use for the agent.
-        - `sonnet`: Claude Sonnet - balanced performance and cost
-        - `opus`: Claude Opus - highest capability
-        - `haiku`: Claude Haiku - fastest and most cost-effective
-        - `inherit`: Inherit model from parent/default configuration
-      enum:
-        - sonnet
-        - opus
-        - haiku
-        - inherit
-
     # ==================== Agent Schemas ====================
     Agent:
       type: object
-      description: Full agent definition including system prompt
+      description: Full agent definition
       required:
         - name
         - description
         - system_prompt
         - model
+        - version
+        - created_at
+        - updated_at
       properties:
         name:
           type: string
@@ -328,31 +284,33 @@ components:
           minLength: 1
           maxLength: 64
           examples:
-            - go-software-agent
-            - python-software-agent
-            - rust-software-agent
+            - go-software-engineer
         description:
           type: string
           description: Human-readable description of the agent's purpose
           minLength: 1
           maxLength: 500
           examples:
-            - Expert Go developer agent for writing idiomatic Go code
+            - "Implements Go code: functions, packages, tests"
         system_prompt:
           type: string
           description: Full system prompt text (up to 50KB)
           minLength: 1
           maxLength: 51200
-          examples:
-            - You are an expert Go developer. Follow these principles...
         model:
-          $ref: "#/components/schemas/ModelType"
+          type: string
+          description: Claude model for the agent
+          enum:
+            - sonnet
+            - opus
+            - haiku
         allowed_tools:
           type: array
-          description: Tool names/patterns the agent is allowed to use
+          description: Tool names the agent is allowed to use
           maxItems: 50
           items:
             type: string
+          default: []
           examples:
             - - Read
               - Write
@@ -360,32 +318,23 @@ components:
               - Bash
               - Glob
               - Grep
-              - LSP
-        routing_keywords:
-          type: array
-          description: Keywords that trigger routing to this agent
-          maxItems: 100
-          items:
-            type: string
+        version:
+          type: string
+          description: Version of the agent definition
+          minLength: 1
+          maxLength: 50
           examples:
-            - - go
-              - golang
-              - go function
-              - go package
+            - "1.2.0"
         created_at:
           type: string
           format: date-time
-          description: ISO 8601 creation timestamp
+          description: Creation timestamp (ISO 8601)
           readOnly: true
-          examples:
-            - "2024-01-15T10:30:00Z"
         updated_at:
           type: string
           format: date-time
-          description: ISO 8601 last update timestamp
+          description: Last update timestamp (ISO 8601)
           readOnly: true
-          examples:
-            - "2024-01-15T10:30:00Z"
 
     AgentCreate:
       type: object
@@ -395,67 +344,56 @@ components:
         - description
         - system_prompt
         - model
+        - version
       properties:
         name:
           type: string
-          description: Unique identifier (lowercase letters, numbers, and hyphens)
           pattern: ^[a-z][a-z0-9-]*$
           minLength: 1
           maxLength: 64
           examples:
-            - rust-software-agent
+            - rust-software-engineer
         description:
           type: string
-          description: Human-readable description of the agent's purpose
           minLength: 1
           maxLength: 500
           examples:
-            - Expert Rust developer agent for systems programming
+            - "Implements Rust code: crates, modules, tests"
         system_prompt:
           type: string
-          description: Full system prompt text (up to 50KB)
           minLength: 1
           maxLength: 51200
-          examples:
-            - You are an expert Rust developer...
         model:
-          $ref: "#/components/schemas/ModelType"
+          type: string
+          enum:
+            - sonnet
+            - opus
+            - haiku
         allowed_tools:
           type: array
-          description: Tool names/patterns the agent is allowed to use
           maxItems: 50
           items:
             type: string
           default: []
+        version:
+          type: string
+          minLength: 1
+          maxLength: 50
           examples:
-            - - Read
-              - Write
-              - Edit
-              - Bash
-        routing_keywords:
-          type: array
-          description: Keywords that trigger routing to this agent
-          maxItems: 100
-          items:
-            type: string
-          default: []
-          examples:
-            - - rust
-              - cargo
-              - rustc
+            - "1.0.0"
 
     AgentUpdate:
       type: object
-      description: Request body for updating an existing agent (full replacement)
+      description: Request body for updating an agent (full replacement). Name in body must match path parameter or be omitted.
       required:
-        - name
         - description
         - system_prompt
         - model
+        - version
       properties:
         name:
           type: string
-          description: Must match the path parameter
+          description: Must match the path parameter (or be omitted)
           pattern: ^[a-z][a-z0-9-]*$
           minLength: 1
           maxLength: 64
@@ -468,48 +406,20 @@ components:
           minLength: 1
           maxLength: 51200
         model:
-          $ref: "#/components/schemas/ModelType"
+          type: string
+          enum:
+            - sonnet
+            - opus
+            - haiku
         allowed_tools:
           type: array
           maxItems: 50
           items:
             type: string
-        routing_keywords:
-          type: array
-          maxItems: 100
-          items:
-            type: string
-
-    AgentSummary:
-      type: object
-      description: Agent summary without system_prompt (for list responses)
-      required:
-        - name
-        - description
-        - model
-        - created_at
-        - updated_at
-      properties:
-        name:
+        version:
           type: string
-          examples:
-            - go-software-agent
-        description:
-          type: string
-          examples:
-            - Expert Go developer agent
-        model:
-          $ref: "#/components/schemas/ModelType"
-        created_at:
-          type: string
-          format: date-time
-          examples:
-            - "2024-01-15T10:30:00Z"
-        updated_at:
-          type: string
-          format: date-time
-          examples:
-            - "2024-01-15T10:30:00Z"
+          minLength: 1
+          maxLength: 50
 
     AgentList:
       type: object
@@ -521,7 +431,7 @@ components:
         data:
           type: array
           items:
-            $ref: "#/components/schemas/AgentSummary"
+            $ref: "#/components/schemas/Agent"
         pagination:
           $ref: "#/components/schemas/Pagination"
 
@@ -531,117 +441,148 @@ components:
       description: Association between a pattern and an agent with relevance score
       required:
         - agent_name
-        - relevance
       properties:
         agent_name:
           type: string
           description: Name of the associated agent
           examples:
-            - go-software-agent
+            - go-software-engineer
         relevance:
           type: number
           format: double
-          description: Relevance score from 0 to 1
-          minimum: 0
-          maximum: 1
+          description: Relevance score (0.0 to 1.0)
+          minimum: 0.0
+          maximum: 1.0
+          default: 1.0
           examples:
             - 0.95
 
+    GraphContext:
+      type: object
+      description: Related patterns and extracted concepts from the Neo4j knowledge graph
+      properties:
+        related_patterns:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - name
+              - relationship
+              - strength
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              relationship:
+                type: string
+                examples:
+                  - RELATED_TO
+              strength:
+                type: number
+                format: double
+                minimum: 0.0
+                maximum: 1.0
+        concepts:
+          type: array
+          items:
+            type: object
+            required:
+              - name
+            properties:
+              name:
+                type: string
+                examples:
+                  - error-wrapping
+              description:
+                type: string
+                examples:
+                  - Wrapping errors with context using fmt.Errorf and %w
+
     Pattern:
       type: object
-      description: Full pattern definition including content
+      description: Full pattern definition including content and graph context
       required:
         - id
         - name
         - content
+        - enrichment_status
         - created_at
         - updated_at
       properties:
         id:
           type: string
           format: uuid
-          description: Unique identifier
           readOnly: true
-          examples:
-            - 550e8400-e29b-41d4-a716-446655440001
         name:
           type: string
-          description: Pattern name
+          pattern: ^[a-z][a-z0-9-]*$
           minLength: 1
-          maxLength: 128
+          maxLength: 255
           examples:
             - go-error-handling
         description:
-          type: string
-          description: Short description of the pattern
+          type:
+            - string
+            - "null"
           maxLength: 500
           examples:
             - Best practices for error handling in Go
         content:
           type: string
-          description: Markdown content (up to 10KB)
           minLength: 1
           maxLength: 10240
-          examples:
-            - '# Go Error Handling Pattern\n\n## Overview\n\nGo uses explicit error handling...'
+          description: Markdown content (up to 10KB)
         tags:
           type: array
-          description: Categorization tags
           maxItems: 20
           items:
             type: string
+          default: []
           examples:
             - - go
               - errors
               - best-practices
         agent_associations:
           type: array
-          description: Linked agents with relevance scores
           items:
             $ref: "#/components/schemas/AgentAssociation"
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-          examples:
-            - "2024-01-10T08:00:00Z"
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-          examples:
-            - "2024-01-10T08:00:00Z"
         enrichment_status:
           type: string
-          description: |
-            Status of background enrichment processing. Patterns with status other than 'enriched'
-            are excluded from semantic search results. See pattern-processing.md for pipeline details.
           enum:
             - pending
             - enriched
             - failed
           readOnly: true
-          examples:
-            - enriched
         enrichment_error:
           type:
             - string
             - "null"
-          description: Error message if enrichment failed. Only present when enrichment_status is 'failed'.
           readOnly: true
-          examples:
-            - "embedding generation failed: context deadline exceeded"
-            - null
+          description: Error message if enrichment failed
         enriched_at:
           type:
             - string
             - "null"
           format: date-time
-          description: Timestamp of last successful enrichment. Null if pattern has never been enriched.
           readOnly: true
-          examples:
-            - "2024-01-10T08:05:00Z"
-            - null
+          description: Timestamp of last successful enrichment
+        graph:
+          description: Related patterns and concepts from Neo4j. Null if enrichment has not run.
+          oneOf:
+            - $ref: "#/components/schemas/GraphContext"
+            - type: "null"
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
 
     PatternCreate:
       type: object
@@ -652,30 +593,22 @@ components:
       properties:
         name:
           type: string
+          pattern: ^[a-z][a-z0-9-]*$
           minLength: 1
-          maxLength: 128
-          examples:
-            - go-concurrency
+          maxLength: 255
         description:
           type: string
           maxLength: 500
-          examples:
-            - Patterns for safe concurrency in Go
         content:
           type: string
           minLength: 1
           maxLength: 10240
-          examples:
-            - '# Go Concurrency Patterns\n\n## Goroutines\n\n...'
         tags:
           type: array
           maxItems: 20
           items:
             type: string
           default: []
-          examples:
-            - - go
-              - concurrency
         agent_associations:
           type: array
           items:
@@ -684,15 +617,16 @@ components:
 
     PatternUpdate:
       type: object
-      description: Request body for updating an existing pattern
+      description: Request body for updating a pattern (full replacement)
       required:
         - name
         - content
       properties:
         name:
           type: string
+          pattern: ^[a-z][a-z0-9-]*$
           minLength: 1
-          maxLength: 128
+          maxLength: 255
         description:
           type: string
           maxLength: 500
@@ -716,20 +650,21 @@ components:
       required:
         - id
         - name
+        - enrichment_status
         - created_at
         - updated_at
       properties:
         id:
           type: string
           format: uuid
-          examples:
-            - 550e8400-e29b-41d4-a716-446655440001
         name:
           type: string
           examples:
             - go-error-handling
         description:
-          type: string
+          type:
+            - string
+            - "null"
           examples:
             - Best practices for error handling in Go
         tags:
@@ -740,20 +675,22 @@ components:
             - - go
               - errors
               - best-practices
+        enrichment_status:
+          type: string
+          enum:
+            - pending
+            - enriched
+            - failed
         created_at:
           type: string
           format: date-time
-          examples:
-            - "2024-01-10T08:00:00Z"
         updated_at:
           type: string
           format: date-time
-          examples:
-            - "2024-01-10T08:00:00Z"
 
     PatternList:
       type: object
-      description: Paginated list of patterns
+      description: Paginated list of pattern summaries
       required:
         - data
         - pagination
@@ -765,395 +702,291 @@ components:
         pagination:
           $ref: "#/components/schemas/Pagination"
 
-    # ==================== Routing Schemas ====================
-    RouteContext:
+    PatternSearchResult:
       type: object
-      description: Optional context for routing decisions
-      properties:
-        working_directory:
-          type: string
-          description: Current working directory path
-          examples:
-            - /Users/dev/myproject
-        file_types:
-          type: array
-          description: File extensions present in the project
-          items:
-            type: string
-          examples:
-            - - go
-              - mod
-        recent_agents:
-          type: array
-          description: Recently used agent names for affinity
-          items:
-            type: string
-          examples:
-            - - go-architect
-
-    RouteOptions:
-      type: object
-      description: Options for routing behavior
-      properties:
-        include_patterns:
-          type: boolean
-          description: Include relevant patterns in response
-          default: true
-        max_patterns:
-          type: integer
-          description: Maximum number of patterns to return
-          minimum: 1
-          maximum: 20
-          default: 5
-        pattern_relevance_threshold:
-          type: number
-          format: double
-          description: Minimum relevance score for patterns (0-1)
-          minimum: 0
-          maximum: 1
-          default: 0.7
-
-    RouteRequest:
-      type: object
-      description: Request body for routing a prompt
-      required:
-        - prompt
-      properties:
-        prompt:
-          type: string
-          description: User prompt for routing decision
-          minLength: 1
-          maxLength: 10000
-          examples:
-            - Write a Go function to calculate fibonacci numbers
-        context:
-          $ref: "#/components/schemas/RouteContext"
-        options:
-          $ref: "#/components/schemas/RouteOptions"
-
-    RoutingDecision:
-      type: object
-      description: Routing decision details
-      required:
-        - matched
-      properties:
-        matched:
-          type: boolean
-          description: Whether a routing rule matched the prompt. When false, all other fields are absent.
-        agent_name:
-          type: string
-          description: Selected agent identifier (present only when matched is true)
-          examples:
-            - go-software-agent
-        confidence:
-          type: number
-          format: double
-          description: Routing confidence score (0-1, present only when matched is true)
-          minimum: 0
-          maximum: 1
-          examples:
-            - 1.0
-        method:
-          type: string
-          description: Routing method used (present only when matched is true)
-          enum:
-            - MatchMethodKeyword
-            - MatchMethodRegex
-            - MatchMethodPattern
-          examples:
-            - MatchMethodKeyword
-        matched_keywords:
-          type: array
-          description: Keywords that triggered the route (for MatchMethodKeyword)
-          items:
-            type: string
-          examples:
-            - - go
-              - function
-        reasoning:
-          type: string
-          description: Human-readable routing explanation (present only when matched is true)
-          examples:
-            - "Matched keywords: go, function"
-
-    RoutePatternResult:
-      type: object
-      description: Pattern included in routing response
-      required:
-        - name
-        - content
-        - relevance_score
-      properties:
-        name:
-          type: string
-          examples:
-            - go-error-handling
-        content:
-          type: string
-          examples:
-            - '# Go Error Handling Pattern\n\nAlways check errors...'
-        relevance_score:
-          type: number
-          format: double
-          minimum: 0
-          maximum: 1
-          examples:
-            - 0.95
-        tags:
-          type: array
-          items:
-            type: string
-          examples:
-            - - go
-              - errors
-              - best-practices
-
-    RouteMetadata:
-      type: object
-      description: Timing and debugging information
-      properties:
-        routing_duration_ms:
-          type: integer
-          description: Time spent on routing decision in milliseconds
-          examples:
-            - 12
-        pattern_retrieval_duration_ms:
-          type: integer
-          description: Time spent retrieving patterns in milliseconds
-          examples:
-            - 45
-        total_patterns_considered:
-          type: integer
-          description: Total patterns evaluated during retrieval
-          examples:
-            - 23
-
-    RouteResponse:
-      type: object
-      description: Complete routing response with agent and patterns
-      required:
-        - routing
-      properties:
-        routing:
-          $ref: "#/components/schemas/RoutingDecision"
-        agent:
-          $ref: "#/components/schemas/Agent"
-          description: Agent details (present only when routing.matched is true)
-        patterns:
-          type: array
-          description: Relevant patterns (if include_patterns is true and routing.matched is true)
-          items:
-            $ref: "#/components/schemas/RoutePatternResult"
-        metadata:
-          $ref: "#/components/schemas/RouteMetadata"
-
-    # ==================== Routing Rule Schemas ====================
-    MatchType:
-      type: string
-      description: |
-        Type of matching logic for the routing rule.
-        - `keyword`: Match against a list of keywords
-        - `regex`: Match using regular expression
-        - `pattern`: Semantic pattern matching using pattern IDs
-      enum:
-        - keyword
-        - regex
-        - pattern
-
-    KeywordMatchConfig:
-      type: object
-      description: Configuration for keyword-based matching
-      required:
-        - keywords
-        - match_mode
-      properties:
-        keywords:
-          type: array
-          description: Keywords to match against the prompt
-          minItems: 1
-          items:
-            type: string
-          examples:
-            - - go
-              - golang
-              - go function
-        match_mode:
-          type: string
-          description: |
-            How keywords are matched.
-            - `any`: Match if any keyword is found
-            - `all`: Match only if all keywords are found
-          enum:
-            - any
-            - all
-          examples:
-            - any
-
-    RegexMatchConfig:
-      type: object
-      description: Configuration for regex-based matching
-      required:
-        - pattern
-      properties:
-        pattern:
-          type: string
-          description: Regular expression pattern
-          examples:
-            - '\b(go|golang)\b.*\b(function|method)\b'
-        flags:
-          type: string
-          description: Regex flags (e.g., 'i' for case-insensitive)
-          examples:
-            - i
-
-    PatternMatchConfig:
-      type: object
-      description: Configuration for semantic pattern matching
-      required:
-        - pattern_ids
-      properties:
-        pattern_ids:
-          type: array
-          description: Pattern IDs for semantic matching
-          items:
-            type: string
-            format: uuid
-
-    RoutingRule:
-      type: object
-      description: Routing rule definition
+      description: A single search result with similarity score
       required:
         - id
         - name
-        - priority
-        - agent_name
-        - match_type
-        - match_config
-        - enabled
-        - created_at
-        - updated_at
+        - content
+        - similarity
       properties:
         id:
           type: string
           format: uuid
-          description: Unique identifier
-          readOnly: true
-          examples:
-            - 550e8400-e29b-41d4-a716-446655440002
         name:
           type: string
-          description: Human-readable rule name
-          minLength: 1
-          maxLength: 128
-          examples:
-            - go-keyword-match
-        priority:
-          type: integer
-          description: Evaluation order (higher priority rules evaluated first)
-          minimum: 0
-          maximum: 1000
-          examples:
-            - 100
-        agent_name:
+        description:
+          type:
+            - string
+            - "null"
+        content:
           type: string
-          description: Target agent when rule matches
+        tags:
+          type: array
+          items:
+            type: string
+        similarity:
+          type: number
+          format: double
+          minimum: 0.0
+          maximum: 1.0
+          description: Cosine similarity score
+        agent_associations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentAssociation"
+
+    PatternSearchResponse:
+      type: object
+      description: Semantic search results with metadata
+      required:
+        - results
+        - metadata
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/PatternSearchResult"
+        metadata:
+          type: object
+          required:
+            - query
+            - total_candidates
+            - search_duration_ms
+          properties:
+            query:
+              type: string
+              description: The search query (echoed)
+            total_candidates:
+              type: integer
+              description: Total patterns evaluated
+            search_duration_ms:
+              type: integer
+              description: Search duration in milliseconds
+
+    PatternAgentAssociations:
+      type: object
+      description: Agent associations for a pattern
+      required:
+        - associations
+      properties:
+        associations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentAssociation"
+
+    # ==================== Skill Schemas ====================
+    Skill:
+      type: object
+      description: |
+        Full skill definition including content and child resource counts.
+        Aligns with the Agent Skills specification (https://agentskills.io/specification).
+      required:
+        - name
+        - description
+        - content
+        - version
+        - created_at
+        - updated_at
+      properties:
+        name:
+          type: string
+          description: |
+            Unique identifier. Lowercase letters, numbers, and single hyphens.
+            No leading/trailing hyphens, no consecutive hyphens.
+          pattern: ^[a-z]([a-z0-9](-[a-z0-9])*)*$
+          minLength: 1
+          maxLength: 64
           examples:
-            - go-software-agent
-        match_type:
-          $ref: "#/components/schemas/MatchType"
-        match_config:
-          oneOf:
-            - $ref: "#/components/schemas/KeywordMatchConfig"
-            - $ref: "#/components/schemas/RegexMatchConfig"
-            - $ref: "#/components/schemas/PatternMatchConfig"
-          description: Type-specific configuration
-        enabled:
-          type: boolean
-          description: Whether the rule is active
-          default: true
+            - mnemonic-sync
+        description:
+          type: string
+          description: Human-readable description of the skill's purpose
+          minLength: 1
+          maxLength: 1024
+          examples:
+            - Synchronize agents, skills, and commands from Mnemonic
+        content:
+          type: string
+          minLength: 1
+          maxLength: 524288
+          description: Skill content (markdown body from SKILL.md, up to 512KB)
+        tags:
+          type: array
+          description: Mnemonic-specific tags for filtering
+          maxItems: 20
+          items:
+            type: string
+          default: []
+          examples:
+            - - sync
+              - infrastructure
+        license:
+          type:
+            - string
+            - "null"
+          maxLength: 255
+          description: License identifier (e.g., "MIT", "Apache-2.0")
+          examples:
+            - MIT
+        compatibility:
+          type:
+            - string
+            - "null"
+          maxLength: 500
+          description: Compatibility notes (e.g., supported platforms, required tools)
+          examples:
+            - "Claude Code 1.0+"
+        metadata:
+          type:
+            - object
+            - "null"
+          description: Arbitrary key-value metadata (string keys, string values)
+          additionalProperties:
+            type: string
+          examples:
+            - author: "team-platform"
+              category: "infrastructure"
+        allowed_tools:
+          type: array
+          description: Tool names the skill is allowed to use (experimental, from Agent Skills spec `allowed-tools`)
+          maxItems: 50
+          items:
+            type: string
+          default: []
+          examples:
+            - - Read
+              - Write
+              - Bash
+        version:
+          type: string
+          minLength: 1
+          maxLength: 50
+          examples:
+            - "1.0.0"
+        files:
+          type: object
+          description: Summary counts of child resources (scripts, references, assets)
+          readOnly: true
+          properties:
+            scripts_count:
+              type: integer
+              description: Number of script files attached to this skill
+            references_count:
+              type: integer
+              description: Number of reference files attached to this skill
+            assets_count:
+              type: integer
+              description: Number of asset files attached to this skill
         created_at:
           type: string
           format: date-time
           readOnly: true
-          examples:
-            - "2024-01-10T08:00:00Z"
         updated_at:
           type: string
           format: date-time
           readOnly: true
-          examples:
-            - "2024-01-10T08:00:00Z"
 
-    RoutingRuleCreate:
+    SkillCreate:
       type: object
-      description: Request body for creating a new routing rule
+      description: Request body for creating a new skill
       required:
         - name
-        - priority
-        - agent_name
-        - match_type
-        - match_config
+        - description
+        - content
+        - version
       properties:
         name:
           type: string
+          pattern: ^[a-z]([a-z0-9](-[a-z0-9])*)*$
           minLength: 1
-          maxLength: 128
-          examples:
-            - rust-keyword-match
-        priority:
-          type: integer
-          minimum: 0
-          maximum: 1000
-          examples:
-            - 100
-        agent_name:
+          maxLength: 64
+        description:
           type: string
-          examples:
-            - rust-software-agent
-        match_type:
-          $ref: "#/components/schemas/MatchType"
-        match_config:
-          oneOf:
-            - $ref: "#/components/schemas/KeywordMatchConfig"
-            - $ref: "#/components/schemas/RegexMatchConfig"
-            - $ref: "#/components/schemas/PatternMatchConfig"
-        enabled:
-          type: boolean
-          default: true
+          minLength: 1
+          maxLength: 1024
+        content:
+          type: string
+          minLength: 1
+          maxLength: 524288
+        tags:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+          default: []
+        license:
+          type: string
+          maxLength: 255
+        compatibility:
+          type: string
+          maxLength: 500
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        allowed_tools:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+          default: []
+        version:
+          type: string
+          minLength: 1
+          maxLength: 50
 
-    RoutingRuleUpdate:
+    SkillUpdate:
       type: object
-      description: Request body for updating a routing rule
+      description: Request body for updating a skill (full replacement). Name in body must match path parameter or be omitted.
       required:
-        - name
-        - priority
-        - agent_name
-        - match_type
-        - match_config
+        - description
+        - content
+        - version
       properties:
         name:
           type: string
+          description: Must match the path parameter (or be omitted)
+          pattern: ^[a-z]([a-z0-9](-[a-z0-9])*)*$
           minLength: 1
-          maxLength: 128
-        priority:
-          type: integer
-          minimum: 0
-          maximum: 1000
-        agent_name:
+          maxLength: 64
+        description:
           type: string
-        match_type:
-          $ref: "#/components/schemas/MatchType"
-        match_config:
-          oneOf:
-            - $ref: "#/components/schemas/KeywordMatchConfig"
-            - $ref: "#/components/schemas/RegexMatchConfig"
-            - $ref: "#/components/schemas/PatternMatchConfig"
-        enabled:
-          type: boolean
+          minLength: 1
+          maxLength: 1024
+        content:
+          type: string
+          minLength: 1
+          maxLength: 524288
+        tags:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+        license:
+          type: string
+          maxLength: 255
+        compatibility:
+          type: string
+          maxLength: 500
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        allowed_tools:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+        version:
+          type: string
+          minLength: 1
+          maxLength: 50
 
-    RoutingRuleList:
+    SkillList:
       type: object
-      description: Paginated list of routing rules
+      description: Paginated list of skills
       required:
         - data
         - pagination
@@ -1161,75 +994,317 @@ components:
         data:
           type: array
           items:
-            $ref: "#/components/schemas/RoutingRule"
+            $ref: "#/components/schemas/Skill"
         pagination:
           $ref: "#/components/schemas/Pagination"
 
-    # ==================== Health/Operational Schemas ====================
-    HealthStatus:
-      type: string
-      description: Overall health status
-      enum:
-        - healthy
-        - unhealthy
+    # ==================== Skill File Schemas ====================
+    SkillFile:
+      type: object
+      description: A file (script, reference, or asset) belonging to a skill
+      required:
+        - filename
+        - content_type
+        - size
+        - created_at
+        - updated_at
+      properties:
+        filename:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*$
+          maxLength: 255
+          description: File name within the skill directory (e.g., "extract.py", "REFERENCE.md")
+        content_type:
+          type: string
+          maxLength: 128
+          description: MIME type (e.g., "text/x-python", "text/markdown", "image/png")
+        content:
+          type: string
+          description: File content. Text files as UTF-8 string, binary files as base64-encoded string.
+        encoding:
+          type: string
+          enum:
+            - utf-8
+            - base64
+          default: utf-8
+          description: Content encoding. Use base64 for binary assets.
+        size:
+          type: integer
+          readOnly: true
+          description: File size in bytes
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    SkillFileCreate:
+      type: object
+      description: Request body for uploading a file to a skill
+      required:
+        - filename
+        - content_type
+        - content
+      properties:
+        filename:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*$
+          maxLength: 255
+        content_type:
+          type: string
+          maxLength: 128
+        content:
+          type: string
+          description: File content (UTF-8 text or base64-encoded binary)
+        encoding:
+          type: string
+          enum:
+            - utf-8
+            - base64
+          default: utf-8
+
+    SkillFileUpdate:
+      type: object
+      description: Request body for replacing a file in a skill
+      required:
+        - content_type
+        - content
+      properties:
+        content_type:
+          type: string
+          maxLength: 128
+        content:
+          type: string
+        encoding:
+          type: string
+          enum:
+            - utf-8
+            - base64
+          default: utf-8
+
+    SkillFileSummary:
+      type: object
+      description: File metadata without content (for list responses)
+      required:
+        - filename
+        - content_type
+        - size
+        - created_at
+        - updated_at
+      properties:
+        filename:
+          type: string
+        content_type:
+          type: string
+        size:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    SkillFileList:
+      type: object
+      description: List of file summaries for a skill child collection
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SkillFileSummary"
+
+    # ==================== Command Schemas ====================
+    Command:
+      type: object
+      description: Full command definition including content
+      required:
+        - name
+        - content
+        - version
+        - created_at
+        - updated_at
+      properties:
+        name:
+          type: string
+          pattern: ^[a-z][a-z0-9-]*$
+          minLength: 1
+          maxLength: 255
+          examples:
+            - prime
+        description:
+          type:
+            - string
+            - "null"
+          maxLength: 500
+          examples:
+            - Initialize a Claude Code session with project context
+        content:
+          type: string
+          minLength: 1
+          maxLength: 51200
+          description: Command content (markdown, up to 50KB)
+        tags:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+          default: []
+        version:
+          type: string
+          minLength: 1
+          maxLength: 50
+          examples:
+            - "1.0.0"
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    CommandCreate:
+      type: object
+      description: Request body for creating a new command
+      required:
+        - name
+        - content
+        - version
+      properties:
+        name:
+          type: string
+          pattern: ^[a-z][a-z0-9-]*$
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 500
+        content:
+          type: string
+          minLength: 1
+          maxLength: 51200
+        tags:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+          default: []
+        version:
+          type: string
+          minLength: 1
+          maxLength: 50
+
+    CommandUpdate:
+      type: object
+      description: Request body for updating a command (full replacement). Name in body must match path parameter or be omitted.
+      required:
+        - content
+        - version
+      properties:
+        name:
+          type: string
+          description: Must match the path parameter (or be omitted)
+          pattern: ^[a-z][a-z0-9-]*$
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 500
+        content:
+          type: string
+          minLength: 1
+          maxLength: 51200
+        tags:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+        version:
+          type: string
+          minLength: 1
+          maxLength: 50
+
+    CommandList:
+      type: object
+      description: Paginated list of commands
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Command"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # ==================== Health/Operations Schemas ====================
+    ComponentHealth:
+      type: object
+      description: Health status of an individual component
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - unhealthy
+          description: Component health status
+        latency_ms:
+          type: integer
+          description: Latency of the health check in milliseconds
 
     HealthResponse:
       type: object
       description: Health check response with component status
       required:
         - status
-        - checks
+        - components
       properties:
         status:
-          $ref: "#/components/schemas/HealthStatus"
-        checks:
-          type: object
-          description: Status of individual components (postgres, pgvector, neo4j)
-          additionalProperties:
-            type: string
-          examples:
-            - postgres: ok
-              pgvector: ok
-              neo4j: ok
-        reason:
           type: string
-          description: Reason for unhealthy status (present when status is unhealthy)
-          examples:
-            - database connection failed
+          enum:
+            - healthy
+            - unhealthy
+        components:
+          type: object
+          properties:
+            postgres:
+              $ref: "#/components/schemas/ComponentHealth"
+            pgvector:
+              $ref: "#/components/schemas/ComponentHealth"
+            neo4j:
+              $ref: "#/components/schemas/ComponentHealth"
 
     VersionResponse:
       type: object
       description: Version and build information
       required:
         - version
-        - api_version
       properties:
         version:
           type: string
-          description: Application version
           examples:
-            - 1.0.0
-        api_version:
+            - "0.15.0"
+        commit:
           type: string
-          description: API version
           examples:
-            - v1
-        build_commit:
-          type: string
-          description: Git commit hash
-          examples:
-            - abc123def
+            - a1b2c3d
         build_time:
           type: string
           format: date-time
-          description: Build timestamp
-          examples:
-            - "2024-01-16T10:00:00Z"
         go_version:
           type: string
-          description: Go runtime version
           examples:
-            - 1.22.0
+            - go1.23.0
 
   responses:
     BadRequest:
@@ -1250,14 +1325,14 @@ components:
             traceId: 550e8400-e29b-41d4-a716-446655440000
             errors:
               - field: name
+                code: INVALID_FORMAT
+                message: "Name must match pattern ^[a-z][a-z0-9-]*$"
+              - field: system_prompt
                 code: REQUIRED
-                message: Agent name is required
-              - field: model
-                code: INVALID_ENUM
-                message: "Model must be one of: sonnet, opus, haiku, inherit"
+                message: System prompt is required
 
     Unauthorized:
-      description: Missing authentication headers
+      description: Missing or invalid API key
       headers:
         X-Request-ID:
           $ref: "#/components/headers/X-Request-ID"
@@ -1269,11 +1344,11 @@ components:
             type: https://mnemonic.example.com/problems/unauthorized
             title: Unauthorized
             status: 401
-            detail: Missing required X-User-ID header
+            detail: Missing or invalid Authorization header
             traceId: 550e8400-e29b-41d4-a716-446655440000
 
     Forbidden:
-      description: Insufficient permissions (admin role required)
+      description: Insufficient permissions (post-MVP)
       headers:
         X-Request-ID:
           $ref: "#/components/headers/X-Request-ID"
@@ -1301,12 +1376,12 @@ components:
             type: https://mnemonic.example.com/problems/not-found
             title: Not Found
             status: 404
-            detail: Agent with name 'unknown-agent' not found
+            detail: "Agent with name 'unknown-agent' not found"
             instance: /v1/api/agents/unknown-agent
             traceId: 550e8400-e29b-41d4-a716-446655440000
 
     Conflict:
-      description: Resource conflict (e.g., duplicate name, referenced by other resources)
+      description: Resource conflict (e.g., duplicate name)
       headers:
         X-Request-ID:
           $ref: "#/components/headers/X-Request-ID"
@@ -1318,28 +1393,56 @@ components:
             type: https://mnemonic.example.com/problems/conflict
             title: Conflict
             status: 409
-            detail: Agent with name 'go-software-agent' already exists
+            detail: "Agent with name 'go-software-engineer' already exists"
             traceId: 550e8400-e29b-41d4-a716-446655440000
 
-    RateLimited:
-      description: Rate limit exceeded
+    LimitExceeded:
+      description: Collection limit exceeded (e.g., max files per skill)
       headers:
         X-Request-ID:
           $ref: "#/components/headers/X-Request-ID"
-        Retry-After:
-          description: Number of seconds to wait before retrying
-          schema:
-            type: integer
-          example: 60
       content:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
           example:
-            type: https://mnemonic.example.com/problems/rate-limited
-            title: Rate Limited
-            status: 429
-            detail: Rate limit exceeded. Please retry after 60 seconds.
+            type: https://mnemonic.example.com/problems/limit-exceeded
+            title: Limit Exceeded
+            status: 422
+            detail: "Skill 'my-skill' already has the maximum of 20 script files"
+            traceId: 550e8400-e29b-41d4-a716-446655440000
+
+    ContentTooLarge:
+      description: Request payload exceeds the size limit for this resource type
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/X-Request-ID"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            type: https://mnemonic.example.com/problems/content-too-large
+            title: Content Too Large
+            status: 413
+            detail: "Script file exceeds maximum size of 1048576 bytes"
+            traceId: 550e8400-e29b-41d4-a716-446655440000
+
+    Gone:
+      description: Endpoint removed in the pivot
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/X-Request-ID"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            type: https://mnemonic.example.com/problems/gone
+            title: Gone
+            status: 410
+            detail: The routing engine has been removed. See the pivot documentation for details.
+            instance: /v1/api/route
             traceId: 550e8400-e29b-41d4-a716-446655440000
 
     InternalError:
@@ -1359,7 +1462,7 @@ components:
             traceId: 550e8400-e29b-41d4-a716-446655440000
 
     ServiceUnavailable:
-      description: Service temporarily unavailable
+      description: A required dependency (PostgreSQL, PGVector, or Neo4j) is unavailable
       headers:
         X-Request-ID:
           $ref: "#/components/headers/X-Request-ID"
@@ -1371,167 +1474,37 @@ components:
             type: https://mnemonic.example.com/problems/service-unavailable
             title: Service Unavailable
             status: 503
-            detail: Database connection unavailable
+            detail: PGVector is not reachable
             traceId: 550e8400-e29b-41d4-a716-446655440000
 
 security:
-  - envoyAuth: []
+  - bearerApiKey: []
 
 paths:
-  # ==================== Routing Endpoints ====================
-  /api/route:
-    post:
-      tags:
-        - Routing
-      summary: Route prompt and retrieve agent with patterns
-      description: |
-        Primary endpoint for ACE CLI. Routes the prompt to an agent and returns
-        the agent definition along with relevant patterns in a single call.
-
-        This endpoint is optimized for the primary use case: ACE CLI needs to route
-        a prompt and get everything needed for execution in minimal API calls.
-
-        **Routing Decision Process:**
-        1. Evaluate routing rules in priority order (highest first)
-        2. First matching rule determines the agent
-        3. If no rules match, return matched: false (client decides next steps)
-        4. Retrieve relevant patterns based on agent and prompt context
-      operationId: routePrompt
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RouteRequest"
-            examples:
-              go_fibonacci:
-                summary: Go development request
-                value:
-                  prompt: Write a Go function to calculate fibonacci numbers
-                  context:
-                    working_directory: /Users/dev/myproject
-                    file_types:
-                      - go
-                      - mod
-                    recent_agents:
-                      - go-architect
-                  options:
-                    include_patterns: true
-                    max_patterns: 5
-                    pattern_relevance_threshold: 0.7
-              simple_prompt:
-                summary: Simple prompt without context
-                value:
-                  prompt: Help me debug this Python script
-      responses:
-        "200":
-          description: Routing decision with agent and patterns
-          headers:
-            X-Request-ID:
-              $ref: "#/components/headers/X-Request-ID"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RouteResponse"
-              examples:
-                go_match:
-                  summary: Successful Go agent match
-                  value:
-                    routing:
-                      matched: true
-                      agent_name: go-software-agent
-                      confidence: 1.0
-                      method: MatchMethodKeyword
-                      matched_keywords:
-                        - go
-                        - function
-                      reasoning: "Matched keywords: go, function"
-                    agent:
-                      name: go-software-agent
-                      description: Expert Go developer agent for writing idiomatic Go code
-                      system_prompt: You are an expert Go developer...
-                      model: sonnet
-                      allowed_tools:
-                        - Read
-                        - Write
-                        - Edit
-                        - Bash
-                        - Glob
-                        - Grep
-                      routing_keywords:
-                        - go
-                        - golang
-                      created_at: "2024-01-15T10:30:00Z"
-                      updated_at: "2024-01-15T10:30:00Z"
-                    patterns:
-                      - name: go-error-handling
-                        content: '# Go Error Handling Pattern\n\nAlways check errors...'
-                        relevance_score: 0.95
-                        tags:
-                          - go
-                          - errors
-                          - best-practices
-                      - name: go-project-structure
-                        content: '# Go Project Structure\n\nOrganize packages by...'
-                        relevance_score: 0.82
-                        tags:
-                          - go
-                          - architecture
-                    metadata:
-                      routing_duration_ms: 12
-                      pattern_retrieval_duration_ms: 45
-                      total_patterns_considered: 23
-                no_match:
-                  summary: No routing rules matched
-                  value:
-                    routing:
-                      matched: false
-                    metadata:
-                      routing_duration_ms: 8
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          description: Matched agent not found in database (data integrity issue)
-          headers:
-            X-Request-ID:
-              $ref: "#/components/headers/X-Request-ID"
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                type: https://mnemonic.example.com/problems/not-found
-                title: Not Found
-                status: 404
-                detail: Agent referenced by routing rule not found
-                traceId: 550e8400-e29b-41d4-a716-446655440000
-        "500":
-          $ref: "#/components/responses/InternalError"
-
   # ==================== Agent Endpoints ====================
-  /api/agents:
+  /v1/api/agents:
     get:
       tags:
         - Agents
-      summary: List all agents
+      summary: List agents
       description: |
-        Returns a paginated list of all agents. The response excludes the
-        system_prompt field for efficiency. Use GET /api/agents/{name} to
-        retrieve the full agent details including system prompt.
+        Returns a paginated list of all agents with full definitions including
+        system prompts. The default page size is 100 since the collection is small
+        (tens of agents).
       operationId: listAgents
       parameters:
-        - $ref: "#/components/parameters/limitParam"
-        - $ref: "#/components/parameters/cursorParam"
-        - name: model
+        - name: limit
           in: query
-          description: Filter agents by model type
+          description: Maximum items per page
           schema:
-            $ref: "#/components/schemas/ModelType"
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - $ref: "#/components/parameters/cursorParam"
       responses:
         "200":
-          description: List of agents
+          description: Paginated list of agents
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
@@ -1541,21 +1514,25 @@ paths:
                 $ref: "#/components/schemas/AgentList"
               example:
                 data:
-                  - name: go-software-agent
-                    description: Expert Go developer agent
+                  - name: go-software-engineer
+                    description: "Implements Go code: functions, packages, tests"
+                    system_prompt: "You are an expert Go engineer..."
                     model: sonnet
-                    created_at: "2024-01-15T10:30:00Z"
-                    updated_at: "2024-01-15T10:30:00Z"
-                  - name: python-software-agent
-                    description: Expert Python developer agent
-                    model: sonnet
-                    created_at: "2024-01-14T09:00:00Z"
-                    updated_at: "2024-01-14T09:00:00Z"
+                    allowed_tools:
+                      - Read
+                      - Write
+                      - Edit
+                      - Bash
+                      - Glob
+                      - Grep
+                    version: "1.2.0"
+                    created_at: "2026-01-15T10:30:00Z"
+                    updated_at: "2026-02-10T14:00:00Z"
                 pagination:
-                  limit: 20
+                  limit: 100
                   cursor: null
-                  next_cursor: eyJpZCI6IjEzMyJ9
-                  has_more: true
+                  next_cursor: null
+                  has_more: false
         "401":
           $ref: "#/components/responses/Unauthorized"
         "500":
@@ -1564,12 +1541,10 @@ paths:
     post:
       tags:
         - Agents
-      summary: Create a new agent
+      summary: Create agent
       description: |
-        Creates a new agent definition. Requires the `admin` role.
-
-        The agent name must be unique and follow the pattern: lowercase letters,
-        numbers, and hyphens, starting with a letter.
+        Creates a new agent definition. The agent name must be unique and follow
+        the pattern: lowercase letters, numbers, and hyphens, starting with a letter.
       operationId: createAgent
       requestBody:
         required: true
@@ -1578,24 +1553,19 @@ paths:
             schema:
               $ref: "#/components/schemas/AgentCreate"
             example:
-              name: rust-software-agent
-              description: Expert Rust developer agent for systems programming
-              system_prompt: You are an expert Rust developer...
+              name: rust-software-engineer
+              description: "Implements Rust code: crates, modules, tests"
+              system_prompt: "You are an expert Rust engineer..."
               model: sonnet
               allowed_tools:
                 - Read
                 - Write
                 - Edit
                 - Bash
-                - Glob
-                - Grep
-              routing_keywords:
-                - rust
-                - cargo
-                - rustc
+              version: "1.0.0"
       responses:
         "201":
-          description: Agent created successfully
+          description: Agent created
           headers:
             Location:
               $ref: "#/components/headers/Location"
@@ -1605,24 +1575,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Agent"
-              example:
-                name: rust-software-agent
-                description: Expert Rust developer agent for systems programming
-                system_prompt: You are an expert Rust developer...
-                model: sonnet
-                allowed_tools:
-                  - Read
-                  - Write
-                  - Edit
-                  - Bash
-                  - Glob
-                  - Grep
-                routing_keywords:
-                  - rust
-                  - cargo
-                  - rustc
-                created_at: "2024-01-16T14:00:00Z"
-                updated_at: "2024-01-16T14:00:00Z"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1634,7 +1586,7 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
-  /api/agents/{name}:
+  /v1/api/agents/{name}:
     parameters:
       - $ref: "#/components/parameters/agentNameParam"
 
@@ -1642,8 +1594,7 @@ paths:
       tags:
         - Agents
       summary: Get agent by name
-      description: |
-        Returns the full agent definition including the system prompt.
+      description: Returns the full agent definition including system prompt.
       operationId: getAgent
       responses:
         "200":
@@ -1656,9 +1607,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Agent"
               example:
-                name: go-software-agent
-                description: Expert Go developer agent for writing idiomatic Go code
-                system_prompt: 'You are an expert Go developer. Follow these principles:\n\n1. Write idiomatic Go code...'
+                name: go-software-engineer
+                description: "Implements Go code: functions, packages, tests"
+                system_prompt: "You are an expert Go engineer..."
                 model: sonnet
                 allowed_tools:
                   - Read
@@ -1667,14 +1618,9 @@ paths:
                   - Bash
                   - Glob
                   - Grep
-                  - LSP
-                routing_keywords:
-                  - go
-                  - golang
-                  - go function
-                  - go package
-                created_at: "2024-01-15T10:30:00Z"
-                updated_at: "2024-01-15T10:30:00Z"
+                version: "1.2.0"
+                created_at: "2026-01-15T10:30:00Z"
+                updated_at: "2026-02-10T14:00:00Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1685,11 +1631,10 @@ paths:
     put:
       tags:
         - Agents
-      summary: Update an agent
+      summary: Update agent
       description: |
-        Updates an existing agent (full replacement). Requires the `admin` role.
-
-        The name in the request body must match the name in the path.
+        Full replacement of an agent definition. The name in the request body
+        must match the path parameter (or be omitted).
       operationId: updateAgent
       requestBody:
         required: true
@@ -1697,22 +1642,9 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/AgentUpdate"
-            example:
-              name: go-software-agent
-              description: Updated description
-              system_prompt: Updated system prompt...
-              model: opus
-              allowed_tools:
-                - Read
-                - Write
-                - Edit
-                - Bash
-              routing_keywords:
-                - go
-                - golang
       responses:
         "200":
-          description: Agent updated successfully
+          description: Agent updated
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
@@ -1734,15 +1666,14 @@ paths:
     delete:
       tags:
         - Agents
-      summary: Delete an agent
+      summary: Delete agent
       description: |
-        Deletes an agent. Requires the `admin` role.
-
-        Returns 409 Conflict if the agent is referenced by routing rules.
+        Deletes an agent. Associated pattern_agent_associations rows are deleted
+        via ON DELETE CASCADE.
       operationId: deleteAgent
       responses:
         "204":
-          description: Agent deleted successfully
+          description: Agent deleted
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
@@ -1752,37 +1683,29 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
-        "409":
-          description: Agent is referenced by routing rules
-          headers:
-            X-Request-ID:
-              $ref: "#/components/headers/X-Request-ID"
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                type: https://mnemonic.example.com/problems/conflict
-                title: Conflict
-                status: 409
-                detail: Agent is referenced by 2 routing rules
-                traceId: 550e8400-e29b-41d4-a716-446655440000
         "500":
           $ref: "#/components/responses/InternalError"
 
   # ==================== Pattern Endpoints ====================
-  /api/patterns:
+  /v1/api/patterns:
     get:
       tags:
         - Patterns
-      summary: List all patterns
+      summary: List patterns
       description: |
-        Returns a paginated list of patterns. The response excludes the
-        content field for efficiency. Use GET /api/patterns/{id} to
-        retrieve the full pattern details including content.
+        Returns paginated pattern summaries (without content). Supports filtering
+        by tags and full-text search on name and description. Use
+        GET /v1/api/patterns/{id} to retrieve full content and graph context.
       operationId: listPatterns
       parameters:
-        - $ref: "#/components/parameters/limitParam"
+        - name: limit
+          in: query
+          description: Maximum items per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
         - $ref: "#/components/parameters/cursorParam"
         - name: tags
           in: query
@@ -1792,13 +1715,13 @@ paths:
           example: go,best-practices
         - name: search
           in: query
-          description: Full-text search in name and content
+          description: Full-text search on name and description
           schema:
             type: string
           example: error handling
       responses:
         "200":
-          description: List of patterns
+          description: Paginated list of pattern summaries
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
@@ -1815,13 +1738,14 @@ paths:
                       - go
                       - errors
                       - best-practices
-                    created_at: "2024-01-10T08:00:00Z"
-                    updated_at: "2024-01-10T08:00:00Z"
+                    enrichment_status: enriched
+                    created_at: "2026-01-10T08:00:00Z"
+                    updated_at: "2026-01-10T08:00:00Z"
                 pagination:
                   limit: 20
                   cursor: null
-                  next_cursor: null
-                  has_more: false
+                  next_cursor: "eyJpZCI6IjU1MGU4NDAw..."
+                  has_more: true
         "401":
           $ref: "#/components/responses/Unauthorized"
         "500":
@@ -1830,9 +1754,10 @@ paths:
     post:
       tags:
         - Patterns
-      summary: Create a new pattern
+      summary: Create pattern
       description: |
-        Creates a new pattern. Requires the `admin` role.
+        Creates a new pattern. Enrichment (embedding generation, concept extraction)
+        runs asynchronously. The response includes enrichment_status: pending.
       operationId: createPattern
       requestBody:
         required: true
@@ -1841,27 +1766,23 @@ paths:
             schema:
               $ref: "#/components/schemas/PatternCreate"
             example:
-              name: go-concurrency
-              description: Patterns for safe concurrency in Go
-              content: '# Go Concurrency Patterns\n\n## Goroutines\n\n...'
+              name: go-error-handling
+              description: Best practices for error handling in Go
+              content: "# Go Error Handling Pattern\n\n..."
               tags:
                 - go
-                - concurrency
+                - errors
+                - best-practices
               agent_associations:
-                - agent_name: go-software-agent
-                  relevance: 0.9
+                - agent_name: go-software-engineer
+                  relevance: 0.95
       responses:
         "202":
           description: |
-            Pattern accepted for processing. The pattern is persisted immediately but background
-            enrichment (embedding generation, entity extraction) is asynchronous. The response
-            includes `enrichment_status: pending` to indicate that enrichment is in progress.
-
-            HTTP 202 is used because while the pattern is stored, it is not yet usable for its
-            primary purpose (semantic search). Patterns with `enrichment_status` other than
-            `enriched` are excluded from search results until enrichment completes.
-
-            See [Pattern Enrichment](../../docs/design/pattern-processing.md) for detailed pipeline behavior.
+            Pattern accepted. The pattern is persisted immediately but background
+            enrichment (embedding generation, concept extraction) is asynchronous.
+            Patterns with enrichment_status other than 'enriched' are excluded from
+            semantic search results until enrichment completes.
           headers:
             Location:
               $ref: "#/components/headers/Location"
@@ -1872,21 +1793,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/Pattern"
               example:
-                id: 550e8400-e29b-41d4-a716-446655440005
-                name: go-concurrency
-                description: Patterns for safe concurrency in Go
-                content: '# Go Concurrency Patterns\n\n## Goroutines\n\n...'
+                id: 550e8400-e29b-41d4-a716-446655440001
+                name: go-error-handling
+                description: Best practices for error handling in Go
+                content: "# Go Error Handling Pattern\n\n..."
                 tags:
                   - go
-                  - concurrency
+                  - errors
+                  - best-practices
                 agent_associations:
-                  - agent_name: go-software-agent
-                    relevance: 0.9
+                  - agent_name: go-software-engineer
+                    relevance: 0.95
                 enrichment_status: pending
                 enrichment_error: null
                 enriched_at: null
-                created_at: "2024-01-16T14:00:00Z"
-                updated_at: "2024-01-16T14:00:00Z"
+                graph: null
+                created_at: "2026-01-10T08:00:00Z"
+                updated_at: "2026-01-10T08:00:00Z"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1898,7 +1821,92 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
-  /api/patterns/{id}:
+  /v1/api/patterns/search:
+    get:
+      tags:
+        - Patterns
+      summary: Semantic search
+      description: |
+        Vector similarity search using PGVector embeddings. Returns ranked results
+        with content and similarity scores. Only patterns with enrichment_status
+        'enriched' appear in results.
+      operationId: searchPatterns
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Natural language search query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 1000
+          example: error handling in Go
+        - name: limit
+          in: query
+          description: Maximum results to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+        - name: threshold
+          in: query
+          description: Minimum similarity score (0.0 to 1.0)
+          schema:
+            type: number
+            format: double
+            minimum: 0.0
+            maximum: 1.0
+            default: 0.7
+        - name: tags
+          in: query
+          description: Comma-separated tags to filter by
+          schema:
+            type: string
+        - name: agent
+          in: query
+          description: Filter to patterns associated with this agent
+          schema:
+            type: string
+          example: go-software-engineer
+      responses:
+        "200":
+          description: Search results ranked by similarity
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatternSearchResponse"
+              example:
+                results:
+                  - id: 550e8400-e29b-41d4-a716-446655440001
+                    name: go-error-handling
+                    description: Best practices for error handling in Go
+                    content: "# Go Error Handling Pattern\n\n## Overview\n\nGo uses explicit error handling..."
+                    tags:
+                      - go
+                      - errors
+                      - best-practices
+                    similarity: 0.92
+                    agent_associations:
+                      - agent_name: go-software-engineer
+                        relevance: 0.95
+                metadata:
+                  query: error handling in Go
+                  total_candidates: 47
+                  search_duration_ms: 23
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /v1/api/patterns/{id}:
     parameters:
       - $ref: "#/components/parameters/patternIdParam"
 
@@ -1907,11 +1915,13 @@ paths:
         - Patterns
       summary: Get pattern by ID
       description: |
-        Returns the full pattern details including content.
+        Returns a single pattern with full content and graph context from Neo4j.
+        The graph field contains related patterns and extracted concepts. If
+        enrichment has not run (status is pending), the graph field is null.
       operationId: getPattern
       responses:
         "200":
-          description: Pattern details
+          description: Pattern with full content and graph context
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
@@ -1923,16 +1933,30 @@ paths:
                 id: 550e8400-e29b-41d4-a716-446655440001
                 name: go-error-handling
                 description: Best practices for error handling in Go
-                content: '# Go Error Handling Pattern\n\n## Overview\n\nGo uses explicit error handling...'
+                content: "# Go Error Handling Pattern\n\n..."
                 tags:
                   - go
                   - errors
                   - best-practices
                 agent_associations:
-                  - agent_name: go-software-agent
+                  - agent_name: go-software-engineer
                     relevance: 0.95
-                created_at: "2024-01-10T08:00:00Z"
-                updated_at: "2024-01-10T08:00:00Z"
+                enrichment_status: enriched
+                enrichment_error: null
+                enriched_at: "2026-01-10T08:05:00Z"
+                graph:
+                  related_patterns:
+                    - id: 550e8400-e29b-41d4-a716-446655440002
+                      name: go-custom-error-types
+                      relationship: RELATED_TO
+                      strength: 0.88
+                  concepts:
+                    - name: error-wrapping
+                      description: Wrapping errors with context using fmt.Errorf and %w
+                    - name: sentinel-errors
+                      description: Package-level error variables for comparison
+                created_at: "2026-01-10T08:00:00Z"
+                updated_at: "2026-01-10T08:00:00Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1943,9 +1967,9 @@ paths:
     put:
       tags:
         - Patterns
-      summary: Update a pattern
+      summary: Update pattern
       description: |
-        Updates an existing pattern (full replacement). Requires the `admin` role.
+        Full replacement. Re-triggers enrichment if content changes.
       operationId: updatePattern
       requestBody:
         required: true
@@ -1955,7 +1979,7 @@ paths:
               $ref: "#/components/schemas/PatternUpdate"
       responses:
         "200":
-          description: Pattern updated successfully
+          description: Pattern updated
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
@@ -1977,13 +2001,11 @@ paths:
     delete:
       tags:
         - Patterns
-      summary: Delete a pattern
-      description: |
-        Deletes a pattern. Requires the `admin` role.
+      summary: Delete pattern
       operationId: deletePattern
       responses:
         "204":
-          description: Pattern deleted successfully
+          description: Pattern deleted
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
@@ -1996,61 +2018,134 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
-  # ==================== Routing Rule Endpoints ====================
-  /api/routing-rules:
+  # ==================== Pattern-Agent Associations ====================
+  /v1/api/patterns/{id}/agents:
+    parameters:
+      - $ref: "#/components/parameters/patternIdParam"
+
     get:
       tags:
-        - Routing Rules
-      summary: List all routing rules
-      description: |
-        Returns a paginated list of routing rules. Rules are evaluated in
-        priority order (higher priority first).
-      operationId: listRoutingRules
-      parameters:
-        - $ref: "#/components/parameters/limitParam"
-        - $ref: "#/components/parameters/cursorParam"
+        - Pattern Associations
+      summary: Get agent associations for a pattern
+      operationId: getPatternAgentAssociations
       responses:
         "200":
-          description: List of routing rules
+          description: Agent associations
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RoutingRuleList"
+                $ref: "#/components/schemas/PatternAgentAssociations"
+              example:
+                associations:
+                  - agent_name: go-software-engineer
+                    relevance: 0.95
+                  - agent_name: go-software-architect
+                    relevance: 0.80
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    put:
+      tags:
+        - Pattern Associations
+      summary: Set agent associations for a pattern
+      description: Replaces all agent associations for a pattern.
+      operationId: setPatternAgentAssociations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatternAgentAssociations"
+            example:
+              associations:
+                - agent_name: go-software-engineer
+                  relevance: 0.95
+                - agent_name: go-software-architect
+                  relevance: 0.80
+      responses:
+        "200":
+          description: Associations updated
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatternAgentAssociations"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ==================== Skill Endpoints ====================
+  /v1/api/skills:
+    get:
+      tags:
+        - Skills
+      summary: List skills
+      description: |
+        Returns all skills with full content. The sync use case requires full
+        content to write to disk. Default page size is 100.
+      operationId: listSkills
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum items per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - $ref: "#/components/parameters/cursorParam"
+        - name: tags
+          in: query
+          description: Comma-separated tags to filter by
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Paginated list of skills with full content
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillList"
               example:
                 data:
-                  - id: 550e8400-e29b-41d4-a716-446655440002
-                    name: go-keyword-match
-                    priority: 100
-                    agent_name: go-software-agent
-                    match_type: keyword
-                    match_config:
-                      keywords:
-                        - go
-                        - golang
-                        - go function
-                      match_mode: any
-                    enabled: true
-                    created_at: "2024-01-10T08:00:00Z"
-                    updated_at: "2024-01-10T08:00:00Z"
-                  - id: 550e8400-e29b-41d4-a716-446655440003
-                    name: python-keyword-match
-                    priority: 100
-                    agent_name: python-software-agent
-                    match_type: keyword
-                    match_config:
-                      keywords:
-                        - python
-                        - py
-                        - pip
-                      match_mode: any
-                    enabled: true
-                    created_at: "2024-01-10T08:00:00Z"
-                    updated_at: "2024-01-10T08:00:00Z"
+                  - name: mnemonic-sync
+                    description: Synchronize agents, skills, and commands from Mnemonic
+                    content: "---\nname: mnemonic-sync\ndescription: Synchronize...\n---\n\nYou are synchronizing..."
+                    tags:
+                      - sync
+                      - infrastructure
+                    license: MIT
+                    compatibility: null
+                    metadata: null
+                    allowed_tools: []
+                    version: "1.0.0"
+                    files:
+                      scripts_count: 1
+                      references_count: 0
+                      assets_count: 0
+                    created_at: "2026-02-01T10:00:00Z"
+                    updated_at: "2026-02-10T14:00:00Z"
                 pagination:
-                  limit: 50
+                  limit: 100
                   cursor: null
                   next_cursor: null
                   has_more: false
@@ -2061,47 +2156,27 @@ paths:
 
     post:
       tags:
-        - Routing Rules
-      summary: Create a new routing rule
-      description: |
-        Creates a new routing rule. Requires the `admin` role.
-      operationId: createRoutingRule
+        - Skills
+      summary: Create skill
+      operationId: createSkill
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RoutingRuleCreate"
-            examples:
-              keyword_rule:
-                summary: Keyword-based routing rule
-                value:
-                  name: rust-keyword-match
-                  priority: 100
-                  agent_name: rust-software-agent
-                  match_type: keyword
-                  match_config:
-                    keywords:
-                      - rust
-                      - cargo
-                      - rustc
-                      - crate
-                    match_mode: any
-                  enabled: true
-              regex_rule:
-                summary: Regex-based routing rule
-                value:
-                  name: go-function-regex
-                  priority: 90
-                  agent_name: go-software-agent
-                  match_type: regex
-                  match_config:
-                    pattern: '\b(go|golang)\b.*\b(function|method|struct)\b'
-                    flags: i
-                  enabled: true
+              $ref: "#/components/schemas/SkillCreate"
+            example:
+              name: code-review
+              description: Multi-agent code review skill
+              content: "---\nname: code-review\n---\n\nYou are reviewing code..."
+              tags:
+                - review
+                - quality
+              license: MIT
+              version: "1.0.0"
       responses:
         "201":
-          description: Routing rule created successfully
+          description: Skill created
           headers:
             Location:
               $ref: "#/components/headers/Location"
@@ -2110,7 +2185,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RoutingRule"
+                $ref: "#/components/schemas/Skill"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -2122,42 +2197,43 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
-  /api/routing-rules/{id}:
+  /v1/api/skills/{name}:
     parameters:
-      - $ref: "#/components/parameters/routingRuleIdParam"
+      - $ref: "#/components/parameters/skillNameParam"
 
     get:
       tags:
-        - Routing Rules
-      summary: Get routing rule by ID
-      description: |
-        Returns the full routing rule details.
-      operationId: getRoutingRule
+        - Skills
+      summary: Get skill by name
+      operationId: getSkill
       responses:
         "200":
-          description: Routing rule details
+          description: Skill details
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RoutingRule"
+                $ref: "#/components/schemas/Skill"
               example:
-                id: 550e8400-e29b-41d4-a716-446655440002
-                name: go-keyword-match
-                priority: 100
-                agent_name: go-software-agent
-                match_type: keyword
-                match_config:
-                  keywords:
-                    - go
-                    - golang
-                    - go function
-                  match_mode: any
-                enabled: true
-                created_at: "2024-01-10T08:00:00Z"
-                updated_at: "2024-01-10T08:00:00Z"
+                name: mnemonic-sync
+                description: Synchronize agents, skills, and commands from Mnemonic
+                content: "---\nname: mnemonic-sync\n..."
+                tags:
+                  - sync
+                  - infrastructure
+                license: MIT
+                compatibility: null
+                metadata: null
+                allowed_tools: []
+                version: "1.0.0"
+                files:
+                  scripts_count: 1
+                  references_count: 0
+                  assets_count: 0
+                created_at: "2026-02-01T10:00:00Z"
+                updated_at: "2026-02-10T14:00:00Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -2167,27 +2243,26 @@ paths:
 
     put:
       tags:
-        - Routing Rules
-      summary: Update a routing rule
-      description: |
-        Updates an existing routing rule (full replacement). Requires the `admin` role.
-      operationId: updateRoutingRule
+        - Skills
+      summary: Update skill
+      description: Full replacement. Name in body must match path parameter.
+      operationId: updateSkill
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RoutingRuleUpdate"
+              $ref: "#/components/schemas/SkillUpdate"
       responses:
         "200":
-          description: Routing rule updated successfully
+          description: Skill updated
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RoutingRule"
+                $ref: "#/components/schemas/Skill"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -2201,14 +2276,12 @@ paths:
 
     delete:
       tags:
-        - Routing Rules
-      summary: Delete a routing rule
-      description: |
-        Deletes a routing rule. Requires the `admin` role.
-      operationId: deleteRoutingRule
+        - Skills
+      summary: Delete skill
+      operationId: deleteSkill
       responses:
         "204":
-          description: Routing rule deleted successfully
+          description: Skill deleted
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
@@ -2221,52 +2294,702 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
-  # ==================== Operational Endpoints ====================
+  # ==================== Skill File Endpoints ====================
+
+  # --- Scripts ---
+  /v1/api/skills/{name}/scripts:
+    parameters:
+      - $ref: "#/components/parameters/skillNameParam"
+
+    get:
+      tags:
+        - Skill Files
+      summary: List scripts for a skill
+      description: |
+        Returns metadata for all script files belonging to the skill.
+        Content is not included; fetch individual files to retrieve content.
+      operationId: listSkillScripts
+      responses:
+        "200":
+          description: List of script file summaries
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillFileList"
+              example:
+                data:
+                  - filename: extract.py
+                    content_type: text/x-python
+                    size: 2048
+                    created_at: "2026-02-15T10:00:00Z"
+                    updated_at: "2026-02-15T10:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    post:
+      tags:
+        - Skill Files
+      summary: Upload script to a skill
+      description: |
+        Uploads a new script file to the skill. The filename must be unique
+        within the skill's scripts collection. Maximum file size: 1MB (1048576 bytes).
+        Maximum 20 script files per skill.
+      operationId: createSkillScript
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillFileCreate"
+            example:
+              filename: extract.py
+              content_type: text/x-python
+              content: "#!/usr/bin/env python3\nimport sys\n\ndef extract():\n    pass\n"
+              encoding: utf-8
+      responses:
+        "201":
+          description: Script uploaded
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillFile"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/ContentTooLarge"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/api/skills/{name}/scripts/{filename}:
+    parameters:
+      - $ref: "#/components/parameters/skillNameParam"
+      - $ref: "#/components/parameters/skillFileNameParam"
+
+    get:
+      tags:
+        - Skill Files
+      summary: Get script by filename
+      description: Returns the script file with content included.
+      operationId: getSkillScript
+      responses:
+        "200":
+          description: Script file with content
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillFile"
+              example:
+                filename: extract.py
+                content_type: text/x-python
+                content: "#!/usr/bin/env python3\nimport sys\n\ndef extract():\n    pass\n"
+                encoding: utf-8
+                size: 54
+                created_at: "2026-02-15T10:00:00Z"
+                updated_at: "2026-02-15T10:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    put:
+      tags:
+        - Skill Files
+      summary: Replace script
+      description: Replaces the content of an existing script file.
+      operationId: updateSkillScript
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillFileUpdate"
+      responses:
+        "200":
+          description: Script replaced
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillFile"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          $ref: "#/components/responses/ContentTooLarge"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    delete:
+      tags:
+        - Skill Files
+      summary: Delete script
+      operationId: deleteSkillScript
+      responses:
+        "204":
+          description: Script deleted
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # --- References ---
+  /v1/api/skills/{name}/references:
+    parameters:
+      - $ref: "#/components/parameters/skillNameParam"
+
+    get:
+      tags:
+        - Skill Files
+      summary: List references for a skill
+      description: |
+        Returns metadata for all reference files belonging to the skill.
+        Content is not included; fetch individual files to retrieve content.
+      operationId: listSkillReferences
+      responses:
+        "200":
+          description: List of reference file summaries
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillFileList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    post:
+      tags:
+        - Skill Files
+      summary: Upload reference to a skill
+      description: |
+        Uploads a new reference file to the skill. Maximum file size: 1MB (1048576 bytes).
+        Maximum 50 reference files per skill.
+      operationId: createSkillReference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillFileCreate"
+            example:
+              filename: REFERENCE.md
+              content_type: text/markdown
+              content: "# Additional Reference\n\nThis document provides..."
+              encoding: utf-8
+      responses:
+        "201":
+          description: Reference uploaded
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillFile"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/ContentTooLarge"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/api/skills/{name}/references/{filename}:
+    parameters:
+      - $ref: "#/components/parameters/skillNameParam"
+      - $ref: "#/components/parameters/skillFileNameParam"
+
+    get:
+      tags:
+        - Skill Files
+      summary: Get reference by filename
+      description: Returns the reference file with content included.
+      operationId: getSkillReference
+      responses:
+        "200":
+          description: Reference file with content
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillFile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    put:
+      tags:
+        - Skill Files
+      summary: Replace reference
+      description: Replaces the content of an existing reference file.
+      operationId: updateSkillReference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillFileUpdate"
+      responses:
+        "200":
+          description: Reference replaced
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillFile"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          $ref: "#/components/responses/ContentTooLarge"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    delete:
+      tags:
+        - Skill Files
+      summary: Delete reference
+      operationId: deleteSkillReference
+      responses:
+        "204":
+          description: Reference deleted
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # --- Assets ---
+  /v1/api/skills/{name}/assets:
+    parameters:
+      - $ref: "#/components/parameters/skillNameParam"
+
+    get:
+      tags:
+        - Skill Files
+      summary: List assets for a skill
+      description: |
+        Returns metadata for all asset files belonging to the skill.
+        Content is not included; fetch individual files to retrieve content.
+      operationId: listSkillAssets
+      responses:
+        "200":
+          description: List of asset file summaries
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillFileList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    post:
+      tags:
+        - Skill Files
+      summary: Upload asset to a skill
+      description: |
+        Uploads a new asset file to the skill. Maximum file size: 5MB (5242880 bytes).
+        Maximum 50 asset files per skill. Use base64 encoding for binary content.
+      operationId: createSkillAsset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillFileCreate"
+            example:
+              filename: template.json
+              content_type: application/json
+              content: "{\"key\": \"value\"}"
+              encoding: utf-8
+      responses:
+        "201":
+          description: Asset uploaded
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillFile"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/ContentTooLarge"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/api/skills/{name}/assets/{filename}:
+    parameters:
+      - $ref: "#/components/parameters/skillNameParam"
+      - $ref: "#/components/parameters/skillFileNameParam"
+
+    get:
+      tags:
+        - Skill Files
+      summary: Get asset by filename
+      description: Returns the asset file with content included.
+      operationId: getSkillAsset
+      responses:
+        "200":
+          description: Asset file with content
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillFile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    put:
+      tags:
+        - Skill Files
+      summary: Replace asset
+      description: Replaces the content of an existing asset file.
+      operationId: updateSkillAsset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillFileUpdate"
+      responses:
+        "200":
+          description: Asset replaced
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillFile"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          $ref: "#/components/responses/ContentTooLarge"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    delete:
+      tags:
+        - Skill Files
+      summary: Delete asset
+      operationId: deleteSkillAsset
+      responses:
+        "204":
+          description: Asset deleted
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ==================== Command Endpoints ====================
+  /v1/api/commands:
+    get:
+      tags:
+        - Commands
+      summary: List commands
+      description: |
+        Returns all commands with full content. Same structure as skills list.
+        Default page size is 100.
+      operationId: listCommands
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum items per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - $ref: "#/components/parameters/cursorParam"
+        - name: tags
+          in: query
+          description: Comma-separated tags to filter by
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Paginated list of commands with full content
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommandList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    post:
+      tags:
+        - Commands
+      summary: Create command
+      operationId: createCommand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommandCreate"
+            example:
+              name: prime
+              description: Initialize a Claude Code session with project context
+              content: "Load the project context and prepare for work..."
+              tags:
+                - initialization
+              version: "1.0.0"
+      responses:
+        "201":
+          description: Command created
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Command"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/api/commands/{name}:
+    parameters:
+      - $ref: "#/components/parameters/commandNameParam"
+
+    get:
+      tags:
+        - Commands
+      summary: Get command by name
+      operationId: getCommand
+      responses:
+        "200":
+          description: Command details
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Command"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    put:
+      tags:
+        - Commands
+      summary: Update command
+      description: Full replacement. Name in body must match path parameter.
+      operationId: updateCommand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommandUpdate"
+      responses:
+        "200":
+          description: Command updated
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Command"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    delete:
+      tags:
+        - Commands
+      summary: Delete command
+      operationId: deleteCommand
+      responses:
+        "204":
+          description: Command deleted
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ==================== Operations Endpoints ====================
   /ops/health:
     get:
       tags:
         - Operations
       summary: Health check
       description: |
-        Combined liveness and readiness check for load balancers and Kubernetes probes.
-        Checks all dependencies (postgres, pgvector, neo4j) and reports their status.
-        Does not require authentication.
+        Returns component health status for PostgreSQL, PGVector, and Neo4j.
+        All three components are required. Returns 503 if any component is
+        unhealthy. No authentication required.
       operationId: healthCheck
       security: []
       responses:
         "200":
-          description: Service is healthy and all dependencies are available
+          description: All components healthy
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
               example:
                 status: healthy
-                checks:
-                  postgres: ok
-                  pgvector: ok
-                  neo4j: ok
+                components:
+                  postgres:
+                    status: healthy
+                    latency_ms: 2
+                  pgvector:
+                    status: healthy
+                  neo4j:
+                    status: healthy
+                    latency_ms: 5
         "503":
-          description: Service is unhealthy (one or more dependencies unavailable)
+          description: One or more components unhealthy
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
               example:
                 status: unhealthy
-                checks:
-                  postgres: ok
-                  pgvector: ok
-                  neo4j: "error: connection refused"
-                reason: neo4j connection failed
+                components:
+                  postgres:
+                    status: healthy
+                    latency_ms: 2
+                  pgvector:
+                    status: healthy
+                  neo4j:
+                    status: unhealthy
 
   /ops/version:
     get:
       tags:
         - Operations
       summary: Version information
-      description: |
-        Returns API version and build information. Does not require authentication.
+      description: Returns build version and metadata. No authentication required.
       operationId: getVersion
       security: []
       responses:
@@ -2277,8 +3000,96 @@ paths:
               schema:
                 $ref: "#/components/schemas/VersionResponse"
               example:
-                version: 1.0.0
-                api_version: v1
-                build_commit: abc123def
-                build_time: "2024-01-16T10:00:00Z"
-                go_version: 1.22.0
+                version: "0.15.0"
+                commit: a1b2c3d
+                build_time: "2026-02-15T10:00:00Z"
+                go_version: go1.23.0
+
+  /ops/metrics:
+    get:
+      tags:
+        - Operations
+      summary: Prometheus metrics
+      description: |
+        Prometheus metrics endpoint. Returns metrics in Prometheus exposition
+        format (text/plain). No authentication required.
+      operationId: getMetrics
+      security: []
+      responses:
+        "200":
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  # ==================== Removed Endpoints (410 Gone) ====================
+  /v1/api/route:
+    post:
+      tags:
+        - Removed
+      summary: "[REMOVED] Route prompt to agent"
+      description: |
+        This endpoint has been removed in the pivot. The routing engine is no
+        longer part of Mnemonic. Returns 410 Gone with an RFC 7807 error body.
+      operationId: routePromptGone
+      deprecated: true
+      responses:
+        "410":
+          $ref: "#/components/responses/Gone"
+
+  /v1/api/routing-rules:
+    get:
+      tags:
+        - Removed
+      summary: "[REMOVED] List routing rules"
+      operationId: listRoutingRulesGone
+      deprecated: true
+      responses:
+        "410":
+          $ref: "#/components/responses/Gone"
+    post:
+      tags:
+        - Removed
+      summary: "[REMOVED] Create routing rule"
+      operationId: createRoutingRuleGone
+      deprecated: true
+      responses:
+        "410":
+          $ref: "#/components/responses/Gone"
+
+  /v1/api/routing-rules/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags:
+        - Removed
+      summary: "[REMOVED] Get routing rule"
+      operationId: getRoutingRuleGone
+      deprecated: true
+      responses:
+        "410":
+          $ref: "#/components/responses/Gone"
+    put:
+      tags:
+        - Removed
+      summary: "[REMOVED] Update routing rule"
+      operationId: updateRoutingRuleGone
+      deprecated: true
+      responses:
+        "410":
+          $ref: "#/components/responses/Gone"
+    delete:
+      tags:
+        - Removed
+      summary: "[REMOVED] Delete routing rule"
+      operationId: deleteRoutingRuleGone
+      deprecated: true
+      responses:
+        "410":
+          $ref: "#/components/responses/Gone"

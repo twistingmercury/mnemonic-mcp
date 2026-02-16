@@ -5,170 +5,216 @@
 ## Table of Contents
 
 - [Overview](#overview)
-- [CLI to Mnemonic Communication](#cli-to-mnemonic-communication)
-  - [REST Endpoints](#rest-endpoints)
+- [Claude Code to MCP Server Communication](#claude-code-to-mcp-server-communication)
+  - [MCP Tools](#mcp-tools)
   - [Request Flow](#request-flow)
   - [Response Structure](#response-structure)
   - [Error Handling](#error-handling)
-- [CLI to Claude Code Communication](#cli-to-claude-code-communication)
+- [Admin to REST API Communication](#admin-to-rest-api-communication)
+  - [REST Endpoints](#rest-endpoints)
+  - [Admin Operations](#admin-operations)
 - [Resilience Patterns](#resilience-patterns)
 - [Security Considerations](#security-considerations)
 
 ## Overview
 
-ACE uses distinct communication patterns for each component boundary.
+Mnemonic uses a dual protocol architecture with distinct communication patterns for each use case.
 
 ```mermaid
 graph LR
     subgraph "Communication Channels"
-        CLI[ACE CLI]
-        MN[Mnemonic]
         CC[Claude Code]
+        ADMIN[Admin Tools]
+        MCP[MCP Server :8081]
+        REST[Admin REST API :8080]
     end
 
-    CLI -->|"REST<br/>Sync"| MN
-    CLI -->|"Local<br/>Subprocess"| CC
+    CC -->|"MCP<br/>Read-only"| MCP
+    ADMIN -->|"REST<br/>CRUD"| REST
 ```
 
-## CLI to Mnemonic Communication
+## Claude Code to MCP Server Communication
 
-The CLI communicates with Mnemonic via REST for routing decisions and pattern retrieval.
+Claude Code communicates with Mnemonic via MCP (Model Context Protocol) for read-only access to team knowledge and tooling.
 
-### REST Endpoints
+### MCP Tools
 
-Mnemonic exposes the following REST endpoints for ACE:
+Mnemonic exposes the following MCP tools for Claude Code (11 total):
 
-| Endpoint                | Method | Purpose                               |
-| ----------------------- | ------ | ------------------------------------- |
-| `/v1/api/route`         | POST   | Deterministic routing based on prompt |
-| `/v1/api/patterns`      | GET    | Pattern retrieval for agent + context |
-| `/v1/api/agents`        | GET    | List available agents                 |
-| `/v1/api/agents/{name}` | GET    | Get agent details                     |
+**Pattern Search:**
 
-> **Note:** This table shows primary endpoints. See the [API Specification](../design/api-specification.md) for the complete endpoint reference including patterns and routing-rules CRUD operations.
+| Tool | Parameters | Purpose |
+| ---- | ---------- | ------- |
+| `search_patterns` | `query: string, limit?: number` | Semantic search over team knowledge graph |
+| `find_related_patterns` | `pattern_id: string, limit?: number` | Find patterns related to a given pattern |
+| `get_pattern` | `id: string` | Retrieve specific pattern by ID |
+
+**Tooling Synchronization:**
+
+| Tool | Parameters | Purpose |
+| ---- | ---------- | ------- |
+| `list_agents` | `limit?: number, offset?: number` | List all available agents |
+| `get_agent` | `name: string` | Get detailed agent information |
+| `list_skills` | `limit?: number, offset?: number` | List all available skills |
+| `get_skill` | `name: string` | Get detailed skill information |
+| `get_skill_files` | `name: string` | Get skill child files (scripts, references, assets) |
+| `list_commands` | `limit?: number, offset?: number` | List all available commands |
+| `get_command` | `name: string` | Get detailed command information |
+| `get_sync_manifest` | None | Get synchronization manifest for tooling |
 
 ### Request Flow
 
 ```mermaid
 sequenceDiagram
-    participant CLI as ACE CLI
-    participant MN as Mnemonic
+    participant User
+    participant CC as Claude Code
+    participant MCP as MCP Server
 
-    CLI->>MN: POST /v1/api/route
-    Note right of MN: Validate request
-    Note right of MN: Apply routing rules
-    Note right of MN: Fetch patterns from storage
-    MN-->>CLI: {agent_name, patterns, metadata}
+    User->>CC: Ask question requiring team knowledge
+    CC->>CC: Determine need for pattern search
 
-    alt Error Case
-        MN-->>CLI: HTTP Error Response
-        Note left of CLI: Handle gracefully
-    end
+    CC->>MCP: search_patterns(query, limit)
+    Note right of MCP: Generate embedding
+    Note right of MCP: Semantic search (PGVector)
+    Note right of MCP: Fetch related patterns (Neo4j)
+    MCP-->>CC: {patterns with context}
+
+    CC->>CC: Incorporate team knowledge
+    CC-->>User: Answer with team context
+```
+
+**Request Characteristics:**
+
+- Synchronous request-response via MCP protocol
+- Read-only access (no mutations)
+- Runs in trusted environment (local network)
+- No authentication for MVP (Phase 1)
+
+### Response Structure
+
+MCP tool responses provide structured data for Claude Code integration.
+
+**Pattern Search Response:**
+
+```json
+{
+  "patterns": [
+    {
+      "id": "uuid",
+      "title": "Pattern title",
+      "content": "Full pattern markdown",
+      "category": "workflow|architecture|practice",
+      "tags": ["tag1", "tag2"],
+      "similarity_score": 0.95,
+      "related_patterns": ["uuid1", "uuid2"]
+    }
+  ]
+}
+```
+
+**Tooling List Response:**
+
+```json
+{
+  "agents": [
+    {
+      "name": "agent-name",
+      "version": "1.0.0",
+      "description": "Agent description",
+      "file_path": "/path/to/agent.yaml"
+    }
+  ]
+}
+```
+
+### Error Handling
+
+Claude Code must handle MCP server errors gracefully.
+
+| Error Type | Meaning | Claude Code Behavior |
+| ---------- | ------- | -------------------- |
+| Tool not found | Unknown MCP tool | Fall back to local knowledge |
+| Invalid parameters | Malformed request | Display error, suggest retry |
+| Server error | Mnemonic unavailable | Continue without team knowledge |
+| Timeout | Request took too long | Display timeout, suggest retry |
+
+## Admin to REST API Communication
+
+Admin tools (curl, scripts) communicate with Mnemonic via REST API for CRUD operations on patterns and tooling.
+
+### REST Endpoints
+
+Mnemonic exposes the following REST endpoints for administration:
+
+**Pattern Management:**
+
+| Endpoint | Method | Purpose |
+| -------- | ------ | ------- |
+| `/v1/api/patterns` | POST | Create new pattern |
+| `/v1/api/patterns` | GET | List all patterns |
+| `/v1/api/patterns/{id}` | GET | Get specific pattern |
+| `/v1/api/patterns/{id}` | PUT | Update pattern |
+| `/v1/api/patterns/{id}` | DELETE | Delete pattern |
+
+**Agent Management:**
+
+| Endpoint | Method | Purpose |
+| -------- | ------ | ------- |
+| `/v1/api/agents` | POST | Create new agent |
+| `/v1/api/agents` | GET | List all agents |
+| `/v1/api/agents/{name}` | GET | Get specific agent |
+| `/v1/api/agents/{name}` | PUT | Update agent |
+| `/v1/api/agents/{name}` | DELETE | Delete agent |
+
+**Skill Management:**
+
+| Endpoint | Method | Purpose |
+| -------- | ------ | ------- |
+| `/v1/api/skills` | POST | Create new skill |
+| `/v1/api/skills` | GET | List all skills |
+| `/v1/api/skills/{name}` | GET | Get specific skill |
+| `/v1/api/skills/{name}` | PUT | Update skill |
+| `/v1/api/skills/{name}` | DELETE | Delete skill |
+
+**Command Management:**
+
+| Endpoint | Method | Purpose |
+| -------- | ------ | ------- |
+| `/v1/api/commands` | POST | Create new command |
+| `/v1/api/commands` | GET | List all commands |
+| `/v1/api/commands/{name}` | GET | Get specific command |
+| `/v1/api/commands/{name}` | PUT | Update command |
+| `/v1/api/commands/{name}` | DELETE | Delete command |
+
+> **Note:** See the [Pivot API Specification](../design/2026-02-15-pivot-api-specification.md) for complete endpoint reference including request/response schemas.
+
+### Admin Operations
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant REST as Admin REST API
+    participant SVC as Service Layer
+    participant DB as Database
+
+    Admin->>REST: POST /v1/api/patterns (JSON)
+    REST->>REST: Validate request
+    REST->>SVC: Create pattern
+    SVC->>SVC: Generate embedding
+    SVC->>DB: Store pattern + embedding
+    DB-->>SVC: Pattern ID
+    SVC->>DB: Create knowledge graph relationships
+    DB-->>SVC: Success
+    SVC-->>REST: Pattern created
+    REST-->>Admin: 201 Created
 ```
 
 **Request Characteristics:**
 
 - Synchronous request-response
-- Contains full prompt for accurate routing decisions
-- Includes context hints for better routing
-- Authenticated per team/user
-
-**Request Body for `/v1/api/route`:**
-
-| Field     | Purpose                          |
-| --------- | -------------------------------- |
-| `prompt`  | Full prompt for routing decision |
-| `context` | Domain, task type, preferences   |
-| `options` | Optional routing configuration   |
-
-### Response Structure
-
-The response provides everything the CLI needs for local execution.
-
-**Response Fields:**
-
-| Field        | Purpose                                   |
-| ------------ | ----------------------------------------- |
-| `agent_name` | Which agent to invoke                     |
-| `patterns`   | Retrieved patterns for context enrichment |
-| `hints`      | Suggested parameters for Claude Code      |
-| `metadata`   | Routing rationale for logging/debugging   |
-
-```mermaid
-graph TB
-    subgraph "Response Structure"
-        AGENT[Agent Information]
-        PATTERNS[Pattern Collection]
-        HINTS[Execution Hints]
-        META[Metadata]
-    end
-
-    AGENT --> |"What to invoke"| CLI[CLI Processing]
-    PATTERNS --> |"Context enrichment"| CLI
-    HINTS --> |"How to invoke"| CLI
-    META --> |"Logging/debugging"| CLI
-```
-
-### Error Handling
-
-The CLI must handle Mnemonic errors gracefully.
-
-| HTTP Status   | Meaning      | CLI Behavior                               |
-| ------------- | ------------ | ------------------------------------------ |
-| 400           | Bad Request  | Display validation errors                  |
-| 401           | Unauthorized | Prompt for re-authentication               |
-| 404           | Not Found    | Agent or pattern not found                 |
-| 500           | Server Error | Retry with backoff, then fail gracefully   |
-| Network Error | Unreachable  | Post-MVP: Fallback behavior to be designed |
-
-## CLI to Claude Code Communication
-
-The CLI invokes Claude Code as a local subprocess for execution.
-
-```mermaid
-sequenceDiagram
-    participant CLI as ACE CLI
-    participant CC as Claude Code
-    participant FS as Filesystem
-
-    CLI->>CLI: Build enriched prompt<br/>(route + patterns)
-    CLI->>CC: Invoke with prompt
-
-    loop Execution
-        CC->>FS: Tool operations
-        FS-->>CC: Results
-    end
-
-    CC-->>CLI: Final output
-```
-
-**Invocation Characteristics (per [ADR-003](02-architectural-decisions.md#adr-003-claude-code-integration-strategy)):**
-
-| Aspect           | Detail                                                                 |
-| ---------------- | ---------------------------------------------------------------------- |
-| Method           | Subprocess spawn - CLI invokes Claude Code directly as execution engine |
-| Prompt passing   | CLI constructs enriched prompt (route context + patterns), passes to Claude Code |
-| Output capture   | Claude Code returns results to CLI, which presents them to user        |
-| Timeout handling | Long timeout with progress indication (see [Timeout Handling](#timeout-handling)) |
-
-**Context Enrichment:**
-
-The CLI constructs an enriched prompt by combining:
-
-1. Original user prompt
-2. Routing context from Mnemonic
-3. Retrieved patterns
-4. Execution hints
-
-```mermaid
-graph LR
-    USER[User Prompt] --> BUILDER[Prompt Builder]
-    ROUTE[Route Context] --> BUILDER
-    PATTERNS[Patterns] --> BUILDER
-    HINTS[Execution Hints] --> BUILDER
-    BUILDER --> ENRICHED[Enriched Prompt]
-    ENRICHED --> CC[Claude Code]
-```
+- JSON payloads for all operations
+- Authenticated via Envoy + OPA (Phase 2)
+- Idempotent operations where possible
 
 ## Resilience Patterns
 
@@ -176,20 +222,10 @@ graph LR
 
 Each communication channel has timeout considerations.
 
-```mermaid
-graph TB
-    subgraph "Timeout Strategy"
-        CLI_MN[CLI to Mnemonic<br/>5s timeout]
-        CLI_CC[CLI to Claude Code<br/>300s timeout]
-    end
-```
-
-| Channel            | Timeout Strategy                                                                 |
-| ------------------ | -------------------------------------------------------------------------------- |
-| CLI to Mnemonic    | **5s** - fail fast for routing decisions (configurable via `server.timeout`)     |
-| CLI to Claude Code | **300s** (5 minutes) - long timeout for LLM execution with progress indication   |
-
-> **Timeout vs SLO Note:** The 5-second CLI-to-Mnemonic timeout is a ceiling for edge cases (cold starts, network hiccups, container spin-up). Normal operations target sub-100ms latency per the [SLO targets](07-observability-architecture.md#mnemonic-slos). The timeout is intentionally higher than the SLO to avoid false failures during transient conditions while still failing fast enough to provide good user experience.
+| Channel | Timeout Strategy |
+| ------- | ---------------- |
+| Claude Code to MCP | 30s - pattern search with embedding generation |
+| Admin to REST API | 60s - allow for Neo4j relationship creation |
 
 ### Retry Logic
 
@@ -207,51 +243,49 @@ graph TB
 
 - Idempotent operations only
 - Exponential backoff
-- Maximum retry limits
+- Maximum retry limits (3 attempts)
 - Clear failure messaging
 
 ### Fallback Behavior
 
 When components are unavailable:
 
-| Scenario             | Fallback                                   |
-| -------------------- | ------------------------------------------ |
-| Mnemonic unreachable | Post-MVP: Fallback behavior to be designed |
-| Claude Code fails    | Display error, suggest retry               |
+| Scenario | Fallback |
+| -------- | -------- |
+| MCP server unreachable | Claude Code continues without team knowledge |
+| Admin API unavailable | Display error, suggest retry later |
+| Database connection lost | Return 503 Service Unavailable |
 
 ## Security Considerations
 
 ### Data in Transit
 
-| Channel            | Security Requirement               |
-| ------------------ | ---------------------------------- |
-| CLI to Mnemonic    | TLS required; auth to be specified |
-| CLI to Claude Code | Local only, no network             |
+| Channel | Security Requirement |
+| ------- | -------------------- |
+| Claude Code to MCP | Local network (no TLS for MVP) |
+| Admin to REST API | TLS required (Phase 2 with Envoy) |
 
 ### Sensitive Data Handling
 
 ```mermaid
 graph TB
     subgraph "Data Classification"
-        PROMPT[User Prompts<br/>Sent for routing]
-        PATTERNS[Patterns<br/>Team-shared]
-        ROUTES[Routes<br/>Configuration]
-        CREDS[Credentials<br/>CLI only]
+        PATTERNS[Team Patterns<br/>Stored in Mnemonic]
+        TOOLING[Agent/Skill/Command Definitions<br/>Stored in Mnemonic]
+        CREDS[User Credentials<br/>Never leave Claude Code]
     end
 
-    PROMPT -->|"Sent for routing<br/>(not persisted)"| MN[Mnemonic]
-    PATTERNS -->|"Stored in Mnemonic"| MN
-    ROUTES -->|"Managed in Mnemonic"| MN
-    CREDS -->|"Stays local"| CLI[ACE CLI]
+    PATTERNS -->|"Accessible via MCP"| CC[Claude Code]
+    TOOLING -->|"Accessible via MCP"| CC
+    CREDS -->|"Stays local"| CC
 ```
 
 **Key Principles:**
 
-- Full prompts sent to Mnemonic for routing (not persisted)
-- Mnemonic is organization-controlled infrastructure (not a third-party service)
-- Routing accuracy requires full prompt for keyword matching, regex, and semantic similarity
-- Patterns are team-shared (access controlled)
-- Credentials never leave CLI
-- Actual LLM calls go directly from CLI to Anthropic API (not through Mnemonic)
+- User credentials never leave Claude Code
+- Patterns and tooling are team-shared (no user-specific secrets)
+- MCP read-only access prevents accidental data modification
+- Admin API write operations protected by OPA (Phase 2)
+- All LLM calls go directly from Claude Code to Anthropic API
 
 **Next:** [Deployment Architecture](05-deployment-architecture.md)

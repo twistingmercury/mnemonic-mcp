@@ -9,7 +9,7 @@
 - [Embeddings Explained](#embeddings-explained)
 - [The Pattern UUID: The Universal Key](#the-pattern-uuid-the-universal-key)
 - [Data Flow: Pattern Creation and Enrichment](#data-flow-pattern-creation-and-enrichment)
-- [Query Flow: The Routing Pipeline](#query-flow-the-routing-pipeline)
+- [Query Flow: Pattern Search Pipeline](#query-flow-pattern-search-pipeline)
 - [Sequence Diagram](#sequence-diagram)
 - [Summary Table](#summary-table)
 - [Future: Visualization](#future-visualization-possibility)
@@ -18,7 +18,7 @@
 
 ## Overview
 
-Mnemonic uses a polyglot persistence strategy where three complementary databases work together to provide intelligent routing decisions. This document explains how data flows between PostgreSQL, PGVector, and Neo4j during pattern creation and query processing.
+Mnemonic uses a polyglot persistence strategy where three complementary databases work together to provide team knowledge graph storage, semantic search, and relationship traversal. This document explains how data flows between PostgreSQL, PGVector, and Neo4j during pattern creation and query processing.
 
 ## The Three Storage Layers
 
@@ -30,11 +30,13 @@ Each database serves a distinct purpose in the Mnemonic architecture:
 
 **Stores:**
 
-- Agents (name, description, system_prompt, model, allowed_tools)
-- Routing rules (priority, match_type, match_config)
+- Agents (name, definition JSONB, crc64)
+- Skills (name, definition JSONB, crc64)
+- Commands (name, definition JSONB, crc64)
+- Skill files (skill_id, file_type, filename, document JSONB, crc64)
 - Patterns (name, content, tags, enrichment_status)
 - Enrichment jobs (background processing queue)
-- Pattern-Agent associations (with relevance scores)
+- Pattern associations
 
 **Why PostgreSQL:** Mature ecosystem, excellent Go driver support, JSONB for flexible storage, and transactional consistency across entities.
 
@@ -73,9 +75,11 @@ flowchart TB
         subgraph PostgreSQL["PostgreSQL (RDBMS)"]
             PG1["agents"]
             PG2["patterns"]
-            PG3["routing_rules"]
+            PG3["skills"]
             PG4["enrichment_jobs"]
             PG5["Source of Truth"]
+            PG6["commands"]
+            PG7["skill_files"]
         end
 
         subgraph PGVector["PGVector (Vectors)"]
@@ -389,21 +393,21 @@ stateDiagram-v2
     enriched --> [*]
 ```
 
-## Query Flow: The Routing Pipeline
+## Query Flow: Pattern Search Pipeline
 
-This is the core operation: turning a user query into an intelligent routing decision with relevant patterns.
+This is the core operation: turning an MCP tool call into a knowledge graph query that returns ranked pattern results.
 
-### API Request
+### MCP Tool Call
 
-```http
-POST /v1/api/route
-Content-Type: application/json
-
+```json
 {
-  "query": "Help me optimize this SQL query",
-  "context": {
-    "current_file": "src/db/queries.go",
-    "language": "sql"
+  "method": "tools/call",
+  "params": {
+    "name": "search_patterns",
+    "arguments": {
+      "query": "How do I optimize SQL queries?",
+      "max_results": 5
+    }
   }
 }
 ```
@@ -413,15 +417,15 @@ Content-Type: application/json
 **Step 1: Query Embedding (OpenAI)**
 
 ```go
-// Generate embedding for user query
+// Generate embedding for search query
 queryEmbedding := openai.CreateEmbedding(
   model: "text-embedding-3-small",
-  input: "Help me optimize this SQL query",
+  input: "How do I optimize SQL queries?",
 )
 // Returns: vector(1536)
 ```
 
-**Step 2: Pattern Matching (PGVector Similarity Search)**
+**Step 2: Semantic Search (PGVector Similarity Search)**
 
 ```sql
 -- Find patterns semantically similar to query
@@ -445,185 +449,109 @@ id: 550e8400-...002, name: database-indexing, similarity: 0.82
 id: 550e8400-...003, name: query-performance, similarity: 0.78
 ```
 
-**Step 3: Graph Expansion (Neo4j)**
+**Step 3: Graph Traversal (Neo4j)**
 
 ```cypher
-// Find agents connected to these patterns
-MATCH (p:Pattern)-[r:RELEVANT_FOR]->(a:Agent)
+// Find related patterns and concepts
+MATCH (p:Pattern)
 WHERE p.id IN [
   "550e8400-...001",
   "550e8400-...002",
   "550e8400-...003"
 ]
-RETURN a.name,
-       p.id,
-       r.relevance
-ORDER BY r.relevance DESC;
+OPTIONAL MATCH (c:Concept)-[:MENTIONED_IN]->(p)
+OPTIONAL MATCH (p)-[:RELATES_TO]->(related:Pattern)
+RETURN p.id,
+       collect(DISTINCT c.name) AS concepts,
+       collect(DISTINCT related.id) AS related_patterns;
 ```
 
 **Results:**
 
 ```text
-agent: database-agent, pattern: 550e8400-...001, relevance: 0.95
-agent: database-agent, pattern: 550e8400-...002, relevance: 0.88
-agent: go-backend-agent, pattern: 550e8400-...003, relevance: 0.72
+pattern: 550e8400-...001
+  concepts: [sql, query-optimization, performance-tuning]
+  related: [550e8400-...004, 550e8400-...005]
+
+pattern: 550e8400-...002
+  concepts: [indexing, database]
+  related: [550e8400-...001]
 ```
 
-**Graph Boosting:**
-
-```cypher
-// Expand to related concepts for context
-MATCH (p:Pattern)-[:RELEVANT_FOR]->(a:Agent)
-WHERE p.id IN ["550e8400-...001"]
-MATCH (c:Concept)-[:MENTIONED_IN]->(p)
-RETURN c.name, c.type;
-```
-
-**Results:**
-
-```text
-concept: sql, type: technology
-concept: query-optimization, type: practice
-concept: performance-tuning, type: domain
-```
-
-**Step 4: Agent Lookup (PostgreSQL)**
-
-```sql
--- Get full agent configuration
-SELECT name, description, system_prompt, model, allowed_tools
-FROM agents
-WHERE name = 'database-agent';
-```
-
-**Result:**
+**Step 4: Response Assembly**
 
 ```json
 {
-  "name": "database-agent",
-  "description": "Specialist in database design and optimization",
-  "system_prompt": "You are an expert database engineer...",
-  "model": "sonnet",
-  "allowed_tools": ["Read", "Write", "Bash", "Grep"]
-}
-```
-
-**Step 5: Response Assembly**
-
-```json
-{
-  "routing_decision": {
-    "primary_agent": {
-      "name": "database-agent",
-      "confidence": 0.94,
-      "system_prompt": "You are an expert database engineer...",
-      "model": "sonnet",
-      "allowed_tools": ["Read", "Write", "Bash", "Grep"]
-    },
-    "supporting_agents": [
-      {
-        "name": "go-backend-agent",
-        "confidence": 0.72
-      }
-    ]
-  },
-  "relevant_patterns": [
+  "patterns": [
     {
       "id": "550e8400-...001",
       "name": "sql-optimization",
       "content": "Use EXPLAIN ANALYZE to identify slow queries...",
       "similarity": 0.94,
-      "relevance": 0.95
+      "concepts": ["sql", "query-optimization", "performance-tuning"],
+      "related_patterns": ["550e8400-...004", "550e8400-...005"]
     },
     {
       "id": "550e8400-...002",
       "name": "database-indexing",
       "content": "B-tree indexes are optimal for equality and range queries...",
       "similarity": 0.82,
-      "relevance": 0.88
+      "concepts": ["indexing", "database"],
+      "related_patterns": ["550e8400-...001"]
     }
-  ],
-  "concepts": [
-    { "name": "sql", "type": "technology" },
-    { "name": "query-optimization", "type": "practice" }
   ]
 }
 ```
 
-### Back to ACE CLI
-
-The ACE CLI receives this response and injects patterns into the agent's system prompt:
-
-```text
-Original system prompt:
-"You are an expert database engineer..."
-
-Enriched system prompt:
-"You are an expert database engineer...
-
-RELEVANT PATTERNS:
-1. SQL Optimization (relevance: 0.95)
-   Use EXPLAIN ANALYZE to identify slow queries...
-
-2. Database Indexing (relevance: 0.88)
-   B-tree indexes are optimal for equality and range queries...
-
-USER QUERY: Help me optimize this SQL query
-CONTEXT: current_file=src/db/queries.go, language=sql
-"
-```
-
-Then calls Claude Code (Phase 1) or Anthropic API (Phase 2) with the enriched prompt.
+The MCP server returns these ranked patterns to Claude Code, which uses them to inform its responses.
 
 ## Sequence Diagram
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant ACE as ACE CLI
+    participant CC as Claude Code
+    participant MCP as MCP Server
     participant API as Mnemonic API
     participant PGV as PGVector
     participant Neo as Neo4j
     participant PG as PostgreSQL
 
-    User->>ACE: Submit Query
-    ACE->>API: POST /v1/route
+    CC->>MCP: search_patterns tool call
+    MCP->>API: POST /v1/patterns/search
 
     Note over API: Step 1: Generate query embedding<br/>(OpenAI API, not shown)
 
-    API->>PGV: Step 2: Find similar patterns<br/>SELECT ... WHERE similarity > 0.7
-    PGV-->>API: Pattern IDs + scores
+    API->>PGV: Step 2: Semantic search<br/>SELECT ... WHERE similarity > 0.7
+    PGV-->>API: Pattern IDs + similarity scores
 
-    API->>Neo: Step 3: Find related agents<br/>MATCH (p:Pattern)-[:RELEVANT_FOR]->(a)
-    Neo-->>API: Agent names + relevance
+    API->>Neo: Step 3: Graph traversal<br/>MATCH (p:Pattern) related patterns/concepts
+    Neo-->>API: Concepts + relationships
 
-    API->>PG: Step 4: Get agent details<br/>SELECT FROM agents
-    PG-->>API: Agent config
+    API->>PG: Step 4: Pattern details<br/>SELECT FROM patterns
+    PG-->>API: Full pattern content
 
-    API-->>ACE: RouteResponse<br/>(agent + patterns)
+    API-->>MCP: Ranked pattern results
+    MCP-->>CC: Pattern list with metadata
 
-    Note over ACE: Step 5: Inject patterns into prompt<br/>Call Claude Code or Anthropic API
-
-    ACE-->>User: Display Results
+    Note over CC: Uses patterns to inform response
 ```
 
 ## Summary Table
 
-This table shows how each database contributes to the routing decision:
+This table shows how each database contributes to pattern search:
 
-| Step | Database   | Question Asked                   | Query Type        | Returns                         |
-| ---- | ---------- | -------------------------------- | ----------------- | ------------------------------- |
-| 1    | PGVector   | "What knowledge is relevant?"    | Vector similarity | Pattern IDs + content + scores  |
-| 2    | Neo4j      | "Which agents know this?"        | Graph traversal   | Agent names + relevance scores  |
-| 3    | Neo4j      | "What related concepts exist?"   | Graph expansion   | Concept nodes and relationships |
-| 4    | PostgreSQL | "How do I configure this agent?" | Relational lookup | Full agent configuration        |
-| 5    | PostgreSQL | "Get full pattern details"       | Relational lookup | Pattern content and metadata    |
+| Step | Database   | Question Asked                 | Query Type        | Returns                        |
+| ---- | ---------- | ------------------------------ | ----------------- | ------------------------------ |
+| 1    | PGVector   | "What patterns match?"         | Vector similarity | Pattern IDs + similarity score |
+| 2    | Neo4j      | "What concepts are related?"   | Graph traversal   | Concept nodes + relationships  |
+| 3    | Neo4j      | "What patterns are connected?" | Graph expansion   | Related pattern IDs            |
+| 4    | PostgreSQL | "Get full pattern details"     | Relational lookup | Pattern content and metadata   |
 
 **Data Flow Pattern:**
 
-1. PGVector narrows down relevant knowledge (semantic search)
-2. Neo4j discovers connections and relationships (graph traversal)
-3. PostgreSQL provides authoritative details (structured data lookup)
+1. PGVector narrows down relevant patterns (semantic search)
+2. Neo4j discovers concepts and related patterns (graph traversal)
+3. PostgreSQL provides authoritative pattern details (structured data lookup)
 
 ## Future Visualization Possibility
 
@@ -642,7 +570,7 @@ Use dimensionality reduction techniques (t-SNE, UMAP) to project the 1536-dimens
 
 **Potential Benefits:**
 
-- Debug routing decisions (why did this pattern match?)
+- Debug search results (why did this pattern match?)
 - Find knowledge gaps (sparse areas in the embedding space)
 - Validate cluster configuration (are related patterns grouping together?)
 - Visual exploration of the knowledge graph
@@ -657,15 +585,19 @@ This would be particularly useful for understanding and tuning the `lists` and `
 
 ## Future: Admin Tooling
 
-Managing patterns in production requires admin tools - you shouldn't need to run SQL or Cypher directly.
+Managing the knowledge graph in production requires admin tools beyond the core MCP interface.
 
 **Potential API endpoints:**
 
 ```text
-DELETE /v1/admin/patterns/{id}     - Remove single pattern
-POST   /v1/admin/patterns/prune    - Bulk cleanup (by age, tags, etc.)
-GET    /v1/admin/patterns/orphans  - Find patterns with no agent associations
-POST   /v1/admin/patterns/{id}/re-enrich - Re-trigger failed enrichment
+DELETE /v1/patterns/{id}               - Remove single pattern
+POST   /v1/patterns/prune              - Bulk cleanup (by age, tags, etc.)
+GET    /v1/patterns/orphans            - Find patterns with no concept connections
+POST   /v1/patterns/{id}/re-enrich    - Re-trigger failed enrichment
+
+DELETE /v1/agents/{name}               - Remove agent definition
+DELETE /v1/skills/{name}               - Remove skill definition
+DELETE /v1/commands/{name}             - Remove command definition
 ```
 
 **Potential CLI commands:**
@@ -684,6 +616,7 @@ mnemonic admin patterns re-enrich <id>
 - Delete/archive outdated patterns
 - Re-trigger enrichment for failed patterns
 - View the 3D embedding visualization (see Future: Visualization)
+- Manage agent/skill/command definitions
 
 This is a post-MVP feature. The database-level operations work; admin tooling adds a usability layer for operators.
 
@@ -695,20 +628,20 @@ This is a post-MVP feature. The database-level operations work; admin tooling ad
 - **IVFFlat indexes create smart buckets** - Search 10% of patterns by checking nearby clusters only
 - **Division of responsibilities is clear** - OpenAI generates embeddings, PGVector calculates similarity, Mnemonic orchestrates
 - **Enrichment is asynchronous** - Pattern processing happens in background jobs to avoid API latency
-- **Routing is multi-stage** - PGVector finds similar patterns, Neo4j discovers agent connections, PostgreSQL provides details
+- **Pattern search is multi-stage** - PGVector finds similar patterns, Neo4j discovers concept connections, PostgreSQL provides details
 - **PostgreSQL is source of truth** - Other databases contain projections and derived data
 - **Graph relationships add context** - Neo4j expands beyond similarity to include explicit knowledge connections
 
 **Next Steps:**
 
 - Review [Data Architecture](08-data-architecture.md) for detailed schemas and configurations
-- Review [Pattern Processing](../design/pattern-processing.md) for enrichment pipeline implementation
-- Review [Routing Engine](../design/routing-engine.md) for routing algorithm details
+- Review [Pivot API Specification](../design/2026-02-15-pivot-api-specification.md) for API details
+- Review [Data Storage](../design/data-storage.md) for storage implementation details
 
 ---
 
 See also:
 
 - [System Architecture](03-system-architecture.md) for component overview
-- [API Specification](../design/api-specification.md) for REST API details
+- [Pivot API Specification](../design/2026-02-15-pivot-api-specification.md) for REST API details
 - [Deployment Architecture](05-deployment-architecture.md) for scaling patterns

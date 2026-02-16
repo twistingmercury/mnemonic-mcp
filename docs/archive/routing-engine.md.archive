@@ -1,5 +1,13 @@
 # Routing Engine
 
+> **DEPRECATED (2026-02-15):** The routing engine has been removed as part of the
+> architectural pivot to team knowledge graph + tooling synchronization. This document
+> is retained for historical reference only. See [ADR-008](../architecture/02-architectural-decisions.md)
+> for the pivot rationale and [Mnemonic Architectural Pivot](../plans/2026-02-14-mnemonic-pivot-knowledge-sync.md)
+> for the full proposal.
+>
+> For current pattern search design, see [Pattern Processing](pattern-processing.md). For the current architectural vision, see [Pivot Proposal](../plans/2026-02-14-mnemonic-pivot-knowledge-sync.md).
+
 [Back to Architecture Overview](../../architecture/00-overview.md) | [Back to Project README](../../../README.md)
 
 ## Table of Contents

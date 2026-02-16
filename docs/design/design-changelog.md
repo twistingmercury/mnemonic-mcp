@@ -17,6 +17,13 @@ Each entry includes:
 
 ## Change Log
 
+### 2026-02-15: Architectural Pivot
+
+- **Removed:** Routing engine, routing rules, ACE CLI
+- **Added:** MCP server for Claude Code integration, skills/commands storage, Admin REST API
+- **Changed:** Mnemonic's focus from agent routing to team knowledge graph + tooling synchronization
+- **See:** [Pivot Proposal](../plans/2026-02-14-mnemonic-pivot-knowledge-sync.md), [ADR-008](../architecture/02-architectural-decisions.md)
+
 ### 2026-01-28: Phase 3 Observability Implementation
 
 **Design Document**: `observability-implementation.md`
@@ -100,7 +107,7 @@ Each entry includes:
 
 ### 2026-02-10: Phase 12a Pattern Matcher Design Correction
 
-**Design Document**: `routing-engine.md`
+**Design Document**: `routing-engine.md` (archived to `docs/archive/routing-engine.md.archive`)
 
 #### 1. Cosine Similarity Delegation
 

@@ -1343,4 +1343,5 @@ See also:
 
 - [System Architecture](03-system-architecture.md) for component details
 - [Pattern Processing](../design/pattern-processing.md) for enrichment pipeline
+- [Routing Engine](../design/routing-engine.md) for rule evaluation (DEPRECATED - pre-pivot design)
 - [Deployment Architecture](05-deployment-architecture.md) for scaling patterns

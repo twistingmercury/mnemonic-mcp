@@ -669,4 +669,5 @@ classDiagram
 - [System Architecture](../../architecture/03-system-architecture.md) - Component layout
 - [Deployment Architecture](../../architecture/05-deployment-architecture.md) - Deployment environments
 - [Pattern Processing](pattern-processing.md) - OpenAI configuration for enrichment
+- [Routing Engine](routing-engine.md) - DEPRECATED, removed in pivot
 - [Observability Implementation](observability-implementation.md) - otelx integration details

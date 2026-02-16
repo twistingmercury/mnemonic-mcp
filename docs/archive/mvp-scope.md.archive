@@ -1,5 +1,7 @@
 # ACE MVP Scope
 
+> **SUPERSEDED (2026-02-15):** This document describes the original pre-pivot MVP scope focused on agent routing. The project pivoted in February 2026 to focus on team knowledge graph and tooling synchronization. See [Pivot Proposal](2026-02-14-mnemonic-pivot-knowledge-sync.md) for the current vision and [Go Architecture Plan](2026-02-15-go-architecture-plan.md) for current implementation scope. Retained for historical reference.
+
 [Back to Architecture Overview](../architecture/00-overview.md) | [Back to Project README](../../README.md)
 
 ## Executive Summary
