@@ -1,6 +1,6 @@
 # Observability Implementation Design
 
-[Back to Architecture Overview](../../architecture/00-overview.md) | [Back to Project README](../../../README.md)
+[Back to Architecture Overview](../../architecture/README.md) | [Back to Project README](../../../README.md)
 
 **Note:** This document reflects the post-pivot implementation following the architectural change from routing to knowledge graph + tooling sync (see [2026-02-14-mnemonic-pivot-knowledge-sync.md](../plans/2026-02-14-mnemonic-pivot-knowledge-sync.md)).
 
@@ -20,7 +20,7 @@
 
 ## Overview
 
-> **Architecture Reference:** [Observability Architecture](../../architecture/07-observability-architecture.md) | [Requirements - Quality Attributes](../../architecture/01-requirements.md#quality-attributes)
+> **Architecture Reference:** [Observability Architecture](../../architecture/07-observability-architecture.md) | [Requirements - Quality Attributes](../mnemonic-requirements.md#quality-attributes)
 
 This document provides the detailed Go implementation design for Phase 1 (MVP) observability in Mnemonic, as defined in the [Observability Architecture](../../architecture/07-observability-architecture.md).
 
@@ -103,7 +103,7 @@ The `otelgin` package provides the tracing middleware that otelx does not includ
 
 ## Initialization and Configuration
 
-> **Architecture Reference:** [Observability Architecture - Implementation Phases](../../architecture/07-observability-architecture.md#implementation-phases) | [Deployment Architecture - Operational Considerations](../../architecture/05-deployment-architecture.md#operational-considerations)
+> **Architecture Reference:** [Observability Architecture - Implementation Phases](../../architecture/07-observability-architecture.md#implementation-phases) | [Deployment Architecture - Operational Considerations](../../architecture/06-deployment-architecture.md#operational-considerations)
 >
 > **Note:** This configuration aligns with the established patterns in [Configuration Design](configuration.md). Environment variables use the `MNEMONIC_OBSERVABILITY_*` prefix for observability settings.
 
@@ -964,7 +964,7 @@ All log entries automatically include (via otelx):
 
 ## Handler Instrumentation Patterns
 
-> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic) | [Observability Architecture - Key Takeaways](../../architecture/07-observability-architecture.md#key-takeaways)
+> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/02-system-architecture.md#mnemonic) | [Observability Architecture - Key Takeaways](../../architecture/07-observability-architecture.md#key-takeaways)
 
 ### Handler Dependencies (Future Phase)
 
@@ -1089,7 +1089,7 @@ func SetupHandlers(r *gin.Engine, deps *handlers.Dependencies) {
 
 ## Database Instrumentation
 
-> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic) | [Observability Architecture - Metrics (Prometheus)](../../architecture/07-observability-architecture.md#metrics-prometheus)
+> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/02-system-architecture.md#mnemonic) | [Observability Architecture - Metrics (Prometheus)](../../architecture/07-observability-architecture.md#metrics-prometheus)
 
 ### Postgres/PGVector Instrumentation (Future Phase)
 
@@ -1372,7 +1372,7 @@ src/mnemonic/internal/
 
 ## Testing Strategy
 
-> **Architecture Reference:** [Requirements - Success Criteria](../../architecture/01-requirements.md#success-criteria)
+> **Architecture Reference:** [Requirements - Success Criteria](../mnemonic-requirements.md#success-criteria)
 
 ### Unit Testing Observability
 

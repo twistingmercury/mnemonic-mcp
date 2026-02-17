@@ -1,8 +1,8 @@
 # Security Architecture
 
-[Back to Overview](00-overview.md) | [Back to Project README](../../README.md)
+[Back to Overview](README.md) | [Back to Project README](../../README.md)
 
-> **Note:** This document describes Phase 2 (Production Deployment) security architecture. MVP (Phase 1) runs in a trusted environment without authentication.
+> **MVP stance:** Mnemonic runs in a trusted network environment without authentication ([SE-1](../mnemonic-requirements.md#se-1)). The MCP interface is read-only ([SE-4](../mnemonic-requirements.md#se-4)) and database credentials are injected from the runtime environment ([SE-6](../mnemonic-requirements.md#se-6)). This document describes the Post-MVP production security architecture.
 
 ## Table of Contents
 
@@ -577,9 +577,9 @@ graph LR
 | Flexibility   | Standard components enable customization, but more configuration   |
 | Auditability  | Clear separation enables detailed audit trails                     |
 
-**Next:** Return to [Architecture Overview](00-overview.md)
+**Next:** Return to [Architecture Overview](README.md)
 
 See also:
 
-- [System Architecture](03-system-architecture.md) for component details
-- [Deployment Architecture](05-deployment-architecture.md) for deployment patterns
+- [System Architecture](02-system-architecture.md) for component details
+- [Deployment Architecture](06-deployment-architecture.md) for deployment patterns

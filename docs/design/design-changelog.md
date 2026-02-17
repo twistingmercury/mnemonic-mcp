@@ -2,7 +2,7 @@
 
 This document tracks changes to design documents when implementation differs from original design. Each entry explains what changed and why.
 
-> **Architecture Reference:** [Observability Architecture](../architecture/07-observability-architecture.md) | [Deployment Architecture](../architecture/05-deployment-architecture.md)
+> **Architecture Reference:** [Observability Architecture](../architecture/07-observability-architecture.md) | [Deployment Architecture](../architecture/06-deployment-architecture.md)
 
 ## Format
 
@@ -22,7 +22,7 @@ Each entry includes:
 - **Removed:** Routing engine, routing rules, ACE CLI
 - **Added:** MCP server for Claude Code integration, skills/commands storage, Admin REST API
 - **Changed:** Mnemonic's focus from agent routing to team knowledge graph + tooling synchronization
-- **See:** [Pivot Proposal](../plans/2026-02-14-mnemonic-pivot-knowledge-sync.md), [ADR-008](../architecture/02-architectural-decisions.md)
+- **See:** [Pivot Proposal](../plans/2026-02-14-mnemonic-pivot-knowledge-sync.md), [ADR-008](../architecture/00-architectural-decisions.md)
 
 ### 2026-01-28: Phase 3 Observability Implementation
 

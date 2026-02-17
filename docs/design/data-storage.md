@@ -1,6 +1,6 @@
 # Data Storage Implementation
 
-[Back to Architecture Overview](../../architecture/00-overview.md) | [Back to Project README](../../../README.md)
+[Back to Architecture Overview](../../architecture/README.md) | [Back to Project README](../../../README.md)
 
 ## Table of Contents
 
@@ -54,9 +54,9 @@
 
 [Table of Contents](#table-of-contents)
 
-> **Architecture Reference:** [Data Architecture](../../architecture/08-data-architecture.md) | [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic)
+> **Architecture Reference:** [Data Architecture](../../architecture/04-data-architecture.md) | [System Architecture - Mnemonic](../../architecture/02-system-architecture.md#mnemonic)
 
-This document provides implementation details for the Mnemonic data storage layer. It translates the architectural specifications from [Data Architecture](../../architecture/08-data-architecture.md) into concrete SQL migrations, Cypher queries, and Go interface definitions.
+This document provides implementation details for the Mnemonic data storage layer. It translates the architectural specifications from [Data Architecture](../../architecture/04-data-architecture.md) into concrete SQL migrations, Cypher queries, and Go interface definitions.
 
 **Implementation Scope:**
 
@@ -303,7 +303,7 @@ For database-level JSONB schema validation, consider the [pg_jsonschema](https:/
 
 [Table of Contents](#table-of-contents)
 
-> **Architecture Reference:** [Data Architecture - Migration Strategy](../../architecture/08-data-architecture.md#migration-strategy)
+> **Architecture Reference:** [Data Architecture - Migration Strategy](../../architecture/04-data-architecture.md#migration-strategy)
 
 ### Migration File Structure
 
@@ -1021,7 +1021,7 @@ drop table if exists skill_files;
 
 [Table of Contents](#table-of-contents)
 
-> **Architecture Reference:** [Data Architecture - PGVector Configuration](../../architecture/08-data-architecture.md#pgvector-configuration)
+> **Architecture Reference:** [Data Architecture - PGVector Configuration](../../architecture/04-data-architecture.md#pgvector-configuration)
 
 ### Index Selection Guidelines
 
@@ -1142,7 +1142,7 @@ analyze patterns;
 
 [Table of Contents](#table-of-contents)
 
-> **Architecture Reference:** [Data Architecture - Neo4j Graph Model](../../architecture/08-data-architecture.md#neo4j-graph-model)
+> **Architecture Reference:** [Data Architecture - Neo4j Graph Model](../../architecture/04-data-architecture.md#neo4j-graph-model)
 
 ### Schema Constraints
 
@@ -1986,9 +1986,9 @@ export MNEMONIC_DATABASE_NEO4J_DATABASE="neo4j"
 
 **Architecture Documents:**
 
-- [Data Architecture](../../architecture/08-data-architecture.md) - Data model design and storage decisions
-- [System Architecture](../../architecture/03-system-architecture.md) - Component overview
-- [Deployment Architecture](../../architecture/05-deployment-architecture.md) - Deployment patterns
+- [Data Architecture](../../architecture/04-data-architecture.md) - Data model design and storage decisions
+- [System Architecture](../../architecture/02-system-architecture.md) - Component overview
+- [Deployment Architecture](../../architecture/06-deployment-architecture.md) - Deployment patterns
 
 **Design Documents:**
 

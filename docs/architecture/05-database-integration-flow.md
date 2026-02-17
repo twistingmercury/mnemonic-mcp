@@ -1,6 +1,6 @@
 # Database Integration Flow
 
-[Back to Overview](00-overview.md) | [Back to Data Architecture](08-data-architecture.md)
+[Back to Overview](README.md) | [Back to Data Architecture](04-data-architecture.md)
 
 ## Table of Contents
 
@@ -12,8 +12,8 @@
 - [Query Flow: Pattern Search Pipeline](#query-flow-pattern-search-pipeline)
 - [Sequence Diagram](#sequence-diagram)
 - [Summary Table](#summary-table)
-- [Future: Visualization](#future-visualization-possibility)
-- [Future: Admin Tooling](#future-admin-tooling)
+- [Post-MVP: Visualization](#post-mvp-visualization)
+- [Post-MVP: Admin Tooling](#post-mvp-admin-tooling)
 - [Key Takeaways](#key-takeaways)
 
 ## Overview
@@ -553,7 +553,7 @@ This table shows how each database contributes to pattern search:
 2. Neo4j discovers concepts and related patterns (graph traversal)
 3. PostgreSQL provides authoritative pattern details (structured data lookup)
 
-## Future Visualization Possibility
+## Post-MVP: Visualization
 
 While not part of the MVP, there's an interesting opportunity to visualize the embedding space and cluster structure.
 
@@ -583,7 +583,7 @@ Use dimensionality reduction techniques (t-SNE, UMAP) to project the 1536-dimens
 
 This would be particularly useful for understanding and tuning the `lists` and `probes` parameters, or identifying when patterns are poorly distributed across clusters.
 
-## Future: Admin Tooling
+## Post-MVP: Admin Tooling
 
 Managing the knowledge graph in production requires admin tools beyond the core MCP interface.
 
@@ -615,7 +615,7 @@ mnemonic admin patterns re-enrich <id>
 - View enrichment status and errors
 - Delete/archive outdated patterns
 - Re-trigger enrichment for failed patterns
-- View the 3D embedding visualization (see Future: Visualization)
+- View the 3D embedding visualization (see [Post-MVP: Visualization](#post-mvp-visualization))
 - Manage agent/skill/command definitions
 
 This is a post-MVP feature. The database-level operations work; admin tooling adds a usability layer for operators.
@@ -634,7 +634,7 @@ This is a post-MVP feature. The database-level operations work; admin tooling ad
 
 **Next Steps:**
 
-- Review [Data Architecture](08-data-architecture.md) for detailed schemas and configurations
+- Review [Data Architecture](04-data-architecture.md) for detailed schemas and configurations
 - Review [Pivot API Specification](../design/2026-02-15-pivot-api-specification.md) for API details
 - Review [Data Storage](../design/data-storage.md) for storage implementation details
 
@@ -642,6 +642,6 @@ This is a post-MVP feature. The database-level operations work; admin tooling ad
 
 See also:
 
-- [System Architecture](03-system-architecture.md) for component overview
+- [System Architecture](02-system-architecture.md) for component overview
 - [Pivot API Specification](../design/2026-02-15-pivot-api-specification.md) for REST API details
-- [Deployment Architecture](05-deployment-architecture.md) for scaling patterns
+- [Deployment Architecture](06-deployment-architecture.md) for scaling patterns

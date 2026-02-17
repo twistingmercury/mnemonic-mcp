@@ -1,10 +1,10 @@
 # Pattern Enrichment
 
-[Back to Architecture Overview](../../architecture/00-overview.md) | [Back to Project README](../../../README.md)
+[Back to Architecture Overview](../../architecture/README.md) | [Back to Project README](../../../README.md)
 
 ## Overview
 
-> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic) | [ADR-004: Unified Backend with REST API](../../architecture/02-architectural-decisions.md#adr-004-unified-backend-with-rest-api)
+> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/02-system-architecture.md#mnemonic) | [ADR-004: Unified Backend with REST API](../../architecture/00-architectural-decisions.md#adr-004-unified-backend-with-rest-api)
 
 Pattern enrichment transforms raw pattern content into searchable, interconnected knowledge. When a pattern is created or updated, Mnemonic automatically enriches it to enable:
 
@@ -17,7 +17,7 @@ This design is inspired by Cognee's cognify pipeline (chunk, classify, extract, 
 
 ## Enrichment Model
 
-> **Architecture Reference:** [Communication Patterns - Response Structure](../../architecture/04-communication-patterns.md#response-structure)
+> **Architecture Reference:** [Communication Patterns - Response Structure](../../architecture/03-communication-patterns.md#response-structure)
 
 Patterns include enrichment status fields to track processing state:
 
@@ -43,7 +43,7 @@ Pattern:
 
 ## Automatic Enrichment Flow
 
-> **Architecture Reference:** [System Architecture - Data Flow](../../architecture/03-system-architecture.md#data-flow)
+> **Architecture Reference:** [System Architecture - Data Flow](../../architecture/02-system-architecture.md#data-flow)
 
 Enrichment is triggered automatically when a pattern is created or updated. The API responds immediately while enrichment processes asynchronously in the background.
 
@@ -90,7 +90,7 @@ Key characteristics:
 
 ## Enrichment Pipeline
 
-> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic) | [Overview - Core Concept](../../architecture/00-overview.md#core-concept)
+> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/02-system-architecture.md#mnemonic) | [Concept](../mnemonic-concept.md)
 
 ### Write-time Enrichment
 
@@ -282,7 +282,7 @@ Where `graph_score` considers:
 
 ## Enrichment Worker Deployment
 
-> **Architecture Reference:** [Deployment Architecture - Component Deployment](../../architecture/05-deployment-architecture.md#component-deployment) | [Deployment Architecture - Scaling Considerations](../../architecture/05-deployment-architecture.md#scaling-considerations)
+> **Architecture Reference:** [Deployment Architecture - Component Deployment](../../architecture/06-deployment-architecture.md#component-deployment) | [Deployment Architecture - Scaling Considerations](../../architecture/06-deployment-architecture.md#scaling-considerations)
 
 ### In-Process Background Worker
 
@@ -501,7 +501,7 @@ flowchart TB
 
 ## External Service Dependencies
 
-> **Architecture Reference:** [Requirements - Non-Goals](../../architecture/01-requirements.md#non-goals) | [System Architecture - Boundary Definitions](../../architecture/03-system-architecture.md#boundary-definitions)
+> **Architecture Reference:** [Requirements - Non-Goals](../mnemonic-requirements.md#non-goals) | [System Architecture - Boundary Definitions](../../architecture/02-system-architecture.md#boundary-definitions)
 
 Pattern enrichment requires external API calls for embedding generation and entity extraction.
 
@@ -545,7 +545,7 @@ Additional LLM providers (Anthropic, Azure OpenAI) can be added post-MVP if need
 
 ## Configuration Requirements
 
-> **Architecture Reference:** [Deployment Architecture - Operational Considerations](../../architecture/05-deployment-architecture.md#operational-considerations)
+> **Architecture Reference:** [Deployment Architecture - Operational Considerations](../../architecture/06-deployment-architecture.md#operational-considerations)
 
 ### Required Environment Variables
 
@@ -631,7 +631,7 @@ For bulk pattern imports, implement:
 
 ## Deployment Requirements
 
-> **Architecture Reference:** [Deployment Architecture - Infrastructure Requirements](../../architecture/05-deployment-architecture.md#infrastructure-requirements) | [Deployment Architecture - Deployment Topology](../../architecture/05-deployment-architecture.md#deployment-topology)
+> **Architecture Reference:** [Deployment Architecture - Infrastructure Requirements](../../architecture/06-deployment-architecture.md#infrastructure-requirements) | [Deployment Architecture - Deployment Topology](../../architecture/06-deployment-architecture.md#deployment-topology)
 
 ### Infrastructure Checklist
 
@@ -676,7 +676,7 @@ The pattern service should expose a health check that validates enrichment capab
 
 ## Internal Dependencies
 
-> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic)
+> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/02-system-architecture.md#mnemonic)
 
 ### PGVector Configuration
 
@@ -740,6 +740,6 @@ Pattern content:
 
 ## References
 
-- [Architecture Overview](../../architecture/00-overview.md)
-- [System Architecture](../../architecture/03-system-architecture.md) - Storage stack details
+- [Architecture Overview](../../architecture/README.md)
+- [System Architecture](../../architecture/02-system-architecture.md) - Storage stack details
 - [Mnemonic OpenAPI Spec](../../../api/openapi/mnemonic-v1.yaml) - Full API definition

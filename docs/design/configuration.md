@@ -1,6 +1,6 @@
 # Mnemonic Server Configuration
 
-[Back to Architecture Overview](../../architecture/00-overview.md) | [Back to Project README](../../../README.md)
+[Back to Architecture Overview](../../architecture/README.md) | [Back to Project README](../../../README.md)
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@
 
 [Table of Contents](#table-of-contents)
 
-> **Architecture Reference:** [System Architecture - Component Breakdown](../../architecture/03-system-architecture.md#component-breakdown) | [Deployment Architecture - Component Deployment](../../architecture/05-deployment-architecture.md#component-deployment)
+> **Architecture Reference:** [System Architecture - Component Breakdown](../../architecture/02-system-architecture.md#component-breakdown) | [Deployment Architecture - Component Deployment](../../architecture/06-deployment-architecture.md#component-deployment)
 
 The Mnemonic server uses a layered configuration system that supports multiple sources with well-defined precedence. This design enables:
 
@@ -55,7 +55,7 @@ Configuration values are loaded in the following order, with later sources overr
 3. Environment variables (highest priority)
 ```
 
-```mermaid
+```mermaid <!-- JKJ: remove the gradient -->
 flowchart LR
     A[Defaults] --> B[Config File]
     B --> C[Environment]
@@ -77,7 +77,7 @@ flowchart LR
 
 [Table of Contents](#table-of-contents)
 
-> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic) | [Deployment Architecture - Mnemonic](../../architecture/05-deployment-architecture.md#mnemonic)
+> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/02-system-architecture.md#mnemonic) | [Deployment Architecture - Mnemonic](../../architecture/06-deployment-architecture.md#mnemonic)
 
 The Mnemonic server reads configuration from YAML files.
 
@@ -374,7 +374,7 @@ Configuration files are searched in the following order:
 
 [Table of Contents](#table-of-contents)
 
-> **Architecture Reference:** [Security Architecture - Token Storage](../../architecture/06-security-architecture.md#token-storage) | [Communication Patterns - Security Considerations](../../architecture/04-communication-patterns.md#security-considerations)
+> **Architecture Reference:** [Security Architecture - Token Storage](../../architecture/01-security-architecture.md#token-storage) | [Communication Patterns - Security Considerations](../../architecture/03-communication-patterns.md#security-considerations)
 
 ### Secrets Handling
 
@@ -665,8 +665,8 @@ classDiagram
 
 [Table of Contents](#table-of-contents)
 
-- [Architecture Overview](../../architecture/00-overview.md) - System context
-- [System Architecture](../../architecture/03-system-architecture.md) - Component layout
-- [Deployment Architecture](../../architecture/05-deployment-architecture.md) - Deployment environments
+- [Architecture Overview](../../architecture/README.md) - System context
+- [System Architecture](../../architecture/02-system-architecture.md) - Component layout
+- [Deployment Architecture](../../architecture/06-deployment-architecture.md) - Deployment environments
 - [Pattern Processing](pattern-processing.md) - OpenAI configuration for enrichment
 - [Observability Implementation](observability-implementation.md) - otelx integration details

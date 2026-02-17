@@ -1,6 +1,6 @@
 # Communication Patterns
 
-[Back to Overview](00-overview.md) | [Back to Project README](../../README.md)
+[Back to Overview](README.md) | [Back to Project README](../../README.md)
 
 ## Table of Contents
 
@@ -11,7 +11,6 @@
   - [Response Structure](#response-structure)
   - [Error Handling](#error-handling)
 - [Admin to REST API Communication](#admin-to-rest-api-communication)
-  - [REST Endpoints](#rest-endpoints)
   - [Admin Operations](#admin-operations)
 - [Resilience Patterns](#resilience-patterns)
 - [Security Considerations](#security-considerations)
@@ -39,28 +38,27 @@ Claude Code communicates with Mnemonic via MCP (Model Context Protocol) for read
 
 ### MCP Tools
 
-Mnemonic exposes the following MCP tools for Claude Code (11 total):
+Mnemonic exposes the following MCP tools for Claude Code (10 total):
 
 **Pattern Search:**
 
-| Tool | Parameters | Purpose |
-| ---- | ---------- | ------- |
-| `search_patterns` | `query: string, limit?: number` | Semantic search over team knowledge graph |
-| `find_related_patterns` | `pattern_id: string, limit?: number` | Find patterns related to a given pattern |
-| `get_pattern` | `id: string` | Retrieve specific pattern by ID |
+| Tool                    | Parameters                           | Purpose                                   |
+| ----------------------- | ------------------------------------ | ----------------------------------------- |
+| `search_patterns`       | `query: string, limit?: number`      | Semantic search over team knowledge graph |
+| `find_related_patterns` | `pattern_id: string, limit?: number` | Find patterns related to a given pattern  |
+| `get_pattern`           | `id: string`                         | Retrieve specific pattern by ID           |
 
 **Tooling Synchronization:**
 
-| Tool | Parameters | Purpose |
-| ---- | ---------- | ------- |
-| `list_agents` | `limit?: number, offset?: number` | List all available agents |
-| `get_agent` | `name: string` | Get detailed agent information |
-| `list_skills` | `limit?: number, offset?: number` | List all available skills |
-| `get_skill` | `name: string` | Get detailed skill information |
-| `get_skill_files` | `name: string` | Get skill child files (scripts, references, assets) |
-| `list_commands` | `limit?: number, offset?: number` | List all available commands |
-| `get_command` | `name: string` | Get detailed command information |
-| `get_sync_manifest` | None | Get synchronization manifest for tooling |
+| Tool                | Parameters                        | Purpose                                             |
+| ------------------- | --------------------------------- | --------------------------------------------------- |
+| `list_agents`       | `limit?: number, offset?: number` | List all available agents                           |
+| `get_agent`         | `name: string`                    | Get detailed agent information                      |
+| `list_skills`       | `limit?: number, offset?: number` | List all available skills                           |
+| `get_skill`         | `name: string`                    | Get complete skill definition including child files |
+| `list_commands`     | `limit?: number, offset?: number` | List all available commands                         |
+| `get_command`       | `name: string`                    | Get detailed command information                    |
+| `get_sync_manifest` | None                              | Get synchronization manifest for tooling            |
 
 ### Request Flow
 
@@ -88,7 +86,7 @@ sequenceDiagram
 - Synchronous request-response via MCP protocol
 - Read-only access (no mutations)
 - Runs in trusted environment (local network)
-- No authentication for MVP (Phase 1)
+- No authentication (MVP)
 
 ### Response Structure
 
@@ -131,62 +129,18 @@ MCP tool responses provide structured data for Claude Code integration.
 
 Claude Code must handle MCP server errors gracefully.
 
-| Error Type | Meaning | Claude Code Behavior |
-| ---------- | ------- | -------------------- |
-| Tool not found | Unknown MCP tool | Fall back to local knowledge |
-| Invalid parameters | Malformed request | Display error, suggest retry |
-| Server error | Mnemonic unavailable | Continue without team knowledge |
-| Timeout | Request took too long | Display timeout, suggest retry |
+| Error Type         | Meaning               | Claude Code Behavior            |
+| ------------------ | --------------------- | ------------------------------- |
+| Tool not found     | Unknown MCP tool      | Fall back to local knowledge    |
+| Invalid parameters | Malformed request     | Display error, suggest retry    |
+| Server error       | Mnemonic unavailable  | Continue without team knowledge |
+| Timeout            | Request took too long | Display timeout, suggest retry  |
 
 ## Admin to REST API Communication
 
-Admin tools (curl, scripts) communicate with Mnemonic via REST API for CRUD operations on patterns and tooling.
+Admin tools (curl, scripts) communicate with Mnemonic via REST API for CRUD operations on patterns and tooling. The REST API supports full CRUD for agents, skills, commands, and patterns.
 
-### REST Endpoints
-
-Mnemonic exposes the following REST endpoints for administration:
-
-**Pattern Management:**
-
-| Endpoint | Method | Purpose |
-| -------- | ------ | ------- |
-| `/v1/api/patterns` | POST | Create new pattern |
-| `/v1/api/patterns` | GET | List all patterns |
-| `/v1/api/patterns/{id}` | GET | Get specific pattern |
-| `/v1/api/patterns/{id}` | PUT | Update pattern |
-| `/v1/api/patterns/{id}` | DELETE | Delete pattern |
-
-**Agent Management:**
-
-| Endpoint | Method | Purpose |
-| -------- | ------ | ------- |
-| `/v1/api/agents` | POST | Create new agent |
-| `/v1/api/agents` | GET | List all agents |
-| `/v1/api/agents/{name}` | GET | Get specific agent |
-| `/v1/api/agents/{name}` | PUT | Update agent |
-| `/v1/api/agents/{name}` | DELETE | Delete agent |
-
-**Skill Management:**
-
-| Endpoint | Method | Purpose |
-| -------- | ------ | ------- |
-| `/v1/api/skills` | POST | Create new skill |
-| `/v1/api/skills` | GET | List all skills |
-| `/v1/api/skills/{name}` | GET | Get specific skill |
-| `/v1/api/skills/{name}` | PUT | Update skill |
-| `/v1/api/skills/{name}` | DELETE | Delete skill |
-
-**Command Management:**
-
-| Endpoint | Method | Purpose |
-| -------- | ------ | ------- |
-| `/v1/api/commands` | POST | Create new command |
-| `/v1/api/commands` | GET | List all commands |
-| `/v1/api/commands/{name}` | GET | Get specific command |
-| `/v1/api/commands/{name}` | PUT | Update command |
-| `/v1/api/commands/{name}` | DELETE | Delete command |
-
-> **Note:** See the [Pivot API Specification](../design/2026-02-15-pivot-api-specification.md) for complete endpoint reference including request/response schemas.
+> **API Reference:** See the [Pivot API Specification](../design/2026-02-15-pivot-api-specification.md) and the OpenAPI spec (`mnemonic-v1.yaml`) for complete endpoint reference including request/response schemas.
 
 ### Admin Operations
 
@@ -213,7 +167,7 @@ sequenceDiagram
 
 - Synchronous request-response
 - JSON payloads for all operations
-- Authenticated via Envoy + OPA (Phase 2)
+- Unauthenticated (MVP); see [Security Architecture](01-security-architecture.md) for Post-MVP
 - Idempotent operations where possible
 
 ## Resilience Patterns
@@ -222,10 +176,10 @@ sequenceDiagram
 
 Each communication channel has timeout considerations.
 
-| Channel | Timeout Strategy |
-| ------- | ---------------- |
+| Channel            | Timeout Strategy                               |
+| ------------------ | ---------------------------------------------- |
 | Claude Code to MCP | 30s - pattern search with embedding generation |
-| Admin to REST API | 60s - allow for Neo4j relationship creation |
+| Admin to REST API  | 60s - allow for Neo4j relationship creation    |
 
 ### Retry Logic
 
@@ -250,20 +204,20 @@ graph TB
 
 When components are unavailable:
 
-| Scenario | Fallback |
-| -------- | -------- |
-| MCP server unreachable | Claude Code continues without team knowledge |
-| Admin API unavailable | Display error, suggest retry later |
-| Database connection lost | Return 503 Service Unavailable |
+| Scenario                 | Fallback                                     |
+| ------------------------ | -------------------------------------------- |
+| MCP server unreachable   | Claude Code continues without team knowledge |
+| Admin API unavailable    | Display error, suggest retry later           |
+| Database connection lost | Return 503 Service Unavailable               |
 
 ## Security Considerations
 
 ### Data in Transit
 
-| Channel | Security Requirement |
-| ------- | -------------------- |
-| Claude Code to MCP | Local network (no TLS for MVP) |
-| Admin to REST API | TLS required (Phase 2 with Envoy) |
+| Channel            | Security Requirement              |
+| ------------------ | --------------------------------- |
+| Claude Code to MCP | Local network (no TLS for MVP)    |
+| Admin to REST API  | No TLS (MVP); see [Security Architecture](01-security-architecture.md) for Post-MVP |
 
 ### Sensitive Data Handling
 
@@ -285,7 +239,7 @@ graph TB
 - User credentials never leave Claude Code
 - Patterns and tooling are team-shared (no user-specific secrets)
 - MCP read-only access prevents accidental data modification
-- Admin API write operations protected by OPA (Phase 2)
+- Admin API write operations protected by infrastructure-layer auth (Post-MVP)
 - All LLM calls go directly from Claude Code to Anthropic API
 
-**Next:** [Deployment Architecture](05-deployment-architecture.md)
+**Next:** [Deployment Architecture](06-deployment-architecture.md)

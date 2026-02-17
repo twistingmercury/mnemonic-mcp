@@ -12,7 +12,7 @@
 
 ## Step 1: Create ADR for pivot decision
 
-- Add ADR-008 to `/Users/doublej/dev/mnemonic/docs/architecture/02-architectural-decisions.md`
+- Add ADR-008 to `/Users/doublej/dev/mnemonic/docs/architecture/00-architectural-decisions.md`
 - Document: context (routing engine complete but strategy shift), decision (pivot to knowledge graph + MCP), consequences
 - Agent: `technical-writer`
 
@@ -23,13 +23,13 @@
 
 ## Step 3: Update system architecture
 
-- Modify: `/Users/doublej/dev/mnemonic/docs/architecture/03-system-architecture.md`
+- Modify: `/Users/doublej/dev/mnemonic/docs/architecture/02-system-architecture.md`
 - Replace routing architecture diagram with two-listener diagram
 - Agent: `technical-writer`
 
 ## Step 4: Update data architecture
 
-- Modify: `/Users/doublej/dev/mnemonic/docs/architecture/08-data-architecture.md`
+- Modify: `/Users/doublej/dev/mnemonic/docs/architecture/04-data-architecture.md`
 - Add skills and commands schemas, note routing_rules removal, document agents.version addition
 - Agent: `technical-writer`
 

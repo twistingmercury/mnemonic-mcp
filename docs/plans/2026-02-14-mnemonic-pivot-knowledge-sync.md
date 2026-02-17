@@ -12,7 +12,7 @@ This document proposes a fundamental architectural pivot for Mnemonic, shifting 
 
 ### Original Vision (Agent Routing)
 
-The original Mnemonic architecture (see [ADR-001](../architecture/02-architectural-decisions.md#adr-001-orchestrator-model), [ADR-002](../architecture/02-architectural-decisions.md#adr-002-routing-location)) envisioned deterministic agent routing:
+The original Mnemonic architecture (see [ADR-001](../architecture/00-architectural-decisions.md#adr-001-orchestrator-model), [ADR-002](../architecture/00-architectural-decisions.md#adr-002-routing-location)) envisioned deterministic agent routing:
 
 - User sends prompt → Mnemonic routes to appropriate agent
 - Complex routing engine with keyword/regex/pattern matchers
@@ -512,7 +512,7 @@ The following concerns are explicitly deferred to post-MVP:
 
 1. **Pattern governance**: Quality gates, review processes, and conflict resolution for patterns stored in the knowledge graph. MVP assumes a single trusted user as curator.
 
-2. **Admin access control**: Write access to agents/skills/commands/patterns will be scoped to a small set of administrators. MVP runs in a trusted single-user environment, consistent with the existing security architecture deferral (see `docs/architecture/06-security-architecture.md`).
+2. **Admin access control**: Write access to agents/skills/commands/patterns will be scoped to a small set of administrators. MVP runs in a trusted single-user environment, consistent with the existing security architecture deferral (see `docs/architecture/01-security-architecture.md`).
 
 3. **Workflow pattern curation**: Distinguishing workflow patterns (e.g., "sequence for building a new service") from engineering patterns (e.g., "use zerolog for logging") and ensuring workflow patterns - which replace routing for team consistency - are treated as a first-class concern with maintenance ownership.
 
@@ -529,8 +529,8 @@ The following concerns are explicitly deferred to post-MVP:
 
 ## References
 
-- [Original ADR-001: Orchestrator Model](../architecture/02-architectural-decisions.md#adr-001-orchestrator-model)
-- [Original ADR-002: Routing Location](../architecture/02-architectural-decisions.md#adr-002-routing-location)
+- [Original ADR-001: Orchestrator Model](../architecture/00-architectural-decisions.md#adr-001-orchestrator-model)
+- [Original ADR-002: Routing Location](../architecture/00-architectural-decisions.md#adr-002-routing-location)
 - [Pattern Processing](../design/pattern-processing.md) - Core to new vision
 - [MVP Implementation Plan](./mvp-implementation-plan.md) - Phases 1-14 complete
 

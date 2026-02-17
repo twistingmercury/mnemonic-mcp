@@ -1432,10 +1432,10 @@ Before any pivot work begins:
 
 **Files to create/update:**
 
-- ADR-008 in `docs/architecture/02-architectural-decisions.md` -- Pivot decision record
+- ADR-008 in `docs/architecture/00-architectural-decisions.md` -- Pivot decision record
 - ADR-009 -- MCP protocol choice for Claude Code integration
-- `docs/architecture/03-system-architecture.md` -- Architecture diagrams
-- `docs/architecture/08-data-architecture.md` -- Updated schema documentation
+- `docs/architecture/02-system-architecture.md` -- Architecture diagrams
+- `docs/architecture/04-data-architecture.md` -- Updated schema documentation
 - `docs/design/2026-02-15-pivot-api-specification.md` -- Admin API docs
 - `docs/design/mcp-server.md` -- MCP server documentation
 - `CHANGELOG.md` -- Document the pivot
