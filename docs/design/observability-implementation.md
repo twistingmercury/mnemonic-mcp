@@ -127,16 +127,35 @@ Configuration structure from `internal/config/config.go`:
 
 ```go
 type MnemonicConfig struct {
-    Server        ServerConfig
+    Server        ServerConfigs
     Logging       LoggingConfig
     Observability ObservabilityConfig
 }
 
-type ServerConfig struct {
-    AdminHost string
-    AdminPort int
-    MCPHost   string
-    MCPPort   int
+type ServerConfigs struct {
+    Admin AdminServerConfig
+    MCP   MCPServerConfig
+}
+
+type AdminServerConfig struct {
+    Host            string
+    Port            int
+    ReadTimeout     time.Duration
+    WriteTimeout    time.Duration
+    IdleTimeout     time.Duration
+    ShutdownTimeout time.Duration
+    TLS             TLSConfig
+}
+
+type MCPServerConfig struct {
+    Host            string
+    Port            int
+    ReadTimeout     time.Duration
+    WriteTimeout    time.Duration
+    IdleTimeout     time.Duration
+    ShutdownTimeout time.Duration
+    SessionTimeout  time.Duration
+    TLS             TLSConfig
 }
 
 type ObservabilityConfig struct {
@@ -344,10 +363,10 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 
     logger := tel.Logger()
     logger.Info().
-        Str("admin_host", cfg.Server.AdminHost).
-        Int("admin_port", cfg.Server.AdminPort).
-        Str("mcp_host", cfg.Server.MCPHost).
-        Int("mcp_port", cfg.Server.MCPPort).
+        Str("admin_host", cfg.Server.Admin.Host).
+        Int("admin_port", cfg.Server.Admin.Port).
+        Str("mcp_host", cfg.Server.MCP.Host).
+        Int("mcp_port", cfg.Server.MCP.Port).
         Bool("metrics_enabled", cfg.Observability.Metrics.Enabled).
         Bool("tracing_enabled", cfg.Observability.Tracing.Enabled).
         Msg("mnemonic starting")

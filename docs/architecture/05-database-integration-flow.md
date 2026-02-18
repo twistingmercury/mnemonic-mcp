@@ -31,7 +31,6 @@ Each database serves a distinct purpose in the Mnemonic architecture:
 
 - Agents (name, definition JSONB, crc64)
 - Skills (name, definition JSONB, crc64)
-- Commands (name, definition JSONB, crc64)
 - Skill files (skill_id, file_type, filename, document JSONB, crc64)
 - Patterns (name, content, tags, enrichment_status)
 - Enrichment jobs (background processing queue)
@@ -77,8 +76,7 @@ flowchart TB
             PG3["skills"]
             PG4["enrichment_jobs"]
             PG5["Source of Truth"]
-            PG6["commands"]
-            PG7["skill_files"]
+            PG6["skill_files"]
         end
 
         subgraph PGVector["PGVector (Vectors)"]
@@ -492,7 +490,6 @@ POST   /v1/patterns/{id}/re-enrich    - Re-trigger failed enrichment
 
 DELETE /v1/agents/{name}               - Remove agent definition
 DELETE /v1/skills/{name}               - Remove skill definition
-DELETE /v1/commands/{name}             - Remove command definition
 ```
 
 **Potential CLI commands:**
@@ -511,7 +508,7 @@ mnemonic admin patterns re-enrich <id>
 - Delete/archive outdated patterns
 - Re-trigger enrichment for failed patterns
 - View the 3D embedding visualization (see [Post-MVP: Visualization](#post-mvp-visualization))
-- Manage agent/skill/command definitions
+- Manage agent/skill definitions
 
 This is a post-MVP feature. The database-level operations work; admin tooling adds a usability layer for operators.
 

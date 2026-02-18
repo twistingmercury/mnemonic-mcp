@@ -15,17 +15,13 @@
 - [PostgreSQL Migrations](#postgresql-migrations)
   - [Migration File Structure](#migration-file-structure)
   - [Migration 001: Extensions](#migration-001-extensions)
-  - [Migration 002: Agents Table (Pre-Pivot)](#migration-002-agents-table-pre-pivot)
+  - [Migration 002: Agents Table](#migration-002-agents-table)
   - [Migration 003: Patterns Table](#migration-003-patterns-table)
   - [Migration 004: Pattern-Agent Associations](#migration-004-pattern-agent-associations)
-  - [Migration 005: Routing Rules Table (Dropped)](#migration-005-routing-rules-table-dropped)
-  - [Migration 006: Enrichment Jobs Table](#migration-006-enrichment-jobs-table)
-  - [Migration 007: Performance Indexes](#migration-007-performance-indexes)
-  - [Migration 008: Drop Routing Rules](#migration-008-drop-routing-rules)
-  - [Migration 009: Migrate Agents to JSONB Document Model](#migration-009-migrate-agents-to-jsonb-document-model)
-  - [Migration 010: Create Skills Table](#migration-010-create-skills-table)
-  - [Migration 011: Create Commands Table](#migration-011-create-commands-table)
-  - [Migration 012: Create Skill Files Table](#migration-012-create-skill-files-table)
+  - [Migration 005: Enrichment Jobs Table](#migration-005-enrichment-jobs-table)
+  - [Migration 006: Performance Indexes](#migration-006-performance-indexes)
+  - [Migration 007: Create Skills Table](#migration-007-create-skills-table)
+  - [Migration 008: Create Skill Files Table](#migration-008-create-skill-files-table)
 - [PGVector Configuration](#pgvector-configuration)
   - [Index Selection Guidelines](#index-selection-guidelines)
   - [Similarity Search Queries](#similarity-search-queries)
@@ -40,7 +36,6 @@
   - [AgentRepository](#agentrepository)
   - [PatternRepository](#patternrepository)
   - [SkillRepository](#skillrepository)
-  - [CommandRepository](#commandrepository)
   - [SkillFileRepository](#skillfilerepository)
   - [EnrichmentJob Repository](#enrichmentjob-repository)
   - [GraphRepository](#graphrepository)
@@ -67,21 +62,14 @@ This document provides implementation details for the Mnemonic data storage laye
 | Graph Storage | Neo4j 5.x | Knowledge graph relationships |
 | Migrations | golang-migrate CLI | Schema versioning and deployment (run externally, not embedded in Mnemonic) |
 
-**Post-Pivot Changes (JSONB Document Model):**
+**JSONB Document Model:**
 
-- Migrated `agents` table from decomposed columns to JSONB document model
-- Added `crc64` column to all document tables for change detection
-- Created `skills` table using JSONB document model
-- Created `commands` table using JSONB document model
-- Created `skill_files` table for skill child resources
-- Removed `routing_rules` table (dropped in migration 008)
-- Neo4j is now required (no longer optional)
-
-**Tables Unchanged by the Pivot:**
-
-- `patterns` -- has enrichment workflow, pgvector embeddings, graph context; these require relational columns
-- `pattern_agent_associations` -- join table, kept for agent-scoped pattern filtering
-- `enrichment_jobs` -- background processing queue
+- `agents`, `skills` use JSONB document model with `crc64` change detection
+- `skill_files` stores skill child resources as JSONB documents
+- `patterns` use relational columns (enrichment workflow, pgvector embeddings, graph context)
+- `pattern_agent_associations` is a join table for agent-scoped pattern filtering
+- `enrichment_jobs` is a background processing queue
+- Neo4j is required for the knowledge graph
 
 **Deployment Independence:**
 
@@ -97,7 +85,7 @@ Database migrations and application code are versioned and deployed independentl
 
 ### Design Rationale
 
-Agents, skills, commands, and skill files are markdown documents synced to disk. Their field sets evolve as the Claude Code Agent Skills spec evolves. Storing each field as an individual relational column creates migration churn every time a field is added, renamed, or removed.
+Agents, skills, and skill files are markdown documents synced to disk. Their field sets evolve as the Claude Code Agent Skills spec evolves. Storing each field as an individual relational column creates migration churn every time a field is added, renamed, or removed.
 
 The JSONB document model stores the full document as a single JSONB column. Only the fields required for database-level operations (lookup key, change detection, audit timestamps) are promoted to top-level columns. Everything else lives inside the JSONB document.
 
@@ -114,7 +102,7 @@ The JSONB document model stores the full document as a single JSONB column. Only
 
 ### Common Table Shape
 
-All document tables (agents, skills, commands) share the same column structure:
+All document tables (agents, skills) share the same column structure:
 
 | Column | Type | Constraints | Purpose |
 |--------|------|-------------|---------|
@@ -140,7 +128,7 @@ Each document table includes a `crc64` column storing a CRC-64 checksum of the J
 
 **Usage in the sync protocol:**
 
-- The `get_sync_manifest` MCP tool returns per-entity CRC64 values.
+- The Admin REST API returns per-entity CRC64 values in list responses.
 - The sync client compares local CRC64 values against the manifest to determine which entities have changed.
 - A collection-level version hash can be derived from individual CRC64 values (e.g., XOR of all entity CRC64s for a given collection).
 
@@ -178,7 +166,7 @@ Aligned with the [Claude Code Agent Skills spec](https://docs.anthropic.com/en/d
 
 ```json
 {
-  "description": "Synchronize agents, skills, and commands from Mnemonic",
+  "description": "Synchronize agents and skills from Mnemonic",
   "content": "---\nname: mnemonic-sync\n---\n\nYou are synchronizing...",
   "tags": ["sync", "infrastructure"],
   "license": "MIT",
@@ -198,24 +186,6 @@ Aligned with the [Claude Code Agent Skills spec](https://docs.anthropic.com/en/d
 | `compatibility` | string | no | Compatible Claude Code versions |
 | `metadata` | object | no | Arbitrary key-value metadata |
 | `allowed_tools` | string[] | no | MCP tool names this skill can use |
-| `version` | string | yes | Semantic version of the definition |
-
-#### Commands definition JSONB
-
-```json
-{
-  "description": "Initialize a Claude Code session",
-  "content": "Load the project context...",
-  "tags": ["initialization"],
-  "version": "1.0.0"
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `description` | string | yes | Short summary of the command |
-| `content` | string | yes | Command content/instructions |
-| `tags` | string[] | no | Categorization tags |
 | `version` | string | yes | Semantic version of the definition |
 
 #### Skill files document JSONB
@@ -242,7 +212,7 @@ Document tables use GIN indexes on the `definition` (or `document`) column to su
 
 **Primary use case: tag filtering.**
 
-Skills and commands support tag-based filtering. The GIN index enables efficient `@>` (contains) queries:
+Skills support tag-based filtering. The GIN index enables efficient `@>` (contains) queries:
 
 ```sql
 -- Find skills tagged with "sync"
@@ -251,12 +221,11 @@ FROM skills
 WHERE definition @> '{"tags": ["sync"]}'::jsonb;
 ```
 
-**Index definitions** (created in migration 007 or respective table migrations):
+**Index definitions** (created in migration 006 or respective table migrations):
 
 ```sql
--- GIN indexes on definition columns for tag filtering
+-- GIN index on definition column for tag filtering
 CREATE INDEX idx_skills_definition ON skills USING GIN (definition);
-CREATE INDEX idx_commands_definition ON commands USING GIN (definition);
 ```
 
 **Path-specific GIN indexes** (alternative, more selective):
@@ -264,7 +233,6 @@ CREATE INDEX idx_commands_definition ON commands USING GIN (definition);
 ```sql
 -- Index only the tags path within definition
 CREATE INDEX idx_skills_definition_tags ON skills USING GIN ((definition -> 'tags'));
-CREATE INDEX idx_commands_definition_tags ON commands USING GIN ((definition -> 'tags'));
 ```
 
 The path-specific indexes are smaller and faster for tag-only queries. Use full-column GIN indexes if queries need to filter on other JSONB fields.
@@ -285,10 +253,6 @@ Because JSONB contents are not constrained at the database level, the applicatio
 | Skill | definition.description | max 1024 chars | Application |
 | Skill | definition.content | max 512KB | Application |
 | Skill | definition.version | required, semver format | Application |
-| Command | name | max 255 chars | DB (VARCHAR) |
-| Command | definition.description | max 500 chars | Application |
-| Command | definition.content | max 50KB | Application |
-| Command | definition.version | required, semver format | Application |
 | Skill File | filename | max 255 chars | DB (VARCHAR) |
 | Skill File | file_type | one of: script, reference, asset | DB (CHECK) |
 | Skill File | document.content | max 1MB | Application |
@@ -311,42 +275,32 @@ All PostgreSQL migrations follow the golang-migrate flat file convention. Migrat
 
 ```text
 src/migrations/
-└── postgres/
-    ├── 001_extensions_and_functions.up.sql
-    ├── 001_extensions_and_functions.down.sql
-    ├── 002_create_agents.up.sql
-    ├── 002_create_agents.down.sql
-    ├── 003_create_patterns.up.sql
-    ├── 003_create_patterns.down.sql
-    ├── 004_create_pattern_agent_associations.up.sql
-    ├── 004_create_pattern_agent_associations.down.sql
-    ├── 005_create_routing_rules.up.sql
-    ├── 005_create_routing_rules.down.sql
-    ├── 006_create_enrichment_jobs.up.sql
-    ├── 006_create_enrichment_jobs.down.sql
-    ├── 007_create_performance_indexes.up.sql
-    ├── 007_create_performance_indexes.down.sql
-    ├── 008_drop_routing_rules.up.sql
-    ├── 008_drop_routing_rules.down.sql
-    ├── 009_migrate_agents_to_jsonb.up.sql
-    ├── 009_migrate_agents_to_jsonb.down.sql
-    ├── 010_create_skills.up.sql
-    ├── 010_create_skills.down.sql
-    ├── 011_create_commands.up.sql
-    ├── 011_create_commands.down.sql
-    ├── 012_create_skill_files.up.sql
-    └── 012_create_skill_files.down.sql
+├── postgres/
+│   ├── 000001_extensions.up.sql
+│   ├── 000001_extensions.down.sql
+│   ├── 000002_create_agents.up.sql
+│   ├── 000002_create_agents.down.sql
+│   ├── 000003_create_patterns.up.sql
+│   ├── 000003_create_patterns.down.sql
+│   ├── 000004_create_pattern_agent_associations.up.sql
+│   ├── 000004_create_pattern_agent_associations.down.sql
+│   ├── 000005_create_enrichment_jobs.up.sql
+│   ├── 000005_create_enrichment_jobs.down.sql
+│   ├── 000006_create_performance_indexes.up.sql
+│   ├── 000006_create_performance_indexes.down.sql
+│   ├── 000007_create_skills.up.sql
+│   ├── 000007_create_skills.down.sql
+│   ├── 000008_create_skill_files.up.sql
+│   └── 000008_create_skill_files.down.sql
+└── neo4j/
+    ├── 001_create_constraints.cypher
+    ├── 002_create_existence_constraints.cypher
+    └── 003_create_indexes.cypher
 ```
 
-**Post-Pivot Migrations:**
+golang-migrate requires a single flat directory with paired `.up.sql` and `.down.sql` files. The 6-digit zero-padded prefix (e.g., `000001`) matches the output of `migrate create -ext sql -dir src/migrations/postgres -seq <name>`. The `-path` flag points to this directory.
 
-Migrations 008-012 implement the pivot from routing to knowledge sync with the JSONB document model:
-
-- **008**: Drops `routing_rules` table
-- **009**: Migrates `agents` to JSONB document model (moves column data into `definition` JSONB, adds `crc64`, drops individual columns)
-- **010**: Creates `skills` table (JSONB document model)
-- **011**: Creates `commands` table (JSONB document model)
-- **012**: Creates `skill_files` table (JSONB document model)
+Neo4j migrations are not managed by golang-migrate. They are numbered `.cypher` files applied manually via `cypher-shell` (see [Manual Constraint Creation](#startup-constraint-validation)).
 
 **Running Migrations:**
 
@@ -366,80 +320,67 @@ migrate -path src/migrations/postgres -database "$DATABASE_URL" version
 **Purpose:** Enable required PostgreSQL extensions.
 
 ```sql
--- src/migrations/postgres/001_extensions_and_functions.up.sql
+-- src/migrations/postgres/000001_extensions.up.sql
 -- Enables required extensions
 -- Part of Mnemonic MVP
-
--- Enable UUID generation (if not using gen_random_uuid)
-create extension if not exists "uuid-ossp";
 
 -- Enable vector operations for embeddings
 create extension if not exists vector;
 ```
 
 ```sql
--- src/migrations/postgres/001_extensions_and_functions.down.sql
+-- src/migrations/postgres/000001_extensions.down.sql
 -- Extensions are not dropped to avoid breaking other schemas
 -- drop extension if exists vector;
--- drop extension if exists "uuid-ossp";
 ```
 
-**Note:** Migration 001 no longer creates the `update_updated_at()` trigger function. Per the storage-only database philosophy, `updated_at` management is the application's responsibility. The application sets `updated_at = now()` on every UPDATE.
+**Note:** Per the storage-only database philosophy, no trigger functions are created. `updated_at` management is the application's responsibility. The application sets `updated_at = now()` on every UPDATE.
 
-### Migration 002: Agents Table (Pre-Pivot)
+### Migration 002: Agents Table
 
-**Purpose:** Create the agents table with decomposed columns (pre-pivot schema).
-
-**Note:** This migration was created pre-pivot. Migration 009 replaces the decomposed columns with the JSONB document model.
+**Purpose:** Create the agents table using the JSONB document model with CRC64 change detection.
 
 ```sql
--- src/migrations/postgres/002_create_agents.up.sql
--- Creates the agents table for storing agent definitions
--- Part of Mnemonic MVP (pre-pivot schema)
+-- src/migrations/postgres/000002_create_agents.up.sql
+-- Creates the agents table with JSONB document model
+-- Part of Mnemonic MVP
 
 create table if not exists agents (
-    -- Primary key: lowercase-with-hyphens format, URL-safe
-    name varchar(64) primary key,
+    -- UUID primary key
+    id uuid primary key default gen_random_uuid(),
 
-    -- Agent metadata
-    description varchar(500) not null,
+    -- Unique lookup key: lowercase-with-hyphens format, URL-safe
+    name varchar(64) not null,
 
-    -- System prompt content (up to 50KB)
-    system_prompt text not null,
+    -- Complete agent definition as JSONB document
+    definition jsonb not null,
 
-    -- Model preference: sonnet, opus, haiku
-    model varchar(20) not null default 'sonnet',
-
-    -- Allowed MCP tools (JSON array of tool names)
-    allowed_tools jsonb not null default '[]'::jsonb,
-
-    -- Keywords for fast routing (denormalized from routing_rules)
-    -- NOTE: DEPRECATED post-pivot. Dropped in migration 009.
-    routing_keywords jsonb not null default '[]'::jsonb,
+    -- CRC-64 checksum of serialized definition for change detection
+    crc64 bigint not null,
 
     -- Audit timestamps
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
 
     -- Constraints
+    constraint agents_name_unique unique (name),
     constraint agents_name_format
-        check (name ~ '^[a-z][a-z0-9-]*$'),
-    constraint agents_model_valid
-        check (model in ('sonnet', 'opus', 'haiku')),
-    constraint agents_system_prompt_length
-        check (length(system_prompt) <= 51200),
-    constraint agents_allowed_tools_array
-        check (jsonb_typeof(allowed_tools) = 'array'),
-    constraint agents_routing_keywords_array
-        check (jsonb_typeof(routing_keywords) = 'array')
+        check (name ~ '^[a-z][a-z0-9-]*$')
 );
 
-comment on table agents is 'Agent definitions for team tooling synchronization';
-comment on column agents.name is 'Unique identifier, lowercase-with-hyphens format';
+-- GIN index on definition for JSONB queries
+create index idx_agents_definition on agents using gin (definition);
+
+comment on table agents is 'Agent definitions stored as JSONB documents for team tooling synchronization';
+comment on column agents.id is 'UUID primary key';
+comment on column agents.name is 'Unique lookup key, lowercase-with-hyphens format';
+comment on column agents.definition is 'Complete agent definition as JSONB document';
+comment on column agents.crc64 is 'CRC-64 checksum of serialized definition for change detection';
 ```
 
 ```sql
--- src/migrations/postgres/002_create_agents.down.sql
+-- src/migrations/postgres/000002_create_agents.down.sql
+drop index if exists idx_agents_definition;
 drop table if exists agents;
 ```
 
@@ -447,10 +388,10 @@ drop table if exists agents;
 
 **Purpose:** Create the patterns table with PGVector embedding column for semantic search.
 
-**Note:** This table is NOT affected by the JSONB document model pivot. Patterns have enrichment status, graph context, and pgvector embeddings that require relational columns.
+**Note:** Patterns use relational columns (not the JSONB document model) because they have enrichment status, graph context, and pgvector embeddings that require individual columns.
 
 ```sql
--- src/migrations/postgres/003_create_patterns.up.sql
+-- src/migrations/postgres/000003_create_patterns.up.sql
 -- Creates the patterns table with vector embeddings
 -- Part of Mnemonic MVP
 
@@ -496,7 +437,7 @@ comment on column patterns.enrichment_status is 'Processing state: pending, enri
 ```
 
 ```sql
--- src/migrations/postgres/003_create_patterns.down.sql
+-- src/migrations/postgres/000003_create_patterns.down.sql
 drop table if exists patterns;
 ```
 
@@ -505,14 +446,14 @@ drop table if exists patterns;
 **Purpose:** Create the many-to-many association table between patterns and agents with relevance scores.
 
 ```sql
--- src/migrations/postgres/004_create_pattern_agent_associations.up.sql
+-- src/migrations/postgres/000004_create_pattern_agent_associations.up.sql
 -- Creates the pattern-agent association table
 -- Part of Mnemonic MVP
 
 create table if not exists pattern_agent_associations (
     -- Composite primary key
     pattern_id uuid not null,
-    agent_name varchar(64) not null,
+    agent_id uuid not null,
 
     -- Relevance score (0.0 to 1.0)
     relevance double precision not null,
@@ -521,10 +462,10 @@ create table if not exists pattern_agent_associations (
     constraint fk_pattern_agent_assoc_pattern
         foreign key (pattern_id) references patterns(id) on delete cascade,
     constraint fk_pattern_agent_assoc_agent
-        foreign key (agent_name) references agents(name) on delete cascade,
+        foreign key (agent_id) references agents(id) on delete cascade,
 
     -- Primary key
-    primary key (pattern_id, agent_name),
+    primary key (pattern_id, agent_id),
 
     -- Constraints
     constraint pattern_agent_assoc_relevance_range
@@ -535,71 +476,25 @@ create table if not exists pattern_agent_associations (
 create index idx_pattern_agent_assoc_pattern
     on pattern_agent_associations(pattern_id);
 create index idx_pattern_agent_assoc_agent
-    on pattern_agent_associations(agent_name);
+    on pattern_agent_associations(agent_id);
 
 comment on table pattern_agent_associations is
     'Many-to-many relationship between patterns and agents with relevance scores';
 ```
 
 ```sql
--- src/migrations/postgres/004_create_pattern_agent_associations.down.sql
+-- src/migrations/postgres/000004_create_pattern_agent_associations.down.sql
 drop index if exists idx_pattern_agent_assoc_agent;
 drop index if exists idx_pattern_agent_assoc_pattern;
 drop table if exists pattern_agent_associations;
 ```
 
-### Migration 005: Routing Rules Table (Dropped)
-
-**Purpose:** Create the routing rules table for prompt-to-agent matching.
-
-**Note:** This table is created in migration 005 and dropped in migration 008 (post-pivot). See migration 008 for the drop statement. The full creation SQL is retained here for migration rollback purposes.
-
-```sql
--- src/migrations/postgres/005_create_routing_rules.up.sql
--- Creates the routing rules table
--- REMOVED: This table is dropped in migration 008 (pivot to knowledge sync)
-
-create table if not exists routing_rules (
-    id uuid primary key default gen_random_uuid(),
-    name varchar(128) not null,
-    priority integer not null,
-    agent_name varchar(64) not null,
-    match_type varchar(20) not null,
-    match_config jsonb not null,
-    enabled boolean not null default true,
-    created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now(),
-
-    constraint fk_routing_rules_agent
-        foreign key (agent_name) references agents(name) on delete restrict,
-    constraint routing_rules_name_unique unique (name),
-    constraint routing_rules_priority_range
-        check (priority >= 0 and priority <= 1000),
-    constraint routing_rules_match_type_valid
-        check (match_type in ('keyword', 'regex', 'pattern', 'default')),
-    constraint routing_rules_match_config_valid check (
-        (match_type = 'keyword' and match_config ? 'keywords' and match_config ? 'match_mode') or
-        (match_type = 'regex' and match_config ? 'pattern') or
-        (match_type = 'pattern' and match_config ? 'pattern_ids') or
-        (match_type = 'default')
-    )
-);
-
-create index idx_routing_rules_agent on routing_rules(agent_name);
-```
-
-```sql
--- src/migrations/postgres/005_create_routing_rules.down.sql
-drop index if exists idx_routing_rules_agent;
-drop table if exists routing_rules;
-```
-
-### Migration 006: Enrichment Jobs Table
+### Migration 005: Enrichment Jobs Table
 
 **Purpose:** Create the enrichment jobs queue table for background pattern processing.
 
 ```sql
--- src/migrations/postgres/006_create_enrichment_jobs.up.sql
+-- src/migrations/postgres/000005_create_enrichment_jobs.up.sql
 -- Creates the enrichment jobs queue table
 -- Part of Mnemonic MVP
 
@@ -657,18 +552,18 @@ comment on column enrichment_jobs.scheduled_for is 'When the job should be proce
 ```
 
 ```sql
--- src/migrations/postgres/006_create_enrichment_jobs.down.sql
+-- src/migrations/postgres/000005_create_enrichment_jobs.down.sql
 drop index if exists idx_enrichment_jobs_unique_pending;
 drop index if exists idx_enrichment_jobs_pattern;
 drop table if exists enrichment_jobs;
 ```
 
-### Migration 007: Performance Indexes
+### Migration 006: Performance Indexes
 
 **Purpose:** Create performance-optimized indexes for common query patterns.
 
 ```sql
--- src/migrations/postgres/007_create_performance_indexes.up.sql
+-- src/migrations/postgres/000006_create_performance_indexes.up.sql
 -- Creates performance indexes for common query patterns
 -- Part of Mnemonic MVP
 
@@ -711,7 +606,7 @@ comment on index idx_enrichment_jobs_pending is
 ```
 
 ```sql
--- src/migrations/postgres/007_create_performance_indexes.down.sql
+-- src/migrations/postgres/000006_create_performance_indexes.down.sql
 drop index if exists idx_patterns_search;
 drop index if exists idx_patterns_tags;
 drop index if exists idx_enrichment_jobs_processing;
@@ -720,203 +615,14 @@ drop index if exists idx_patterns_embedding;
 drop index if exists idx_patterns_enriched;
 ```
 
-### Migration 008: Drop Routing Rules
-
-**Purpose:** Remove routing rules table (pivot to knowledge sync).
-
-```sql
--- src/migrations/postgres/008_drop_routing_rules.up.sql
--- Drops the routing_rules table and related indexes
--- Part of Mnemonic pivot to knowledge sync (2026-02-15)
-
-drop index if exists idx_routing_rules_agent;
-drop index if exists idx_routing_rules_enabled_priority;
-drop table if exists routing_rules;
-```
-
-```sql
--- src/migrations/postgres/008_drop_routing_rules.down.sql
--- Recreates the routing_rules table and indexes
--- WARNING: This recreates the schema but does not restore data
-
-create table if not exists routing_rules (
-    id uuid primary key default gen_random_uuid(),
-    name varchar(128) not null unique,
-    priority integer not null check (priority >= 0 and priority <= 1000),
-    agent_name varchar(64) not null references agents(name) on delete restrict,
-    match_type varchar(20) not null check (match_type in ('keyword', 'regex', 'pattern', 'default')),
-    match_config jsonb not null,
-    enabled boolean not null default true,
-    created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now(),
-    constraint routing_rules_match_config_valid check (
-        (match_type = 'keyword' and match_config ? 'keywords' and match_config ? 'match_mode') or
-        (match_type = 'regex' and match_config ? 'pattern') or
-        (match_type = 'pattern' and match_config ? 'pattern_ids') or
-        (match_type = 'default')
-    )
-);
-
-create index idx_routing_rules_agent on routing_rules(agent_name);
-create index idx_routing_rules_enabled_priority on routing_rules(priority desc, id) where enabled = true;
-```
-
-### Migration 009: Migrate Agents to JSONB Document Model
-
-**Purpose:** Transform the agents table from decomposed columns to the JSONB document model with CRC64 change detection.
-
-This migration:
-
-1. Adds `id` (UUID), `definition` (JSONB), and `crc64` (BIGINT) columns
-2. Populates `definition` from existing column data (excluding `routing_keywords`, which is deprecated)
-3. Drops the individual content columns (`description`, `system_prompt`, `model`, `allowed_tools`, `routing_keywords`, `version`)
-4. Drops associated CHECK constraints and triggers
-5. Makes `name` a regular unique column instead of the primary key, with `id` as the new primary key
-
-```sql
--- src/migrations/postgres/009_migrate_agents_to_jsonb.up.sql
--- Migrates agents table to JSONB document model with CRC64
--- Part of Mnemonic pivot to knowledge sync (2026-02-15)
-
--- Step 1: Add new columns
-alter table agents add column id uuid default gen_random_uuid();
-alter table agents add column definition jsonb;
-alter table agents add column crc64 bigint;
-
--- Step 2: Populate definition from existing columns
--- NOTE: routing_keywords is intentionally excluded (deprecated)
-update agents set definition = jsonb_build_object(
-    'description', description,
-    'system_prompt', system_prompt,
-    'model', model,
-    'allowed_tools', allowed_tools,
-    'version', '0.0.0'
-);
-
--- Step 3: CRC64 must be set by the application after migration.
--- Set a placeholder value of 0 for existing rows. The application should
--- recompute CRC64 values on first access or via a one-time script.
-update agents set crc64 = 0 where crc64 is null;
-
--- Step 4: Apply NOT NULL constraints now that data is populated
-alter table agents alter column id set not null;
-alter table agents alter column definition set not null;
-alter table agents alter column crc64 set not null;
-
--- Step 5: Drop the trigger function reference (no more trigger-based updated_at)
-drop trigger if exists trg_agents_updated_at on agents;
-
--- Step 6: Drop old constraints before dropping columns
-alter table agents drop constraint if exists agents_model_valid;
-alter table agents drop constraint if exists agents_system_prompt_length;
-alter table agents drop constraint if exists agents_allowed_tools_array;
-alter table agents drop constraint if exists agents_routing_keywords_array;
-
--- Step 7: Drop foreign key references from pattern_agent_associations
--- before changing the primary key. We will recreate them.
-alter table pattern_agent_associations drop constraint if exists fk_pattern_agent_assoc_agent;
-
--- Step 8: Drop old primary key and individual columns
-alter table agents drop constraint agents_pkey;
-alter table agents drop column description;
-alter table agents drop column system_prompt;
-alter table agents drop column model;
-alter table agents drop column allowed_tools;
-alter table agents drop column routing_keywords;
-alter table agents drop column version;
-
--- Step 9: Set new primary key and unique constraint
-alter table agents add primary key (id);
-alter table agents add constraint agents_name_unique unique (name);
-
--- Step 10: Recreate foreign key from pattern_agent_associations
-alter table pattern_agent_associations
-    add constraint fk_pattern_agent_assoc_agent
-    foreign key (agent_name) references agents(name) on delete cascade;
-
--- Step 11: GIN index on definition for JSONB queries
-create index idx_agents_definition on agents using gin (definition);
-
-comment on table agents is 'Agent definitions stored as JSONB documents for team tooling synchronization';
-comment on column agents.id is 'UUID primary key';
-comment on column agents.name is 'Unique lookup key, lowercase-with-hyphens format';
-comment on column agents.definition is 'Complete agent definition as JSONB document';
-comment on column agents.crc64 is 'CRC-64 checksum of serialized definition for change detection';
-```
-
-```sql
--- src/migrations/postgres/009_migrate_agents_to_jsonb.down.sql
--- Reverses: migrate agents to JSONB document model
--- WARNING: This restores the schema but individual field data is extracted from JSONB
-
--- Drop the GIN index
-drop index if exists idx_agents_definition;
-
--- Drop foreign key that references agents(name)
-alter table pattern_agent_associations drop constraint if exists fk_pattern_agent_assoc_agent;
-
--- Drop new primary key and unique constraint
-alter table agents drop constraint if exists agents_name_unique;
-alter table agents drop constraint agents_pkey;
-
--- Re-add individual columns
-alter table agents add column description varchar(500);
-alter table agents add column system_prompt text;
-alter table agents add column model varchar(20) default 'sonnet';
-alter table agents add column allowed_tools jsonb default '[]'::jsonb;
-alter table agents add column routing_keywords jsonb default '[]'::jsonb;
-alter table agents add column version varchar(50);
-
--- Populate individual columns from JSONB definition
-update agents set
-    description = definition->>'description',
-    system_prompt = definition->>'system_prompt',
-    model = coalesce(definition->>'model', 'sonnet'),
-    allowed_tools = coalesce(definition->'allowed_tools', '[]'::jsonb),
-    routing_keywords = '[]'::jsonb,
-    version = definition->>'version';
-
--- Apply NOT NULL constraints
-alter table agents alter column description set not null;
-alter table agents alter column system_prompt set not null;
-alter table agents alter column model set not null;
-alter table agents alter column allowed_tools set not null;
-alter table agents alter column routing_keywords set not null;
-
--- Restore primary key on name
-alter table agents add primary key (name);
-
--- Drop JSONB columns
-alter table agents drop column id;
-alter table agents drop column definition;
-alter table agents drop column crc64;
-
--- Restore constraints
-alter table agents add constraint agents_name_format
-    check (name ~ '^[a-z][a-z0-9-]*$');
-alter table agents add constraint agents_model_valid
-    check (model in ('sonnet', 'opus', 'haiku'));
-alter table agents add constraint agents_system_prompt_length
-    check (length(system_prompt) <= 51200);
-alter table agents add constraint agents_allowed_tools_array
-    check (jsonb_typeof(allowed_tools) = 'array');
-alter table agents add constraint agents_routing_keywords_array
-    check (jsonb_typeof(routing_keywords) = 'array');
-
--- Restore foreign key from pattern_agent_associations
-alter table pattern_agent_associations
-    add constraint fk_pattern_agent_assoc_agent
-    foreign key (agent_name) references agents(name) on delete cascade;
-```
-
-### Migration 010: Create Skills Table
+### Migration 007: Create Skills Table
 
 **Purpose:** Create the skills table using the JSONB document model.
 
 ```sql
--- src/migrations/postgres/010_create_skills.up.sql
+-- src/migrations/postgres/000007_create_skills.up.sql
 -- Creates the skills table with JSONB document model
--- Part of Mnemonic pivot to knowledge sync (2026-02-15)
+-- Part of Mnemonic MVP
 
 create table if not exists skills (
     id          uuid primary key default gen_random_uuid(),
@@ -941,55 +647,19 @@ comment on column skills.crc64 is 'CRC-64 checksum of serialized definition for 
 ```
 
 ```sql
--- src/migrations/postgres/010_create_skills.down.sql
+-- src/migrations/postgres/000007_create_skills.down.sql
 drop index if exists idx_skills_definition;
 drop table if exists skills;
 ```
 
-### Migration 011: Create Commands Table
-
-**Purpose:** Create the commands table using the JSONB document model.
-
-```sql
--- src/migrations/postgres/011_create_commands.up.sql
--- Creates the commands table with JSONB document model
--- Part of Mnemonic pivot to knowledge sync (2026-02-15)
-
-create table if not exists commands (
-    id          uuid primary key default gen_random_uuid(),
-    name        varchar(255) not null,
-    definition  jsonb not null,
-    crc64       bigint not null,
-    created_at  timestamptz not null default now(),
-    updated_at  timestamptz not null default now(),
-
-    constraint commands_name_unique unique (name),
-    constraint commands_name_format check (name ~ '^[a-z][a-z0-9-]*$')
-);
-
--- GIN index on definition for tag filtering and JSONB queries
-create index idx_commands_definition on commands using gin (definition);
-
-comment on table commands is 'Command definitions stored as JSONB documents for team tooling synchronization';
-comment on column commands.name is 'Unique lookup key (matches Claude Code command name)';
-comment on column commands.definition is 'Complete command definition as JSONB document';
-comment on column commands.crc64 is 'CRC-64 checksum of serialized definition for change detection';
-```
-
-```sql
--- src/migrations/postgres/011_create_commands.down.sql
-drop index if exists idx_commands_definition;
-drop table if exists commands;
-```
-
-### Migration 012: Create Skill Files Table
+### Migration 008: Create Skill Files Table
 
 **Purpose:** Create the skill_files table for scripts, references, and assets associated with skills.
 
 ```sql
--- src/migrations/postgres/012_create_skill_files.up.sql
+-- src/migrations/postgres/000008_create_skill_files.up.sql
 -- Creates the skill_files table with JSONB document model
--- Part of Mnemonic pivot to knowledge sync (2026-02-15)
+-- Part of Mnemonic MVP
 
 create table if not exists skill_files (
     id          uuid primary key default gen_random_uuid(),
@@ -1020,7 +690,7 @@ comment on column skill_files.crc64 is 'CRC-64 checksum of serialized document f
 ```
 
 ```sql
--- src/migrations/postgres/012_create_skill_files.down.sql
+-- src/migrations/postgres/000008_create_skill_files.down.sql
 drop index if exists idx_skill_files_skill_id;
 drop table if exists skill_files;
 ```
@@ -1200,7 +870,7 @@ FOR (c:Concept) REQUIRE c.name IS NOT NULL;
 
 ### Startup Constraint Validation
 
-Mnemonic validates Neo4j schema constraints at startup to ensure the database is properly configured. This validation is advisory only -- Mnemonic will not fail startup if constraints are missing, since Neo4j is used in a best-effort capacity.
+Neo4j is required. Mnemonic fails to start if Neo4j is unreachable. Missing constraints are not fatal -- Mnemonic validates constraints at startup and logs warnings, allowing operators to remediate without blocking service startup.
 
 **Validation Behavior:**
 
@@ -1208,7 +878,7 @@ Mnemonic validates Neo4j schema constraints at startup to ensure the database is
 |-------------------|-------------------|
 | All constraints exist | Log info message, continue startup |
 | One or more missing | Log warning with missing constraint names, continue startup |
-| Connection failure | Log warning, continue startup (Neo4j operations will fail gracefully) |
+| Connection failure | Fatal error, Mnemonic refuses to start |
 
 **Constraints Checked:**
 
@@ -1330,7 +1000,7 @@ ON CREATE SET r.createdAt = datetime()
 RETURN r;
 ```
 
-**RELATES_TO (Pattern to Pattern):**
+**RELATED_TO (Pattern to Pattern):**
 
 ```cypher
 // Create pattern-pattern similarity relationship
@@ -1338,7 +1008,7 @@ RETURN r;
 MATCH (p1:Pattern {id: $patternId1})
 MATCH (p2:Pattern {id: $patternId2})
 WHERE p1 <> p2
-MERGE (p1)-[r:RELATES_TO]->(p2)
+MERGE (p1)-[r:RELATED_TO]->(p2)
 SET r.similarity = $similarity,
     r.updatedAt = datetime()
 RETURN r;
@@ -1545,13 +1215,6 @@ type Pattern struct {
     UpdatedAt        time.Time  `db:"updated_at"`
 }
 
-// Filter defines filtering options for pattern queries.
-type Filter struct {
-    Tags             []string // Filter by any of these tags
-    EnrichmentStatus string   // Filter by enrichment status
-    SearchQuery      string   // Full-text search in name/description
-}
-
 // SimilarityOptions defines options for similarity search.
 type SimilarityOptions struct {
     MinSimilarity float64     // Minimum similarity threshold (0.0-1.0)
@@ -1568,8 +1231,16 @@ type Match struct {
 
 // AgentAssociation represents a pattern-agent relationship.
 type AgentAssociation struct {
-    AgentName string  `db:"agent_name"`
-    Relevance float64 `db:"relevance"`
+    AgentID   uuid.UUID `db:"agent_id"`
+    Relevance float64   `db:"relevance"`
+}
+
+// Filter defines filtering options for pattern queries.
+// This type is package-specific to internal/repository/pattern.
+type Filter struct {
+    Tags             []string // Filter by any of these tags
+    EnrichmentStatus string   // Filter by enrichment status
+    SearchQuery      string   // Full-text search in name/description
 }
 ```
 
@@ -1609,51 +1280,6 @@ type SkillRepository interface {
 
 // Skill represents a skill definition stored as a JSONB document.
 type Skill struct {
-    ID         uuid.UUID       `db:"id"`
-    Name       string          `db:"name"`
-    Definition json.RawMessage `db:"definition"` // JSONB document
-    CRC64      int64           `db:"crc64"`       // CRC-64 checksum
-    CreatedAt  time.Time       `db:"created_at"`
-    UpdatedAt  time.Time       `db:"updated_at"`
-}
-```
-
-### CommandRepository
-
-```go
-// CommandRepository defines data access operations for commands.
-// Commands are stored as JSONB documents with name as the unique lookup key.
-// Implementation: internal/repository/command/repository.go
-type CommandRepository interface {
-    // Create stores a new command. The application computes crc64 from the
-    // serialized definition before calling this method.
-    // Returns ErrExists if name already exists.
-    Create(ctx context.Context, command *Command) error
-
-    // Get retrieves a command by ID. Returns ErrNotFound if not found.
-    Get(ctx context.Context, id uuid.UUID) (*Command, error)
-
-    // GetByName retrieves a command by name. Returns ErrNotFound if not found.
-    GetByName(ctx context.Context, name string) (*Command, error)
-
-    // Update modifies an existing command. Returns ErrNotFound if not found.
-    Update(ctx context.Context, command *Command) error
-
-    // Delete removes a command by ID. Returns ErrNotFound if not found.
-    Delete(ctx context.Context, id uuid.UUID) error
-
-    // List retrieves commands with optional pagination.
-    List(ctx context.Context, opts ListOptions) ([]*Command, int64, error)
-
-    // Exists checks if a command with the given ID exists.
-    Exists(ctx context.Context, id uuid.UUID) (bool, error)
-
-    // GetManifest returns name and crc64 for all commands (used by sync protocol).
-    GetManifest(ctx context.Context) ([]ManifestEntry, error)
-}
-
-// Command represents a command definition stored as a JSONB document.
-type Command struct {
     ID         uuid.UUID       `db:"id"`
     Name       string          `db:"name"`
     Definition json.RawMessage `db:"definition"` // JSONB document
@@ -1767,6 +1393,7 @@ type Job struct {
 }
 
 // Filter defines filtering options for job queries.
+// This type is package-specific to internal/repository/enrichmentjob.
 type Filter struct {
     Status    *string    // Filter by job status (pending, processing, completed, failed)
     PatternID *uuid.UUID // Filter by the associated pattern ID
@@ -1840,8 +1467,13 @@ type PatternRelevance struct {
 
 ### Common Types
 
+`ListOptions` is a shared type used across all repository packages that support pagination.
+
+`Filter` types are **not** shared -- each repository package defines its own `Filter` struct with fields specific to that entity. See the Filter definitions in [PatternRepository](#patternrepository) and [EnrichmentJob Repository](#enrichmentjob-repository).
+
 ```go
 // ListOptions defines pagination parameters.
+// Shared across all repository packages.
 type ListOptions struct {
     Offset int // Number of items to skip
     Limit  int // Maximum items to return (0 = no limit)
@@ -1865,12 +1497,6 @@ var (
 var (
     ErrNotFound = errors.New("skill not found")
     ErrExists   = errors.New("skill already exists")
-)
-
-// command package errors
-var (
-    ErrNotFound = errors.New("command not found")
-    ErrExists   = errors.New("command already exists")
 )
 
 // skillfile package errors
@@ -1898,16 +1524,17 @@ var (
 
 ```go
 // PostgresConfig defines PostgreSQL connection parameters.
+// Viper handles env var binding via viper.BindEnv() or viper.AutomaticEnv().
 type PostgresConfig struct {
-    Host            string        `yaml:"host" env:"MNEMONIC_DATABASE_POSTGRES_HOST"`
-    Port            int           `yaml:"port" env:"MNEMONIC_DATABASE_POSTGRES_PORT"`
-    Database        string        `yaml:"database" env:"MNEMONIC_DATABASE_POSTGRES_DATABASE"`
-    Username        string        `yaml:"username" env:"MNEMONIC_DATABASE_POSTGRES_USERNAME"`
-    Password        string        `yaml:"password" env:"MNEMONIC_DATABASE_POSTGRES_PASSWORD"`
-    SSLMode         string        `yaml:"ssl_mode" env:"MNEMONIC_DATABASE_POSTGRES_SSL_MODE"`
-    MaxOpenConns    int           `yaml:"max_open_conns" env:"MNEMONIC_DATABASE_POSTGRES_MAX_OPEN_CONNS"`
-    MaxIdleConns    int           `yaml:"max_idle_conns" env:"MNEMONIC_DATABASE_POSTGRES_MAX_IDLE_CONNS"`
-    ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime" env:"MNEMONIC_DATABASE_POSTGRES_CONN_MAX_LIFETIME"`
+    Host            string        `mapstructure:"host"`
+    Port            int           `mapstructure:"port"`
+    Database        string        `mapstructure:"database"`
+    Username        string        `mapstructure:"username"`
+    Password        string        `mapstructure:"password"`
+    SSLMode         string        `mapstructure:"ssl_mode"`
+    MaxOpenConns    int           `mapstructure:"max_open_conns"`
+    MaxIdleConns    int           `mapstructure:"max_idle_conns"`
+    ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
 }
 ```
 
@@ -1925,13 +1552,14 @@ type PostgresConfig struct {
 
 ```go
 // Neo4jConfig defines Neo4j connection parameters.
+// Viper handles env var binding via viper.BindEnv() or viper.AutomaticEnv().
 type Neo4jConfig struct {
-    URI                          string        `yaml:"uri" env:"MNEMONIC_DATABASE_NEO4J_URI"`
-    Username                     string        `yaml:"username" env:"MNEMONIC_DATABASE_NEO4J_USERNAME"`
-    Password                     string        `yaml:"password" env:"MNEMONIC_DATABASE_NEO4J_PASSWORD"`
-    Database                     string        `yaml:"database" env:"MNEMONIC_DATABASE_NEO4J_DATABASE"`
-    MaxConnectionPoolSize        int           `yaml:"max_connection_pool_size" env:"MNEMONIC_DATABASE_NEO4J_MAX_POOL_SIZE"`
-    ConnectionAcquisitionTimeout time.Duration `yaml:"connection_acquisition_timeout" env:"MNEMONIC_DATABASE_NEO4J_ACQUISITION_TIMEOUT"`
+    URI                          string        `mapstructure:"uri"`
+    Username                     string        `mapstructure:"username"`
+    Password                     string        `mapstructure:"password"`
+    Database                     string        `mapstructure:"database"`
+    MaxConnectionPoolSize        int           `mapstructure:"max_connection_pool_size"`
+    ConnectionAcquisitionTimeout time.Duration `mapstructure:"connection_acquisition_timeout"`
 }
 ```
 
@@ -2000,7 +1628,7 @@ export MNEMONIC_DATABASE_NEO4J_DATABASE="neo4j"
 
 **Design Documents:**
 
-- [Pivot API Specification](2026-02-15-pivot-api-specification.md) - REST and MCP API contracts
+- [API Specification](2026-02-15-pivot-api-specification.md) - REST and MCP API contracts
 - [Configuration](configuration.md) - Server configuration including database settings
 - [Pattern Processing](pattern-processing.md) - Enrichment pipeline using this data layer
 

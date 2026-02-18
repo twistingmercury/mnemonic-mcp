@@ -15,7 +15,6 @@
     - [Agents](#agents)
     - [Patterns](#patterns)
     - [Skills](#skills)
-    - [Commands](#commands)
     - [Enrichment Jobs](#enrichment-jobs)
   - [Storage Architecture](#storage-architecture)
     - [PostgreSQL Schema](#postgresql-schema)
@@ -101,7 +100,6 @@ graph TB
 
 - Agents (JSONB document definitions)
 - Skills (reusable Claude Code skills)
-- Commands (reusable Claude Code slash commands)
 - Patterns (metadata, content, tags, associations)
 - Enrichment jobs (background processing queue)
 
@@ -199,7 +197,7 @@ erDiagram
 
     PATTERN_AGENT_ASSOC {
         uuid pattern_id PK,FK
-        string agent_name PK,FK
+        uuid agent_id PK,FK
         float relevance "0.0-1.0"
     }
 
@@ -236,15 +234,6 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at
     }
-
-    COMMAND {
-        uuid id PK
-        string name UK "max 255"
-        jsonb definition "complete command document"
-        bigint crc64 "CRC-64 checksum"
-        timestamptz created_at
-        timestamptz updated_at
-    }
 ```
 
 #### Agents
@@ -264,9 +253,9 @@ Patterns use relational columns (not JSONB) for vector search and enrichment tra
 ```mermaid
 stateDiagram-v2
     [*] --> pending: Pattern Created
-    pending --> in_progress: Worker Claims Job
-    in_progress --> enriched: Enrichment Successful
-    in_progress --> failed: Enrichment Failed
+    pending --> processing: Worker Claims Job
+    processing --> enriched: Enrichment Successful
+    processing --> failed: Enrichment Failed
     failed --> pending: Retry Triggered
     enriched --> pending: Pattern Updated
 ```
@@ -280,12 +269,6 @@ Skill definitions stored as JSONB documents. See [ADR-003](00-architectural-deci
 **Name constraint:** `^[a-z][a-z0-9-]*$` (max 64 chars, enforced by CHECK)
 
 Skills may have child files (scripts, references, assets) stored in the `skill_files` table with CASCADE delete.
-
-#### Commands
-
-Command definitions stored as JSONB documents. See [ADR-003](00-architectural-decisions.md#adr-003).
-
-**Schema:** `(id UUID PK, name VARCHAR(255) UNIQUE, definition JSONB, crc64 BIGINT, created_at, updated_at)`
 
 #### Enrichment Jobs
 
@@ -349,12 +332,13 @@ WHERE p.enrichment_status = 'enriched'
   -- them. This clause uses the GIN index idx_patterns_tags.
   AND ($4::jsonb IS NULL OR p.tags @> $4::jsonb)
   -- Agent filter: restrict results to patterns associated with the named agent.
-  -- Uses a subquery against pattern_agent_associations rather than a JOIN to avoid
-  -- duplicating rows when a pattern has multiple agent associations.
+  -- Uses a subquery against pattern_agent_associations joined to agents to resolve
+  -- the agent name to its UUID, avoiding row duplication from multiple associations.
   AND ($5::text IS NULL OR EXISTS (
       SELECT 1 FROM pattern_agent_associations paa
+      JOIN agents a ON a.id = paa.agent_id
       WHERE paa.pattern_id = p.id
-        AND paa.agent_name = $5
+        AND a.name = $5
   ))
 ORDER BY p.embedding <=> $1::vector
 LIMIT $3;
@@ -504,7 +488,7 @@ sequenceDiagram
     WORKER->>PG: UPDATE job status = 'completed'
 ```
 
-##### Skill/Command Create
+##### Skill Create
 
 ```mermaid
 sequenceDiagram
@@ -677,7 +661,7 @@ Referential integrity is enforced via foreign keys with CASCADE delete. When a p
 
 **Application-Level Validation:**
 
-For JSONB document tables (agents, skills, commands, skill_files):
+For JSONB document tables (agents, skills, skill_files):
 
 - Name pattern validation (enforced by CHECK constraints on name column)
 - JSONB content validation (field presence, types, max lengths)
@@ -703,11 +687,22 @@ For relational tables (patterns):
 ```text
 src/migrations/
 └── postgres/
-    ├── 001_extensions_and_functions.up.sql
-    ├── 001_extensions_and_functions.down.sql
-    ├── 002_create_agents.up.sql
-    ├── 002_create_agents.down.sql
-    └── ...
+    ├── 000001_extensions.up.sql
+    ├── 000001_extensions.down.sql
+    ├── 000002_create_agents.up.sql
+    ├── 000002_create_agents.down.sql
+    ├── 000003_create_patterns.up.sql
+    ├── 000003_create_patterns.down.sql
+    ├── 000004_create_pattern_agent_associations.up.sql
+    ├── 000004_create_pattern_agent_associations.down.sql
+    ├── 000005_create_enrichment_jobs.up.sql
+    ├── 000005_create_enrichment_jobs.down.sql
+    ├── 000006_create_performance_indexes.up.sql
+    ├── 000006_create_performance_indexes.down.sql
+    ├── 000007_create_skills.up.sql
+    ├── 000007_create_skills.down.sql
+    ├── 000008_create_skill_files.up.sql
+    └── 000008_create_skill_files.down.sql
 ```
 
 **Version Tracking:**
@@ -785,18 +780,18 @@ migrate -path src/migrations/postgres -database "$DB_URL" goto 5
 
 | Index                             | Table                      | Column(s)                              | Type                | Purpose                       |
 | --------------------------------- | -------------------------- | -------------------------------------- | ------------------- | ----------------------------- |
-| `idx_patterns_embedding_cosine`   | patterns                   | `embedding`                            | IVFFlat (lists=100) | Vector similarity search      |
+| `idx_patterns_embedding`   | patterns                   | `embedding`                            | IVFFlat (lists=100) | Vector similarity search      |
 | `idx_patterns_enriched`           | patterns                   | `id` WHERE status='enriched'           | btree (partial)     | Filter to searchable patterns |
 | `idx_patterns_tags`               | patterns                   | `tags`                                 | GIN                 | Tag containment queries       |
 | `idx_patterns_search`             | patterns                   | `to_tsvector(name \|\| description)`   | GIN                 | Full-text search              |
-| `idx_pattern_agent_assoc_agent`   | pattern_agent_associations | `agent_name`                           | btree               | FK join performance           |
+| `idx_pattern_agent_assoc_agent`   | pattern_agent_associations | `agent_id`                             | btree               | FK join performance           |
 | `idx_pattern_agent_assoc_pattern` | pattern_agent_associations | `pattern_id`                           | btree               | FK join performance           |
 | `idx_enrichment_jobs_pattern`     | enrichment_jobs            | `pattern_id`                           | btree               | FK join performance           |
 | `idx_enrichment_jobs_pending`     | enrichment_jobs            | `scheduled_for` WHERE status='pending' | btree (partial)     | Worker job polling            |
 | `idx_enrichment_jobs_processing`  | enrichment_jobs            | `started_at` WHERE status='processing' | btree (partial)     | Timeout detection             |
+| `idx_enrichment_jobs_unique_pending` | enrichment_jobs         | `pattern_id` WHERE status IN ('pending','processing') | unique (partial) | Prevent duplicate pending/processing jobs per pattern |
 | `idx_agents_definition`           | agents                     | `definition`                           | GIN                 | JSONB queries                 |
 | `idx_skills_definition`           | skills                     | `definition`                           | GIN                 | JSONB queries                 |
-| `idx_commands_definition`         | commands                   | `definition`                           | GIN                 | JSONB queries                 |
 | `idx_skill_files_skill_id`        | skill_files                | `skill_id`                             | btree               | FK lookup                     |
 
 > **Full index DDL:** See [Data Storage](../design/data-storage.md) for CREATE INDEX statements.
@@ -816,10 +811,10 @@ WHERE enrichment_status = 'enriched'
 ORDER BY embedding <=> $1::vector
 LIMIT 5;
 
--- Expected: Index Scan using idx_patterns_embedding_cosine
+-- Expected: Index Scan using idx_patterns_embedding
 ```
 
-**Skills/Commands List Query:**
+**Skills List Query:**
 
 ```sql
 -- Optimized list query (name + definition JSONB)
@@ -886,7 +881,6 @@ The retention policies below apply to the data model defined in [MVP: Data Model
 | Agents                      | Indefinite | Active configuration, rarely deleted |
 | Patterns                    | Indefinite | Knowledge base grows over time       |
 | Skills                      | Indefinite | Reusable tooling definitions         |
-| Commands                    | Indefinite | Reusable command definitions         |
 | Enrichment Jobs (completed) | 7 days     | Debugging, can be recreated          |
 | Enrichment Jobs (failed)    | 30 days    | Root cause analysis                  |
 

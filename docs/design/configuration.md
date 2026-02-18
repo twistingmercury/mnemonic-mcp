@@ -15,12 +15,15 @@
 - [Configuration Reference](#configuration-reference)
 - [Environment Variable Naming Conventions](#environment-variable-naming-conventions)
 - [File Discovery Order](#file-discovery-order)
+- [Viper Initialization](#viper-initialization)
 - [Security Considerations](#security-considerations)
   - [Secrets Handling](#secrets-handling)
   - [Environment Variable Security](#environment-variable-security)
   - [Configuration Validation](#configuration-validation)
   - [Embedding Dimension Validation](#embedding-dimension-validation)
 - [Configuration Model](#configuration-model)
+  - [Go Struct Definitions](#go-struct-definitions)
+  - [Class Diagram](#class-diagram)
 - [References](#references)
 
 ## Overview
@@ -29,11 +32,11 @@
 
 > **Architecture Reference:** [System Architecture - Component Breakdown](../../architecture/02-system-architecture.md#component-breakdown) | [Deployment Architecture - Component Deployment](../../architecture/06-deployment-architecture.md#component-deployment)
 
-The Mnemonic server uses a layered configuration system that supports multiple sources with well-defined precedence. This design enables:
+The Mnemonic server uses a layered configuration system built on [`github.com/spf13/viper`](https://github.com/spf13/viper). Viper provides unified support for multiple configuration sources with well-defined precedence. This design enables:
 
-- **Sensible defaults**: Work out of the box with minimal configuration
-- **File-based configuration**: Persistent settings in YAML format
-- **Environment overrides**: Container and CI/CD friendly
+- **Sensible defaults**: Work out of the box with minimal configuration (via `viper.SetDefault()`)
+- **File-based configuration**: Persistent settings in YAML format (via `viper.ReadInConfig()`)
+- **Environment overrides**: Container and CI/CD friendly (via `viper.AutomaticEnv()` with the `MNEMONIC_` prefix)
 
 | Component | Config Prefix | Config File                 | Primary Use Case           |
 | --------- | ------------- | --------------------------- | -------------------------- |
@@ -66,6 +69,8 @@ flowchart LR
 ```
 
 ### Loading Behavior
+
+Viper's `MergeInConfig()` is NOT used. Configuration is loaded with `ReadInConfig()`, which replaces the entire file layer. Environment variables are bound via `AutomaticEnv()` with prefix replacement, so that `MNEMONIC_SERVER_ADMIN_PORT` maps to the Viper key `server.admin.port`.
 
 **Merge vs Replace**:
 
@@ -372,6 +377,134 @@ Configuration files are searched in the following order:
 4. ./config.yaml (development)
 ```
 
+## Viper Initialization
+
+[Table of Contents](#table-of-contents)
+
+The following shows the Viper initialization pattern used by Mnemonic. All config structs use `mapstructure` tags (not `yaml`, `json`, or `env` tags) because Viper's `Unmarshal()` delegates to the `mapstructure` library.
+
+```go
+package config
+
+import (
+    "fmt"
+    "strings"
+
+    "github.com/spf13/viper"
+)
+
+// Load reads configuration from defaults, file, and environment variables.
+// It returns a fully populated MnemonicConfig or an error.
+func Load(configPath string) (*MnemonicConfig, error) {
+    v := viper.New()
+
+    // 1. Compiled defaults (lowest priority)
+    setDefaults(v)
+
+    // 2. Configuration file
+    if configPath != "" {
+        v.SetConfigFile(configPath)
+    } else {
+        // File discovery order
+        v.SetConfigName("config")
+        v.SetConfigType("yaml")
+        v.AddConfigPath("/etc/mnemonic") // production
+        v.AddConfigPath(".")              // development
+    }
+
+    if err := v.ReadInConfig(); err != nil {
+        if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+            return nil, fmt.Errorf("reading config file: %w", err)
+        }
+        // Config file not found is acceptable; defaults + env vars are sufficient
+    }
+
+    // 3. Environment variables (highest priority)
+    v.SetEnvPrefix("MNEMONIC")
+    v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+    v.AutomaticEnv()
+
+    // Unmarshal into config struct (uses mapstructure tags)
+    var cfg MnemonicConfig
+    if err := v.Unmarshal(&cfg); err != nil {
+        return nil, fmt.Errorf("unmarshaling config: %w", err)
+    }
+
+    return &cfg, nil
+}
+
+func setDefaults(v *viper.Viper) {
+    // Server defaults
+    v.SetDefault("server.admin.host", "0.0.0.0")
+    v.SetDefault("server.admin.port", 8080)
+    v.SetDefault("server.admin.read_timeout", "30s")
+    v.SetDefault("server.admin.write_timeout", "30s")
+    v.SetDefault("server.admin.idle_timeout", "120s")
+    v.SetDefault("server.admin.shutdown_timeout", "5s")
+
+    v.SetDefault("server.mcp.host", "0.0.0.0")
+    v.SetDefault("server.mcp.port", 8081)
+    v.SetDefault("server.mcp.read_timeout", "30s")
+    v.SetDefault("server.mcp.write_timeout", "120s")
+    v.SetDefault("server.mcp.idle_timeout", "120s")
+    v.SetDefault("server.mcp.shutdown_timeout", "5s")
+    v.SetDefault("server.mcp.session_timeout", "30m")
+
+    // Database defaults
+    v.SetDefault("database.postgres.host", "localhost")
+    v.SetDefault("database.postgres.port", 5432)
+    v.SetDefault("database.postgres.database", "mnemonic")
+    v.SetDefault("database.postgres.username", "mnemonic")
+    v.SetDefault("database.postgres.ssl_mode", "prefer")
+    v.SetDefault("database.postgres.max_open_conns", 25)
+    v.SetDefault("database.postgres.max_idle_conns", 5)
+    v.SetDefault("database.postgres.conn_max_lifetime", "5m")
+
+    v.SetDefault("database.neo4j.uri", "bolt://localhost:7687")
+    v.SetDefault("database.neo4j.username", "neo4j")
+    v.SetDefault("database.neo4j.database", "neo4j")
+    v.SetDefault("database.neo4j.max_connection_pool_size", 50)
+    v.SetDefault("database.neo4j.connection_acquisition_timeout", "60s")
+
+    // OpenAI defaults
+    v.SetDefault("openai.embedding_model", "text-embedding-3-small")
+    v.SetDefault("openai.embedding_dimensions", 1536)
+    v.SetDefault("openai.extraction_model", "gpt-4o-mini")
+    v.SetDefault("openai.max_requests_per_minute", 500)
+    v.SetDefault("openai.retry_attempts", 3)
+    v.SetDefault("openai.retry_delay", "1s")
+
+    // Enrichment defaults
+    v.SetDefault("enrichment.worker_count", 2)
+    v.SetDefault("enrichment.poll_interval", "5s")
+    v.SetDefault("enrichment.max_attempts", 3)
+    v.SetDefault("enrichment.retry_delay", "30s")
+    v.SetDefault("enrichment.job_timeout", "5m")
+
+    // Logging defaults
+    v.SetDefault("logging.level", "info")
+    v.SetDefault("logging.format", "json")
+    v.SetDefault("logging.include_caller", false)
+
+    // Observability defaults
+    v.SetDefault("observability.metrics.enabled", true)
+    v.SetDefault("observability.metrics.path", "/metrics")
+    v.SetDefault("observability.metrics.port", 9090)
+    v.SetDefault("observability.health.enabled", true)
+    v.SetDefault("observability.health.path", "/health")
+    v.SetDefault("observability.tracing.enabled", false)
+    v.SetDefault("observability.tracing.sample_rate", 0.1)
+    v.SetDefault("observability.tracing.otlp_insecure", true)
+}
+```
+
+**Key Viper details:**
+
+- `SetEnvPrefix("MNEMONIC")` causes all env var lookups to be prefixed with `MNEMONIC_`
+- `SetEnvKeyReplacer(strings.NewReplacer(".", "_"))` maps nested keys (e.g., `server.admin.port`) to env vars (e.g., `MNEMONIC_SERVER_ADMIN_PORT`)
+- `AutomaticEnv()` enables automatic binding of all Viper keys to their corresponding env vars
+- `Unmarshal(&cfg)` uses the `mapstructure` library under the hood, so config structs MUST use `mapstructure:"..."` tags (not `yaml` or `json` tags)
+
 ## Security Considerations
 
 [Table of Contents](#table-of-contents)
@@ -512,7 +645,151 @@ See [Pattern Processing - PGVector Configuration](pattern-processing.md#pgvector
 
 [Table of Contents](#table-of-contents)
 
-The following class diagram shows the configuration structure used by the Mnemonic server. This model is loaded from YAML files and environment variables using the precedence rules described above.
+The following Go struct definitions and class diagram show the configuration structure used by the Mnemonic server. All structs use `mapstructure` tags for Viper compatibility. This model is loaded from YAML files and environment variables using the precedence rules described above.
+
+### Go Struct Definitions
+
+```go
+package config
+
+import "time"
+
+// MnemonicConfig is the top-level configuration struct.
+// Viper unmarshals YAML keys and env vars into this struct via mapstructure tags.
+type MnemonicConfig struct {
+    Server        ServerConfigs      `mapstructure:"server"`
+    Database      DatabaseConfig     `mapstructure:"database"`
+    OpenAI        OpenAIConfig       `mapstructure:"openai"`
+    RateLimit     RateLimitConfig    `mapstructure:"rate_limit"`
+    Enrichment    EnrichmentConfig   `mapstructure:"enrichment"`
+    Logging       LoggingConfig      `mapstructure:"logging"`
+    Observability ObservabilityConfig `mapstructure:"observability"`
+}
+
+type ServerConfigs struct {
+    Admin AdminServerConfig `mapstructure:"admin"`
+    MCP   MCPServerConfig   `mapstructure:"mcp"`
+}
+
+type AdminServerConfig struct {
+    Host            string        `mapstructure:"host"`
+    Port            int           `mapstructure:"port"`
+    ReadTimeout     time.Duration `mapstructure:"read_timeout"`
+    WriteTimeout    time.Duration `mapstructure:"write_timeout"`
+    IdleTimeout     time.Duration `mapstructure:"idle_timeout"`
+    ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
+    TLS             TLSConfig     `mapstructure:"tls"`
+}
+
+type MCPServerConfig struct {
+    Host            string        `mapstructure:"host"`
+    Port            int           `mapstructure:"port"`
+    ReadTimeout     time.Duration `mapstructure:"read_timeout"`
+    WriteTimeout    time.Duration `mapstructure:"write_timeout"`
+    IdleTimeout     time.Duration `mapstructure:"idle_timeout"`
+    ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
+    SessionTimeout  time.Duration `mapstructure:"session_timeout"`
+    TLS             TLSConfig     `mapstructure:"tls"`
+}
+
+type TLSConfig struct {
+    Enabled  bool   `mapstructure:"enabled"`
+    CertFile string `mapstructure:"cert_file"`
+    KeyFile  string `mapstructure:"key_file"`
+}
+
+type DatabaseConfig struct {
+    Postgres PostgresConfig `mapstructure:"postgres"`
+    Neo4j    Neo4jConfig    `mapstructure:"neo4j"`
+}
+
+// PostgresConfig defines PostgreSQL connection parameters.
+// Matches the struct in data-storage.md Connection Configuration.
+type PostgresConfig struct {
+    Host            string        `mapstructure:"host"`
+    Port            int           `mapstructure:"port"`
+    Database        string        `mapstructure:"database"`
+    Username        string        `mapstructure:"username"`
+    Password        string        `mapstructure:"password"`
+    SSLMode         string        `mapstructure:"ssl_mode"`
+    MaxOpenConns    int           `mapstructure:"max_open_conns"`
+    MaxIdleConns    int           `mapstructure:"max_idle_conns"`
+    ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
+}
+
+// Neo4jConfig defines Neo4j connection parameters.
+// Matches the struct in data-storage.md Connection Configuration.
+type Neo4jConfig struct {
+    URI                          string        `mapstructure:"uri"`
+    Username                     string        `mapstructure:"username"`
+    Password                     string        `mapstructure:"password"`
+    Database                     string        `mapstructure:"database"`
+    MaxConnectionPoolSize        int           `mapstructure:"max_connection_pool_size"`
+    ConnectionAcquisitionTimeout time.Duration `mapstructure:"connection_acquisition_timeout"`
+}
+
+type OpenAIConfig struct {
+    APIKey              string        `mapstructure:"api_key"`
+    EmbeddingModel      string        `mapstructure:"embedding_model"`
+    EmbeddingDimensions int           `mapstructure:"embedding_dimensions"`
+    ExtractionModel     string        `mapstructure:"extraction_model"`
+    MaxRequestsPerMinute int          `mapstructure:"max_requests_per_minute"`
+    RetryAttempts       int           `mapstructure:"retry_attempts"`
+    RetryDelay          time.Duration `mapstructure:"retry_delay"`
+}
+
+type RateLimitConfig struct {
+    Enabled           bool             `mapstructure:"enabled"`
+    RequestsPerSecond int              `mapstructure:"requests_per_second"`
+    BurstSize         int              `mapstructure:"burst_size"`
+    PerUser           PerUserRateLimit `mapstructure:"per_user"`
+}
+
+type PerUserRateLimit struct {
+    RequestsPerMinute int `mapstructure:"requests_per_minute"`
+    BurstSize         int `mapstructure:"burst_size"`
+}
+
+type EnrichmentConfig struct {
+    WorkerCount  int           `mapstructure:"worker_count"`
+    PollInterval time.Duration `mapstructure:"poll_interval"`
+    MaxAttempts  int           `mapstructure:"max_attempts"`
+    RetryDelay   time.Duration `mapstructure:"retry_delay"`
+    JobTimeout   time.Duration `mapstructure:"job_timeout"`
+}
+
+type LoggingConfig struct {
+    Level         string `mapstructure:"level"`
+    Format        string `mapstructure:"format"`
+    IncludeCaller bool   `mapstructure:"include_caller"`
+}
+
+type ObservabilityConfig struct {
+    Metrics MetricsConfig `mapstructure:"metrics"`
+    Health  HealthConfig  `mapstructure:"health"`
+    Tracing TracingConfig `mapstructure:"tracing"`
+}
+
+type MetricsConfig struct {
+    Enabled bool   `mapstructure:"enabled"`
+    Path    string `mapstructure:"path"`
+    Port    int    `mapstructure:"port"`
+}
+
+type HealthConfig struct {
+    Enabled bool   `mapstructure:"enabled"`
+    Path    string `mapstructure:"path"`
+}
+
+type TracingConfig struct {
+    Enabled      bool    `mapstructure:"enabled"`
+    Endpoint     string  `mapstructure:"endpoint"`
+    SampleRate   float64 `mapstructure:"sample_rate"`
+    OTLPInsecure bool    `mapstructure:"otlp_insecure"`
+}
+```
+
+### Class Diagram
 
 ```mermaid
 classDiagram
@@ -672,3 +949,5 @@ classDiagram
 - [Deployment Architecture](../../architecture/06-deployment-architecture.md) - Deployment environments
 - [Pattern Processing](pattern-processing.md) - OpenAI configuration for enrichment
 - [Observability Implementation](observability-implementation.md) - otelx integration details
+- [Viper](https://github.com/spf13/viper) - Configuration library used by Mnemonic
+- [Data Storage - Connection Configuration](data-storage.md#connection-configuration) - PostgresConfig and Neo4jConfig struct definitions
