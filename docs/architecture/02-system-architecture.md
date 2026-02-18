@@ -292,7 +292,6 @@ graph TB
 
     UD1 --> CD3
     CD3 -->|"search_patterns"| MD2
-    CD3 -->|"list_agents"| MD3
     AD1 --> MD1
     AD2 --> MD3
 ```

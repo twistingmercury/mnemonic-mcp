@@ -132,7 +132,7 @@ Agents, skills, commands, and skill files are first-class entities in Mnemonic (
 **Name conventions:**
 
 - Agents: max 64 chars, `^[a-z][a-z0-9-]*$`
-- Skills: max 64 chars, `^[a-z]([a-z0-9](-[a-z0-9])*)*$` (stricter hyphen rules)
+- Skills: max 64 chars, `^[a-z][a-z0-9-]*$`
 - Commands: max 255 chars
 
 **CRC-64 change detection:** Computed in Go via `hash/crc64` with ISO polynomial. Stored as BIGINT. Enables efficient diff without comparing full JSONB documents.

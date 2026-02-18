@@ -127,7 +127,7 @@ stateDiagram-v2
 
     state "4. Create Relationships" as CreateRelationships
     note right of CreateRelationships
-        Neo4j: RELATES_TO, RELEVANT_FOR,
+        Neo4j: RELATED_TO, RELEVANT_FOR,
         MENTIONED_IN relationships
     end note
 
@@ -196,10 +196,10 @@ MERGE (p:Pattern {id: $patternId})
 MERGE (c:Concept {name: $conceptName})
 MERGE (c)-[:MENTIONED_IN]->(p)
 
-// Pattern to pattern relationship (based on shared entities)
-MATCH (p1:Pattern)-[:MENTIONS]->(e:Entity)<-[:MENTIONS]-(p2:Pattern)
+// Pattern to pattern relationship (based on shared concepts)
+MATCH (p1:Pattern)<-[:MENTIONED_IN]-(c:Concept)-[:MENTIONED_IN]->(p2:Pattern)
 WHERE p1.id <> p2.id
-MERGE (p1)-[:RELATES_TO]->(p2)
+MERGE (p1)-[:RELATED_TO]->(p2)
 ```
 
 ### RELATED_TO Edge Computation

@@ -24,7 +24,6 @@
   - [Data Flow Patterns](#data-flow-patterns)
     - [Write Paths](#write-paths)
     - [Read Paths](#read-paths)
-    - [Cache Invalidation](#cache-invalidation)
   - [Consistency and Integrity](#consistency-and-integrity)
     - [Transaction Handling](#transaction-handling)
     - [Cross-Database Consistency](#cross-database-consistency)
@@ -43,10 +42,7 @@
     - [Data Retention Policies](#data-retention-policies)
     - [Archival Strategies](#archival-strategies)
     - [Cleanup Procedures](#cleanup-procedures)
-  - [Backup and Recovery](#backup-and-recovery)
-    - [Backup Strategies](#backup-strategies)
-    - [Recovery Procedures](#recovery-procedures)
-    - [Point-in-Time Recovery](#point-in-time-recovery)
+  - [Backup and Recovery](../operations/database-operations.md)
   - [Security Enhancements](#security-enhancements)
     - [Encryption at Rest](#encryption-at-rest)
     - [Access Patterns](#access-patterns)
@@ -128,7 +124,7 @@ graph TB
 **Stores:**
 
 - Pattern content embeddings (1536 dimensions, OpenAI text-embedding-3-small)
-- Prompt embeddings for semantic routing (generated at query time)
+- Prompt embeddings for semantic search (generated at query time)
 
 **Why PGVector over Dedicated Vector DB:**
 
@@ -280,7 +276,7 @@ Skill definitions stored as JSONB documents. See [ADR-003](00-architectural-deci
 
 **Schema:** `(id UUID PK, name VARCHAR(64) UNIQUE, definition JSONB, crc64 BIGINT, created_at, updated_at)`
 
-**Name constraint:** `^[a-z]([a-z0-9](-[a-z0-9])*)*$` (max 64 chars, enforced by CHECK)
+**Name constraint:** `^[a-z][a-z0-9-]*$` (max 64 chars, enforced by CHECK)
 
 Skills may have child files (scripts, references, assets) stored in the `skill_files` table with CASCADE delete.
 
@@ -302,98 +298,7 @@ Background processing queue for pattern enrichment. See [ADR-004](00-architectur
 
 #### PostgreSQL Schema
 
-```sql
--- Enable required extensions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "vector";
-
--- Agents (post-pivot JSONB document model)
-CREATE TABLE IF NOT EXISTS agents (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name        VARCHAR(64) UNIQUE NOT NULL,
-    definition  JSONB NOT NULL,
-    crc64       BIGINT NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT agents_name_format CHECK (name ~ '^[a-z][a-z0-9-]*$')
-);
-
--- Skills (post-pivot JSONB document model)
-CREATE TABLE IF NOT EXISTS skills (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name        VARCHAR(64) UNIQUE NOT NULL,
-    definition  JSONB NOT NULL,
-    crc64       BIGINT NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT skills_name_format CHECK (name ~ '^[a-z]([a-z0-9](-[a-z0-9])*)*$')
-);
-
--- Commands (post-pivot JSONB document model)
-CREATE TABLE IF NOT EXISTS commands (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name        VARCHAR(255) UNIQUE NOT NULL,
-    definition  JSONB NOT NULL,
-    crc64       BIGINT NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Skill Files
-CREATE TABLE IF NOT EXISTS skill_files (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    skill_id    UUID NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
-    file_type   VARCHAR(20) NOT NULL CHECK (file_type IN ('script', 'reference', 'asset')),
-    filename    VARCHAR(255) NOT NULL,
-    document    JSONB NOT NULL,
-    crc64       BIGINT NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT skill_files_unique_name UNIQUE (skill_id, file_type, filename)
-);
-
--- Patterns table (relational columns - not affected by JSONB pivot)
-CREATE TABLE IF NOT EXISTS patterns (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(128) NOT NULL UNIQUE,
-    description VARCHAR(500),
-    content TEXT NOT NULL
-        CHECK (length(content) <= 10240),
-    tags JSONB NOT NULL DEFAULT '[]'::jsonb,
-    embedding vector(1536),
-    enrichment_status VARCHAR(20) NOT NULL DEFAULT 'pending'
-        CHECK (enrichment_status IN ('pending', 'enriched', 'failed')),
-    enrichment_error TEXT,
-    enriched_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Pattern-Agent associations (many-to-many with relevance)
-CREATE TABLE IF NOT EXISTS pattern_agent_associations (
-    pattern_id UUID NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
-    agent_name VARCHAR(64) NOT NULL REFERENCES agents(name) ON DELETE CASCADE,
-    relevance DOUBLE PRECISION NOT NULL
-        CHECK (relevance >= 0 AND relevance <= 1),
-    PRIMARY KEY (pattern_id, agent_name)
-);
-
--- Enrichment jobs queue
-CREATE TABLE IF NOT EXISTS enrichment_jobs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    pattern_id UUID NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
-    attempts INTEGER NOT NULL DEFAULT 0,
-    max_attempts INTEGER NOT NULL DEFAULT 3,
-    last_error TEXT,
-    scheduled_for TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    started_at TIMESTAMPTZ,
-    completed_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
+> **Full DDL:** See [Data Storage](../design/data-storage.md) for complete CREATE TABLE statements, constraints, and migration history.
 
 **Note:** Application manages `updated_at` timestamps on write. No database triggers.
 
@@ -411,105 +316,74 @@ CREATE TABLE IF NOT EXISTS enrichment_jobs (
 
 **Recommended Index (MVP scale):**
 
-```sql
--- IVFFlat index for ~1,000-10,000 patterns
-CREATE INDEX idx_patterns_embedding ON patterns
-USING ivfflat (embedding vector_cosine_ops)
-WITH (lists = 100);
-
--- Ensure only enriched patterns are searchable
-CREATE INDEX idx_patterns_enriched ON patterns (enrichment_status)
-WHERE enrichment_status = 'enriched';
-
--- GIN indexes for JSONB filtering on entity definitions
-CREATE INDEX idx_skills_definition ON skills USING GIN (definition);
-CREATE INDEX idx_commands_definition ON commands USING GIN (definition);
-```
+See [Index Strategies](#index-strategies) for the IVFFlat index definition.
 
 **Similarity Search Query:**
 
 ```sql
--- Find similar patterns for a prompt embedding
-SELECT id, name, content,
-       1 - (embedding <=> $1::vector) AS similarity
-FROM patterns
-WHERE enrichment_status = 'enriched'
-  AND 1 - (embedding <=> $1::vector) > $2  -- threshold
-ORDER BY embedding <=> $1::vector
-LIMIT $3;  -- max_patterns
+-- search_patterns: semantic search with optional tag and agent filtering
+-- Parameters:
+--   $1 = query embedding vector (generated at query time from the search query)
+--   $2 = similarity threshold (default 0.7, range 0.0-1.0)
+--   $3 = result limit (default 10, max 50)
+--   $4 = tags filter (JSONB array, e.g. '["go","error-handling"]'::jsonb, or NULL to skip)
+--   $5 = agent name filter (e.g. 'go-software-engineer', or NULL to skip)
+SELECT p.id, p.name, p.description, p.content, p.tags,
+       1 - (p.embedding <=> $1::vector) AS similarity
+FROM patterns p
+WHERE p.enrichment_status = 'enriched'
+  AND 1 - (p.embedding <=> $1::vector) > $2                     -- similarity threshold
+  -- Tag filter: the @> operator tests whether the left JSONB value contains the right.
+  -- '["go","testing"]'::jsonb @> '["go"]'::jsonb is true, so a pattern tagged with
+  -- both "go" and "testing" matches a filter for ["go"]. When multiple tags are
+  -- supplied, @> enforces conjunctive (AND) semantics: the pattern must have ALL of
+  -- them. This clause uses the GIN index idx_patterns_tags.
+  AND ($4::jsonb IS NULL OR p.tags @> $4::jsonb)
+  -- Agent filter: restrict results to patterns associated with the named agent.
+  -- Uses a subquery against pattern_agent_associations rather than a JOIN to avoid
+  -- duplicating rows when a pattern has multiple agent associations.
+  AND ($5::text IS NULL OR EXISTS (
+      SELECT 1 FROM pattern_agent_associations paa
+      WHERE paa.pattern_id = p.id
+        AND paa.agent_name = $5
+  ))
+ORDER BY p.embedding <=> $1::vector
+LIMIT $3;
 ```
 
 #### Neo4j Graph Model
 
-```cypher
-// Node labels and properties
+**Node Labels:**
 
-// Pattern node (mirrored from Postgres)
-(:Pattern {
-    id: "uuid",          // Matches patterns.id in Postgres
-    name: "string",
-    description: "string"
-})
+| Label   | Properties                                                         | Source                      |
+| ------- | ------------------------------------------------------------------ | --------------------------- |
+| Pattern | `id` (UUID), `name`, `description`                                 | Mirrored from Postgres      |
+| Agent   | `name`                                                             | Mirrored from Postgres      |
+| Concept | `name` (normalized lowercase), `type` (technology/practice/domain) | Extracted during enrichment |
 
-// Agent node (mirrored from Postgres)
-(:Agent {
-    name: "string"       // Matches agents.name in Postgres
-})
+**Relationship Types:**
 
-// Concept node (extracted during enrichment)
-(:Concept {
-    name: "string",      // Lowercase, normalized
-    type: "string"       // technology|practice|domain
-})
+| Type           | From    | To      | Properties                                          |
+| -------------- | ------- | ------- | --------------------------------------------------- |
+| `RELEVANT_FOR` | Pattern | Agent   | `relevance` (float, 0.0-1.0)                        |
+| `MENTIONED_IN` | Concept | Pattern | --                                                  |
+| `RELATED_TO`   | Pattern | Pattern | `similarity` (float, computed from shared concepts) |
 
-// Relationship types
-
-// Pattern to Agent association
-(:Pattern)-[:RELEVANT_FOR {
-    relevance: 0.95      // Same as pattern_agent_associations.relevance
-}]->(:Agent)
-
-// Concept mentioned in Pattern
-(:Concept)-[:MENTIONED_IN]->(:Pattern)
-
-// Pattern to Pattern similarity (computed)
-(:Pattern)-[:RELATES_TO {
-    similarity: 0.85     // Computed from shared concepts
-}]->(:Pattern)
-```
+The enrichment pipeline assigns one of three concept types to each extracted entity: `technology` (tools, languages, frameworks), `practice` (methodologies, patterns, approaches), or `domain` (problem areas, business contexts). Type assignment is performed by the LLM during the entity extraction step.
 
 **Constraints and Indexes:**
 
-```cypher
-// Uniqueness constraints (Community + Enterprise)
-CREATE CONSTRAINT pattern_id_unique IF NOT EXISTS
-FOR (p:Pattern) REQUIRE p.id IS UNIQUE;
+| Constraint/Index           | Label   | Property              | Type       |
+| -------------------------- | ------- | --------------------- | ---------- |
+| `pattern_id_unique`        | Pattern | `id`                  | Uniqueness |
+| `agent_name_unique`        | Agent   | `name`                | Uniqueness |
+| `concept_name_unique`      | Concept | `name`                | Uniqueness |
+| `pattern_name_index`       | Pattern | `name`                | Property   |
+| `concept_type_index`       | Concept | `type`                | Property   |
+| `pattern_content_fulltext` | Pattern | `name`, `description` | Full-text  |
+| `concept_name_fulltext`    | Concept | `name`                | Full-text  |
 
-CREATE CONSTRAINT agent_name_unique IF NOT EXISTS
-FOR (a:Agent) REQUIRE a.name IS UNIQUE;
-
-CREATE CONSTRAINT concept_name_unique IF NOT EXISTS
-FOR (c:Concept) REQUIRE c.name IS UNIQUE;
-
-// Existence constraints (Enterprise Edition only)
-// Note: Community Edition does not support existence constraints (IS NOT NULL).
-// The application layer enforces property completeness regardless.
-// See docs/design/data-storage.md for details on the CE/Enterprise split.
-
-// Property indexes
-CREATE INDEX pattern_name_index IF NOT EXISTS
-FOR (p:Pattern) ON (p.name);
-
-CREATE INDEX concept_type_index IF NOT EXISTS
-FOR (c:Concept) ON (c.type);
-
-// Full-text search indexes
-CREATE FULLTEXT INDEX pattern_content_fulltext IF NOT EXISTS
-FOR (p:Pattern) ON EACH [p.name, p.description];
-
-CREATE FULLTEXT INDEX concept_name_fulltext IF NOT EXISTS
-FOR (c:Concept) ON EACH [c.name];
-```
+> **Full Cypher DDL:** See [Data Storage](../design/data-storage.md) for constraint and index definitions.
 
 **Graph Data Flow:**
 
@@ -525,9 +399,9 @@ flowchart TD
         NEO_AGENT[Agent nodes]
         NEO_PATTERN[Pattern nodes]
         NEO_CONCEPT[Concept nodes]
-        NEO_AGENT <-->|"RELEVANT_FOR"| NEO_PATTERN
+        NEO_PATTERN -->|"RELEVANT_FOR"| NEO_AGENT
         NEO_CONCEPT -->|"MENTIONED_IN"| NEO_PATTERN
-        NEO_PATTERN <-->|"RELATES_TO"| NEO_PATTERN
+        NEO_PATTERN <-->|"RELATED_TO"| NEO_PATTERN
     end
 
     PG_AGENT -->|"Sync on create/update"| NEO_AGENT
@@ -553,11 +427,42 @@ sequenceDiagram
     ADMIN->>API: POST/PUT /v1/api/agents
     API->>PG: BEGIN TRANSACTION
     API->>PG: INSERT/UPDATE agents
-    API->>NEO: MERGE (a:Agent {name: $name})
     API->>PG: COMMIT
+
+    alt Neo4j sync (best-effort)
+        API->>NEO: MERGE (a:Agent {name: $name})
+    else Neo4j unavailable
+        Note over API,NEO: Log warning, continue
+    end
 
     API-->>ADMIN: 201 Created / 200 OK
 ```
+
+##### Pattern Delete (Admin API)
+
+```mermaid
+sequenceDiagram
+    participant CLIENT as Admin Client
+    participant API as Admin API
+    participant PG as PostgreSQL
+    participant NEO as Neo4j
+
+    CLIENT->>API: DELETE /v1/api/patterns/:id
+    API->>PG: BEGIN
+    API->>PG: DELETE FROM patterns WHERE id = $id (CASCADE)
+    PG-->>API: Deleted (associations + jobs cascaded)
+    API->>PG: COMMIT
+    alt Neo4j available
+        API->>NEO: MATCH (p:Pattern {id: $id}) DETACH DELETE p
+        API->>NEO: MATCH (c:Concept) WHERE NOT (c)-[:MENTIONED_IN]-() DELETE c
+        NEO-->>API: Cleanup complete
+    else Neo4j unavailable
+        Note over API,NEO: Log failure for reconciliation
+    end
+    API-->>CLIENT: 204 No Content
+```
+
+The Postgres CASCADE removes `pattern_agent_associations` and `enrichment_jobs` rows automatically. Neo4j cleanup is best-effort: orphaned Concept nodes (concepts with no remaining `MENTIONED_IN` edges after the Pattern node is removed) are also deleted.
 
 ##### Pattern Create with Enrichment
 
@@ -613,22 +518,70 @@ sequenceDiagram
 sequenceDiagram
     participant CC as Claude Code
     participant MCP as Mnemonic MCP Server
+    participant OPENAI as OpenAI Embedding API
     participant PG as Postgres
     participant PGV as PGVector
-    participant NEO as Neo4j
 
     CC->>MCP: search_patterns(query)
-    MCP->>PG: Generate embedding for query
-    MCP->>PGV: Semantic similarity search
+    MCP->>OPENAI: Generate query embedding
+    OPENAI-->>MCP: vector(1536)
+    MCP->>PGV: Semantic search (PGVector)
     PGV-->>MCP: Similar patterns
-
-    opt Graph enhancement
-        MCP->>NEO: Boost by graph relationships
-        NEO-->>MCP: Graph scores
-    end
-
     MCP-->>CC: Pattern results
 ```
+
+##### Find Related Patterns (MCP)
+
+```mermaid
+sequenceDiagram
+    participant CC as Claude Code
+    participant MCP as MCP Server
+    participant NEO as Neo4j
+
+    CC->>MCP: find_related_patterns(pattern_id)
+    MCP->>NEO: MATCH (p:Pattern {id: $id})-[r:RELATED_TO]-(related:Pattern)
+    NEO-->>MCP: Related patterns + similarity scores
+    MCP->>NEO: MATCH (p:Pattern {id: $id})<-[:MENTIONED_IN]-(c:Concept)-[:MENTIONED_IN]->(related:Pattern)
+    NEO-->>MCP: Shared concepts
+    MCP-->>CC: Related patterns with scores and shared concepts
+```
+
+Pure graph traversal — no Postgres or OpenAI calls. Strength scores reflect concept overlap computed during enrichment.
+
+##### Get Pattern (MCP)
+
+```mermaid
+sequenceDiagram
+    participant CC as Claude Code
+    participant MCP as MCP Server
+    participant PG as PostgreSQL
+    participant NEO as Neo4j
+
+    CC->>MCP: get_pattern(pattern_id)
+    MCP->>PG: SELECT * FROM patterns WHERE id = $id
+    PG-->>MCP: Pattern record
+    MCP->>NEO: MATCH (p:Pattern {id: $id})-[r]-(n) RETURN r, n
+    NEO-->>MCP: Graph context (concepts, related patterns, agents)
+    MCP-->>CC: Pattern with full context
+```
+
+The Neo4j graph context section is omitted from the response when the pattern's enrichment is still pending.
+
+##### Tooling Sync (Admin API)
+
+```mermaid
+sequenceDiagram
+    participant CLIENT as Sync Client
+    participant API as Admin API
+    participant PG as PostgreSQL
+
+    CLIENT->>API: GET /v1/api/{collection}
+    API->>PG: SELECT id, name, definition, crc64 FROM {table}
+    PG-->>API: Collection records
+    API-->>CLIENT: JSON response with sync manifest
+```
+
+Sync reads are Postgres-only. Neo4j is used exclusively for pattern graph relationships and is not queried during tooling synchronization.
 
 ##### Pattern List with Search
 
@@ -644,12 +597,6 @@ sequenceDiagram
     PG-->>API: PatternSummary[]
     API-->>ADMIN: PatternList (paginated)
 ```
-
-### Cache Invalidation
-
-[Back to Table of Contents](#table-of-contents)
-
-**MVP Strategy:** No caching. Each request queries the database directly. Post-MVP caching (if needed for multi-pod scaling) will be designed separately.
 
 ### Consistency and Integrity
 
@@ -668,11 +615,11 @@ All write operations use explicit transactions with appropriate isolation. The g
 
 **Isolation Levels:**
 
-| Operation            | Isolation Level | Rationale                     |
-| -------------------- | --------------- | ----------------------------- |
-| Read queries         | Read Committed  | Default, sufficient for reads |
-| Write operations     | Read Committed  | Prevents dirty reads          |
-| Enrichment job claim | Serializable    | Prevents race conditions      |
+| Operation            | Isolation Level | Rationale                                       |
+| -------------------- | --------------- | ----------------------------------------------- |
+| Read queries         | Read Committed  | Default, sufficient for reads                   |
+| Write operations     | Read Committed  | Prevents dirty reads                            |
+| Enrichment job claim | Read Committed  | FOR UPDATE SKIP LOCKED prevents race conditions |
 
 #### Cross-Database Consistency
 
@@ -715,18 +662,7 @@ graph LR
 
 **Database-Level Constraints:**
 
-```sql
--- Referential integrity
-ALTER TABLE pattern_agent_associations
-ADD CONSTRAINT fk_pattern_agent_pattern
-FOREIGN KEY (pattern_id) REFERENCES patterns(id)
-ON DELETE CASCADE;  -- Remove associations when pattern deleted
-
-ALTER TABLE pattern_agent_associations
-ADD CONSTRAINT fk_pattern_agent_agent
-FOREIGN KEY (agent_name) REFERENCES agents(name)
-ON DELETE CASCADE;  -- Remove associations when agent deleted
-```
+Referential integrity is enforced via foreign keys with CASCADE delete. When a pattern is deleted, its `pattern_agent_associations` and `enrichment_jobs` rows are removed automatically. When an agent is deleted, its association rows are removed. See [Data Storage](../design/data-storage.md) for FK definitions.
 
 **Application-Level Validation:**
 
@@ -770,13 +706,7 @@ src/mnemonic/
 
 **Version Tracking:**
 
-```sql
--- golang-migrate creates this automatically
-CREATE TABLE schema_migrations (
-    version BIGINT PRIMARY KEY,
-    dirty BOOLEAN NOT NULL
-);
-```
+Migration state is tracked by golang-migrate in a `schema_migrations` table.
 
 #### Forward-Compatible Migrations
 
@@ -847,50 +777,23 @@ migrate -path src/mnemonic/migrations/postgres -database "$DB_URL" goto 5
 
 **PostgreSQL Indexes:**
 
-```sql
--- Primary lookup indexes (created by primary key constraints)
--- agents(name), patterns(id), skills(id), commands(id)
+| Index                              | Table                      | Column(s)                              | Type                | Purpose                       |
+| ---------------------------------- | -------------------------- | -------------------------------------- | ------------------- | ----------------------------- |
+| `idx_patterns_embedding`           | patterns                   | `embedding`                            | IVFFlat (lists=100) | Vector similarity search      |
+| `idx_patterns_enriched`            | patterns                   | `id` WHERE status='enriched'           | btree (partial)     | Filter to searchable patterns |
+| `idx_patterns_tags`                | patterns                   | `tags`                                 | GIN                 | Tag containment queries       |
+| `idx_patterns_search`              | patterns                   | `to_tsvector(name \|\| description)`   | GIN                 | Full-text search              |
+| `idx_pattern_agent_assoc_agent`    | pattern_agent_associations | `agent_name`                           | btree               | FK join performance           |
+| `idx_pattern_agent_assoc_pattern`  | pattern_agent_associations | `pattern_id`                           | btree               | FK join performance           |
+| `idx_enrichment_jobs_pattern`      | enrichment_jobs            | `pattern_id`                           | btree               | FK join performance           |
+| `idx_enrichment_jobs_pending`      | enrichment_jobs            | `scheduled_for` WHERE status='pending' | btree (partial)     | Worker job polling            |
+| `idx_enrichment_jobs_processing`   | enrichment_jobs            | `started_at` WHERE status='processing' | btree (partial)     | Timeout detection             |
+| `idx_agents_definition`            | agents                     | `definition`                           | GIN                 | JSONB queries                 |
+| `idx_skills_definition`            | skills                     | `definition`                           | GIN                 | JSONB queries                 |
+| `idx_commands_definition`          | commands                   | `definition`                           | GIN                 | JSONB queries                 |
+| `idx_skill_files_skill_id`         | skill_files                | `skill_id`                             | btree               | FK lookup                     |
 
--- Foreign key indexes (required for join performance)
-CREATE INDEX idx_pattern_associations_agent ON pattern_agent_associations(agent_name);
-CREATE INDEX idx_pattern_associations_pattern ON pattern_agent_associations(pattern_id);
-CREATE INDEX idx_enrichment_jobs_pattern ON enrichment_jobs(pattern_id);
-
--- Query optimization indexes
-CREATE INDEX idx_patterns_enrichment_status
-    ON patterns(enrichment_status)
-    WHERE enrichment_status = 'enriched';
-
-CREATE INDEX idx_enrichment_jobs_pending
-    ON enrichment_jobs(scheduled_for)
-    WHERE status = 'pending';
-
--- JSONB indexes for tag filtering
-CREATE INDEX idx_patterns_tags ON patterns USING GIN (tags);
-
--- GIN indexes for JSONB filtering
-CREATE INDEX idx_skills_definition ON skills USING GIN (definition);
-CREATE INDEX idx_commands_definition ON commands USING GIN (definition);
-
--- Full-text search index
-CREATE INDEX idx_patterns_search ON patterns
-    USING GIN (to_tsvector('english', name || ' ' || COALESCE(description, '')));
-
--- Unique name indexes for skills and commands (handled by UNIQUE constraint)
-```
-
-**Index Maintenance:**
-
-```sql
--- Analyze tables for query planner
-ANALYZE agents;
-ANALYZE patterns;
-ANALYZE skills;
-ANALYZE commands;
-
--- Reindex if bloat is detected
-REINDEX INDEX CONCURRENTLY idx_patterns_embedding;
-```
+> **Full index DDL:** See [Data Storage](../design/data-storage.md) for CREATE INDEX statements.
 
 #### Query Optimization
 
@@ -1050,78 +953,7 @@ WHERE enrichment_status = 'failed'
 
 [Back to Table of Contents](#table-of-contents)
 
-Backup and recovery operates on the databases described in [MVP: Database Technology Stack](#database-technology-stack). See [Deployment Architecture - Backup and Recovery](06-deployment-architecture.md#backup-and-recovery) for current status.
-
-#### Backup Strategies
-
-| Database   | Backup Type   | Frequency  | Retention |
-| ---------- | ------------- | ---------- | --------- |
-| PostgreSQL | Full snapshot | Daily      | 30 days   |
-| PostgreSQL | WAL archiving | Continuous | 7 days    |
-| Neo4j      | Online backup | Daily      | 14 days   |
-
-**PostgreSQL Backup (AWS RDS Example):**
-
-```yaml
-# RDS configuration
-automated_backup_retention_period: 30
-backup_window: "03:00-04:00"
-maintenance_window: "sun:04:00-sun:05:00"
-multi_az: true
-storage_encrypted: true
-```
-
-**Neo4j Backup (Docker/Kubernetes):**
-
-```bash
-# Online backup to S3
-neo4j-admin database backup \
-    --database=neo4j \
-    --to-path=/backup \
-    --compress
-
-aws s3 cp /backup/neo4j-*.backup s3://ace-backups/neo4j/
-```
-
-#### Recovery Procedures
-
-**PostgreSQL Point-in-Time Recovery:**
-
-1. Identify target recovery time
-2. Stop Mnemonic pods (prevent writes)
-3. Restore from snapshot + WAL replay
-4. Verify data integrity
-5. Restart Mnemonic pods
-
-**Neo4j Recovery:**
-
-1. Stop Neo4j container
-2. Restore backup to data directory
-3. Start Neo4j container
-4. Run consistency check
-5. Reconcile with Postgres (if needed)
-
-#### Point-in-Time Recovery
-
-**PostgreSQL PITR Configuration:**
-
-```sql
--- Archive WAL to S3
-archive_mode = on
-archive_command = 'aws s3 cp %p s3://ace-wal-archive/%f'
-
--- Recovery configuration
-restore_command = 'aws s3 cp s3://ace-wal-archive/%f %p'
-recovery_target_time = '2024-01-15 14:30:00 UTC'
-```
-
-**Recovery Time Objectives:**
-
-| Scenario                    | RTO         | RPO                         |
-| --------------------------- | ----------- | --------------------------- |
-| Hardware failure (multi-AZ) | < 5 minutes | 0 (synchronous replication) |
-| Data corruption             | < 1 hour    | Depends on detection time   |
-| Full disaster recovery      | < 4 hours   | < 1 hour (WAL archiving)    |
+> **Backup and Recovery:** See [Database Operations](../operations/database-operations.md) for backup strategies and recovery procedures.
 
 ### Security Enhancements
 
@@ -1216,7 +1048,7 @@ When a Postgres write succeeds but the Neo4j sync fails (as described in [Cross-
 
 ---
 
-**Next:** Return to [Architecture Overview](README.md)
+**Next:** [Database Integration Flow](05-database-integration-flow.md)
 
 ---
 
@@ -1225,3 +1057,5 @@ See also:
 - [System Architecture](02-system-architecture.md) for component details
 - [Pattern Processing](../design/pattern-processing.md) for enrichment pipeline
 - [Deployment Architecture](06-deployment-architecture.md) for scaling patterns
+
+Copyright (c) 2025

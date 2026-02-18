@@ -63,7 +63,7 @@ Each database serves a distinct purpose in the Mnemonic architecture:
 - Relationships:
   - `(:Pattern)-[:RELEVANT_FOR {relevance: 0.95}]->(:Agent)`
   - `(:Concept)-[:MENTIONED_IN]->(:Pattern)`
-  - `(:Pattern)-[:RELATES_TO {similarity: 0.85}]->(:Pattern)`
+  - `(:Pattern)-[:RELATED_TO {similarity: 0.85}]->(:Pattern)`
 
 **Why Neo4j:** Native graph model for relationship-heavy queries, expressive Cypher query language, and built-in graph algorithms.
 
@@ -96,7 +96,7 @@ flowchart TB
             N3["(:Concept)"]
             N4["[:RELEVANT_FOR]"]
             N5["[:MENTIONED_IN]"]
-            N6["[:RELATES_TO]"]
+            N6["[:RELATED_TO]"]
             N7["Relationships & Traversal"]
         end
     end
@@ -104,7 +104,7 @@ flowchart TB
     Note["UUID connects Pattern across PostgreSQL & Neo4j"]
 ```
 
-## Embeddings Explained
+## Embeddings Explained <!-- JKJ: Do we need this? -->
 
 ### What is an Embedding?
 
@@ -460,7 +460,7 @@ WHERE p.id IN [
   "550e8400-...003"
 ]
 OPTIONAL MATCH (c:Concept)-[:MENTIONED_IN]->(p)
-OPTIONAL MATCH (p)-[:RELATES_TO]->(related:Pattern)
+OPTIONAL MATCH (p)-[:RELATED_TO]->(related:Pattern)
 RETURN p.id,
        collect(DISTINCT c.name) AS concepts,
        collect(DISTINCT related.id) AS related_patterns;
