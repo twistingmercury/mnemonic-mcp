@@ -154,20 +154,15 @@ graph TB
 
 Claude Code integrates with Mnemonic via the MCP (Model Context Protocol) interface.
 
-**MCP Tools Provided (10 total):**
+**MCP Tools Provided (3 pattern search tools):**
 
-| Tool                    | Purpose                                                                           |
-| ----------------------- | --------------------------------------------------------------------------------- |
-| `search_patterns`       | Semantic search over team knowledge graph                                         |
-| `find_related_patterns` | Find patterns related to a given pattern                                          |
-| `get_pattern`           | Retrieve specific pattern by ID                                                   |
-| `list_agents`           | List all available agents                                                         |
-| `get_agent`             | Get detailed agent information                                                    |
-| `list_skills`           | List all available skills                                                         |
-| `get_skill`             | Get complete skill definition including child files (scripts, references, assets) |
-| `list_commands`         | List all available commands                                                       |
-| `get_command`           | Get detailed command information                                                  |
-| `get_sync_manifest`     | Get synchronization manifest for tooling                                          |
+| Tool                    | Purpose                                  |
+| ----------------------- | ---------------------------------------- |
+| `search_patterns`       | Semantic search over team knowledge graph |
+| `find_related_patterns` | Find patterns related to a given pattern |
+| `get_pattern`           | Retrieve specific pattern by ID          |
+
+For full tool definitions and parameters, see [MCP Tools](08-mcp-tools.md).
 
 **Integration Characteristics:**
 
@@ -175,7 +170,6 @@ Claude Code integrates with Mnemonic via the MCP (Model Context Protocol) interf
 - Runs in trusted environment (local network)
 - No authentication (MVP)
 - Searches team knowledge for workflow patterns
-- Discovers consistent tooling across team
 
 ## Data Flow
 

@@ -275,14 +275,13 @@ func NewHandler(deps *Deps) http.Handler {
         nil,
     )
 
-    // Register all tools (11 total)
+    // Register all tools (10 total)
     registerSearchTools(server, deps)       // search_patterns, find_related_patterns
     registerPatternTools(server, deps)       // get_pattern
     registerAgentTools(server, deps)         // list_agents, get_agent
     registerSkillTools(server, deps)         // list_skills, get_skill
     registerCommandTools(server, deps)       // list_commands, get_command
     registerSyncTools(server, deps)          // get_sync_manifest
-    registerSkillFileTools(server, deps)    // get_skill_files
 
     return mcp.NewStreamableHTTPHandler(
         func(r *http.Request) *mcp.Server { return server },
@@ -303,6 +302,11 @@ These tools replace what was previously envisioned as REST endpoints + shell scr
 | ----------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | `search_patterns`       | Semantic search across patterns                     | `query: string`, `max_results?: int`, `min_similarity?: float`, `tags?: []string`, `agent_name?: string` | `search.Service.Search()`                |
 | `find_related_patterns` | Find patterns sharing concepts with a given pattern | `pattern_id: string`, `limit?: int`                                                                      | `graph.Repository.FindRelatedPatterns()` |
+
+> **Enrichment dependency:** The `find_related_patterns` tool depends on the enrichment pipeline
+> creating `RELATED_TO` edges between patterns in Neo4j. Until the enrichment pipeline is built,
+> this tool returns empty results. The existing `MENTIONED_IN` edges (pattern → concept) are
+> retained as the foundation from which `RELATED_TO` edges are computed.
 
 #### Pattern Tools (read-only)
 
@@ -371,7 +375,14 @@ type SearchInput struct {
     Tags          []string `json:"tags,omitempty" jsonschema:"description=Filter by tags"`
     AgentName     string   `json:"agent_name,omitempty" jsonschema:"description=Filter to patterns relevant to this agent"`
 }
+```
 
+> **Note:** The Go struct field names are internal to the implementation. The MCP wire
+> parameter names are defined in the MCP tool specification (`api/mcp/mnemonic-mcp-tools-v1.yaml`)
+> and use `limit`, `threshold`, and `agent` respectively. The handler maps between wire names
+> and internal struct fields.
+
+```go
 type SearchOutput struct {
     Results []SearchResult `json:"results"`
     Total   int            `json:"total"`
@@ -1592,7 +1603,7 @@ This revised plan transforms Mnemonic from a routing orchestrator into a knowled
 
 **What gets built:**
 
-- MCP server with 10+ read-only tools (~1,500 LOC)
+- MCP server with 10 read-only tools (~1,500 LOC)
 - Working admin API handlers (~2,000 LOC)
 - Skill/command repositories (~1,200 LOC)
 - Server lifecycle management (~300 LOC)

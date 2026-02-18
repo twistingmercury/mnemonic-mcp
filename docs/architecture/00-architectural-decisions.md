@@ -85,18 +85,11 @@ Architecture:
 - **Admin REST API** (`:8080`): Write operations for data loading
 - **Single server**: Two HTTP listeners on one Go server
 
-MCP tools (10 total):
+MCP tools (3 pattern search tools):
 
 - `search_patterns`: Semantic search over team knowledge graph
 - `find_related_patterns`: Find patterns related to a given pattern
 - `get_pattern`: Retrieve specific pattern by ID
-- `list_agents`: List all available agents
-- `list_skills`: List all available skills
-- `list_commands`: List all available commands
-- `get_agent`: Get detailed agent information
-- `get_skill`: Get complete skill definition including child files (scripts, references, assets)
-- `get_command`: Get detailed command information
-- `get_sync_manifest`: Get synchronization manifest for tooling
 
 ### Consequences
 

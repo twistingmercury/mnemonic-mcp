@@ -202,6 +202,23 @@ WHERE p1.id <> p2.id
 MERGE (p1)-[:RELATES_TO]->(p2)
 ```
 
+### RELATED_TO Edge Computation
+
+After concept extraction and MENTIONED_IN edge creation, the enrichment pipeline
+computes direct RELATED_TO edges between patterns:
+
+1. For each newly enriched pattern, query Neo4j for other patterns that share
+   concepts (via MENTIONED_IN traversal)
+2. Compute a strength score (0.0-1.0) based on:
+   - Number of shared concepts (normalized by total concepts)
+   - Embedding cosine similarity between pattern vectors (from PGVector)
+3. Create or update RELATED_TO edges between pattern pairs with the computed
+   strength score
+4. Edges below a minimum threshold (configurable, default 0.3) are not created
+
+This step runs as part of the asynchronous enrichment pipeline, after embedding
+generation and concept extraction.
+
 #### Step 5: Update Status
 
 On successful completion:

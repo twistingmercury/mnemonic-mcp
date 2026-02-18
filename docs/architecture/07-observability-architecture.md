@@ -380,7 +380,7 @@ This provides visibility without excessive storage costs.
 
 For sampling configuration, see operations documentation (TBD).
 
-**Next:** Return to [Architecture Overview](README.md)
+**Next:** [MCP Tools](08-mcp-tools.md)
 
 ---
 

@@ -20,6 +20,7 @@ Start here:
 | [Database Integration Flow](05-database-integration-flow.md)   | End-to-end database interaction patterns       |
 | [Deployment Architecture](06-deployment-architecture.md)       | Deployment topology and operations             |
 | [Observability Architecture](07-observability-architecture.md) | Monitoring, logging, and tracing               |
+| [MCP Tools](08-mcp-tools.md)                                  | Tool discovery, definitions, and response patterns |
 
 ## Design Documents
 

@@ -38,27 +38,17 @@ Claude Code communicates with Mnemonic via MCP (Model Context Protocol) for read
 
 ### MCP Tools
 
-Mnemonic exposes the following MCP tools for Claude Code (10 total):
+Mnemonic exposes 3 read-only MCP tools for Claude Code:
 
 **Pattern Search:**
 
-| Tool                    | Parameters                           | Purpose                                   |
-| ----------------------- | ------------------------------------ | ----------------------------------------- |
-| `search_patterns`       | `query: string, limit?: number`      | Semantic search over team knowledge graph |
-| `find_related_patterns` | `pattern_id: string, limit?: number` | Find patterns related to a given pattern  |
-| `get_pattern`           | `id: string`                         | Retrieve specific pattern by ID           |
+| Tool                    | Parameters                                                                           | Purpose                                   |
+| ----------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------- |
+| `search_patterns`       | `query: string, limit?: number, threshold?: number, tags?: string[], agent?: string` | Semantic search over team knowledge graph |
+| `find_related_patterns` | `pattern_id: string, limit?: number`                                                 | Find patterns related to a given pattern  |
+| `get_pattern`           | `id: string`                                                                         | Retrieve specific pattern by ID           |
 
-**Tooling Synchronization:**
-
-| Tool                | Parameters                        | Purpose                                             |
-| ------------------- | --------------------------------- | --------------------------------------------------- |
-| `list_agents`       | `limit?: number, offset?: number` | List all available agents                           |
-| `get_agent`         | `name: string`                    | Get detailed agent information                      |
-| `list_skills`       | `limit?: number, offset?: number` | List all available skills                           |
-| `get_skill`         | `name: string`                    | Get complete skill definition including child files |
-| `list_commands`     | `limit?: number, offset?: number` | List all available commands                         |
-| `get_command`       | `name: string`                    | Get detailed command information                    |
-| `get_sync_manifest` | None                              | Get synchronization manifest for tooling            |
+For full tool definitions and parameters, see [MCP Tools](08-mcp-tools.md).
 
 ### Request Flow
 
@@ -67,14 +57,23 @@ sequenceDiagram
     participant User
     participant CC as Claude Code
     participant MCP as MCP Server
+    participant OPENAI as OpenAI Embedding API
+    participant PG as Postgres + PGVector
+    participant NEO as Neo4j
 
     User->>CC: Ask question requiring team knowledge
     CC->>CC: Determine need for pattern search
 
     CC->>MCP: search_patterns(query, limit)
-    Note right of MCP: Generate embedding
-    Note right of MCP: Semantic search (PGVector)
-    Note right of MCP: Fetch related patterns (Neo4j)
+
+    MCP->>OPENAI: Generate query embedding
+    OPENAI-->>MCP: vector(1536)
+    MCP->>PG: Semantic search (PGVector)
+    PG-->>MCP: Top N patterns
+
+    MCP->>NEO: Fetch related patterns
+    NEO-->>MCP: Knowledge graph relationships
+
     MCP-->>CC: {patterns with context}
 
     CC->>CC: Incorporate team knowledge
@@ -85,8 +84,8 @@ sequenceDiagram
 
 - Synchronous request-response via MCP protocol
 - Read-only access (no mutations)
-- Runs in trusted environment (local network)
-- No authentication (MVP)
+- Runs on localhost in a trusted environment
+- No authentication (MVP, localhost only)
 
 ### Response Structure
 
@@ -94,32 +93,14 @@ MCP tool responses provide structured data for Claude Code integration.
 
 **Pattern Search Response:**
 
-```json
-{
-  "patterns": [
-    {
-      "id": "uuid",
-      "title": "Pattern title",
-      "content": "Full pattern markdown",
-      "category": "workflow|architecture|practice",
-      "tags": ["tag1", "tag2"],
-      "similarity_score": 0.95,
-      "related_patterns": ["uuid1", "uuid2"]
-    }
-  ]
-}
-```
-
-**Tooling List Response:**
+MCP tool results are delivered as text content. Pattern search tools return markdown-formatted text with structured data (scores, metadata) embedded in the prose:
 
 ```json
 {
-  "agents": [
+  "content": [
     {
-      "name": "agent-name",
-      "version": "1.0.0",
-      "description": "Agent description",
-      "file_path": "/path/to/agent.yaml"
+      "type": "text",
+      "text": "Found 2 patterns matching 'error handling in Go' (filtered by agent: go-software-engineer):\n\n---\n\n## go-error-handling (92% match)\n\n**Tags:** go, errors, best-practices\n\n# Go Error Handling Pattern\n\nGo uses explicit error handling with the error interface...\n\n---\n\n## go-custom-error-types (85% match)\n\n**Tags:** go, errors, domain-driven\n\n# Custom Error Types\n\nFor domain errors, define types that implement the error interface..."
     }
   ]
 }
@@ -148,26 +129,33 @@ Admin tools (curl, scripts) communicate with Mnemonic via REST API for CRUD oper
 sequenceDiagram
     participant Admin
     participant REST as Admin REST API
-    participant SVC as Service Layer
-    participant DB as Database
+    participant PG as Postgres
+    participant WORKER as Background Worker
+    participant OPENAI as OpenAI Embedding API
+    participant NEO as Neo4j
 
     Admin->>REST: POST /v1/api/patterns (JSON)
     REST->>REST: Validate request
-    REST->>SVC: Create pattern
-    SVC->>SVC: Generate embedding
-    SVC->>DB: Store pattern + embedding
-    DB-->>SVC: Pattern ID
-    SVC->>DB: Create knowledge graph relationships
-    DB-->>SVC: Success
-    SVC-->>REST: Pattern created
-    REST-->>Admin: 201 Created
+    REST->>PG: Store pattern (status: pending)
+    REST->>PG: Queue enrichment job
+    PG-->>REST: Pattern ID
+    REST-->>Admin: 202 Accepted
+
+    Note over WORKER: Async enrichment
+    WORKER->>PG: Claim job (FOR UPDATE SKIP LOCKED)
+    WORKER->>OPENAI: Generate embedding
+    OPENAI-->>WORKER: vector(1536)
+    WORKER->>PG: Store embedding, status: enriched
+    WORKER->>NEO: Create knowledge graph nodes/relationships
+    NEO-->>WORKER: Success
+    WORKER->>PG: Job completed
 ```
 
 **Request Characteristics:**
 
 - Synchronous request-response
 - JSON payloads for all operations
-- Unauthenticated (MVP); see [Security Architecture](01-security-architecture.md) for Post-MVP
+- No authentication (MVP, localhost only); see [Security Architecture](01-security-architecture.md) for Post-MVP
 - Idempotent operations where possible
 
 ## Resilience Patterns
@@ -179,7 +167,7 @@ Each communication channel has timeout considerations.
 | Channel            | Timeout Strategy                               |
 | ------------------ | ---------------------------------------------- |
 | Claude Code to MCP | 30s - pattern search with embedding generation |
-| Admin to REST API  | 60s - allow for Neo4j relationship creation    |
+| Admin to REST API  | 30s - pattern creation returns 202 immediately |
 
 ### Retry Logic
 
@@ -214,9 +202,9 @@ When components are unavailable:
 
 ### Data in Transit
 
-| Channel            | Security Requirement              |
-| ------------------ | --------------------------------- |
-| Claude Code to MCP | Local network (no TLS for MVP)    |
+| Channel            | Security Requirement                                                                |
+| ------------------ | ----------------------------------------------------------------------------------- |
+| Claude Code to MCP | Local network (no TLS for MVP)                                                      |
 | Admin to REST API  | No TLS (MVP); see [Security Architecture](01-security-architecture.md) for Post-MVP |
 
 ### Sensitive Data Handling
@@ -239,7 +227,7 @@ graph TB
 - User credentials never leave Claude Code
 - Patterns and tooling are team-shared (no user-specific secrets)
 - MCP read-only access prevents accidental data modification
-- Admin API write operations protected by infrastructure-layer auth (Post-MVP)
+- Admin API write operations require API key authentication (MVP); infrastructure-layer auth via Envoy post-MVP
 - All LLM calls go directly from Claude Code to Anthropic API
 
-**Next:** [Deployment Architecture](06-deployment-architecture.md)
+**Next:** [Data Architecture](04-data-architecture.md)
