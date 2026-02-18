@@ -37,7 +37,7 @@ graph TB
     end
 
     subgraph "Server Infrastructure"
-        subgraph "Mnemonic Container"
+        subgraph "Mnemonic"
             MCP[MCP Server :8081]
             REST[Admin API :8080]
         end
@@ -96,7 +96,7 @@ graph TB
 
     subgraph "Server Environment"
         subgraph "Container Runtime"
-            MN_C[Mnemonic Container<br/>MCP :8081 + Admin :8080]
+            MN_C[Mnemonic<br/>MCP :8081 + Admin :8080]
         end
         PG[(Postgres + PGVector)]
         NEO[(Neo4j)]
@@ -374,4 +374,4 @@ graph TB
 | Mnemonic  | Rolling deployment, backward compatible |
 | Databases | Migration-aware, data preservation      |
 
-**Next:** Return to [Architecture Overview](README.md)
+**Next:** [Observability Architecture](07-observability-architecture.md)

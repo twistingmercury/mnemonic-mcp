@@ -777,21 +777,21 @@ migrate -path src/mnemonic/migrations/postgres -database "$DB_URL" goto 5
 
 **PostgreSQL Indexes:**
 
-| Index                              | Table                      | Column(s)                              | Type                | Purpose                       |
-| ---------------------------------- | -------------------------- | -------------------------------------- | ------------------- | ----------------------------- |
-| `idx_patterns_embedding`           | patterns                   | `embedding`                            | IVFFlat (lists=100) | Vector similarity search      |
-| `idx_patterns_enriched`            | patterns                   | `id` WHERE status='enriched'           | btree (partial)     | Filter to searchable patterns |
-| `idx_patterns_tags`                | patterns                   | `tags`                                 | GIN                 | Tag containment queries       |
-| `idx_patterns_search`              | patterns                   | `to_tsvector(name \|\| description)`   | GIN                 | Full-text search              |
-| `idx_pattern_agent_assoc_agent`    | pattern_agent_associations | `agent_name`                           | btree               | FK join performance           |
-| `idx_pattern_agent_assoc_pattern`  | pattern_agent_associations | `pattern_id`                           | btree               | FK join performance           |
-| `idx_enrichment_jobs_pattern`      | enrichment_jobs            | `pattern_id`                           | btree               | FK join performance           |
-| `idx_enrichment_jobs_pending`      | enrichment_jobs            | `scheduled_for` WHERE status='pending' | btree (partial)     | Worker job polling            |
-| `idx_enrichment_jobs_processing`   | enrichment_jobs            | `started_at` WHERE status='processing' | btree (partial)     | Timeout detection             |
-| `idx_agents_definition`            | agents                     | `definition`                           | GIN                 | JSONB queries                 |
-| `idx_skills_definition`            | skills                     | `definition`                           | GIN                 | JSONB queries                 |
-| `idx_commands_definition`          | commands                   | `definition`                           | GIN                 | JSONB queries                 |
-| `idx_skill_files_skill_id`         | skill_files                | `skill_id`                             | btree               | FK lookup                     |
+| Index                             | Table                      | Column(s)                              | Type                | Purpose                       |
+| --------------------------------- | -------------------------- | -------------------------------------- | ------------------- | ----------------------------- |
+| `idx_patterns_embedding`          | patterns                   | `embedding`                            | IVFFlat (lists=100) | Vector similarity search      |
+| `idx_patterns_enriched`           | patterns                   | `id` WHERE status='enriched'           | btree (partial)     | Filter to searchable patterns |
+| `idx_patterns_tags`               | patterns                   | `tags`                                 | GIN                 | Tag containment queries       |
+| `idx_patterns_search`             | patterns                   | `to_tsvector(name \|\| description)`   | GIN                 | Full-text search              |
+| `idx_pattern_agent_assoc_agent`   | pattern_agent_associations | `agent_name`                           | btree               | FK join performance           |
+| `idx_pattern_agent_assoc_pattern` | pattern_agent_associations | `pattern_id`                           | btree               | FK join performance           |
+| `idx_enrichment_jobs_pattern`     | enrichment_jobs            | `pattern_id`                           | btree               | FK join performance           |
+| `idx_enrichment_jobs_pending`     | enrichment_jobs            | `scheduled_for` WHERE status='pending' | btree (partial)     | Worker job polling            |
+| `idx_enrichment_jobs_processing`  | enrichment_jobs            | `started_at` WHERE status='processing' | btree (partial)     | Timeout detection             |
+| `idx_agents_definition`           | agents                     | `definition`                           | GIN                 | JSONB queries                 |
+| `idx_skills_definition`           | skills                     | `definition`                           | GIN                 | JSONB queries                 |
+| `idx_commands_definition`         | commands                   | `definition`                           | GIN                 | JSONB queries                 |
+| `idx_skill_files_skill_id`        | skill_files                | `skill_id`                             | btree               | FK lookup                     |
 
 > **Full index DDL:** See [Data Storage](../design/data-storage.md) for CREATE INDEX statements.
 

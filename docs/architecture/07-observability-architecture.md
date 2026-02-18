@@ -9,6 +9,7 @@
   - [Metrics](#metrics)
   - [Structured Logging](#structured-logging)
   - [Distributed Tracing](#distributed-tracing)
+  - [Health Check Endpoint](#health-check-endpoint)
   - [Key Takeaways](#key-takeaways)
 - [Post-MVP](#post-mvp)
   - [Collection and Storage](#collection-and-storage)
@@ -73,6 +74,13 @@ Mnemonic emits metrics via OpenTelemetry across several categories:
 - Get operations by resource type
 - Admin API write operations (create, update, delete)
 
+**Enrichment job metrics** - Track background enrichment pipeline:
+
+- Jobs queued, claimed, completed, and failed (counters)
+- Job processing duration (histogram from claim to completion)
+- Retry attempt counts (per pattern and overall)
+- Enrichment failure rate and failure reasons
+
 **Database metrics** - Track storage layer health:
 
 - Connection pool utilization
@@ -96,7 +104,7 @@ Mnemonic emits structured logs with trace correlation. All logs use structured J
 **Context fields:**
 
 - Request ID for request correlation
-- Agent name (when routing decision made)
+- Agent name (from pattern association)
 - Any relevant domain data
 
 **What We Log**
@@ -108,6 +116,16 @@ Mnemonic emits structured logs with trace correlation. All logs use structured J
 - Pattern search executed (query, results count)
 - Tooling operation executed (resource type, operation)
 - Request completed (status, duration)
+
+**Enrichment job events:**
+
+- Job claimed (pattern ID, worker ID)
+- Embedding generated (pattern ID, duration)
+- Concepts extracted (pattern ID, concept count)
+- Graph nodes created (pattern ID)
+- Job completed (pattern ID, total duration)
+- Job failed (pattern ID, error, attempt count)
+- Job retried (pattern ID, attempt number, next scheduled time)
 
 **System events:**
 
@@ -130,7 +148,7 @@ Mnemonic creates spans and propagates trace context. **W3C Trace Context** heade
 
 **Trace Structure**
 
-A routing request trace shows the journey through Mnemonic:
+A pattern search request trace shows the journey through Mnemonic:
 
 ```mermaid
 flowchart TB
@@ -174,6 +192,36 @@ sequenceDiagram
     NEO-->>MCP: Related patterns
     MCP-->>CC: Response<br/>(trace complete)
 ```
+
+### Health Check Endpoint
+
+[Back to Table of Contents](#table-of-contents)
+
+Mnemonic exposes a health check endpoint at `GET /healthz` on the Admin API (:8080). It is used by container orchestration, load balancers, and monitoring infrastructure to determine service availability.
+
+**Healthy response** (HTTP 200):
+
+```json
+{
+  "status": "healthy",
+  "postgres": "reachable",
+  "neo4j": "reachable"
+}
+```
+
+**Unhealthy response** (HTTP 503):
+
+```json
+{
+  "status": "unhealthy",
+  "postgres": "unreachable",
+  "neo4j": "reachable"
+}
+```
+
+**Health determination:** Both Postgres and Neo4j must be reachable for the service to report healthy. A failure of either database results in an unhealthy response. The check performs a lightweight connectivity probe (ping or equivalent) against each database; it does not execute business logic.
+
+**Logging:** Health check status changes (healthy → unhealthy, unhealthy → healthy) are logged as system events. Repeated healthy checks are not logged to avoid log noise.
 
 ### Key Takeaways
 
