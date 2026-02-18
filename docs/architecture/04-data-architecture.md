@@ -264,8 +264,9 @@ Patterns use relational columns (not JSONB) for vector search and enrichment tra
 ```mermaid
 stateDiagram-v2
     [*] --> pending: Pattern Created
-    pending --> enriched: Enrichment Successful
-    pending --> failed: Enrichment Failed
+    pending --> in_progress: Worker Claims Job
+    in_progress --> enriched: Enrichment Successful
+    in_progress --> failed: Enrichment Failed
     failed --> pending: Retry Triggered
     enriched --> pending: Pattern Updated
 ```
@@ -291,6 +292,14 @@ Command definitions stored as JSONB documents. See [ADR-003](00-architectural-de
 Background processing queue for pattern enrichment. See [ADR-004](00-architectural-decisions.md#adr-004) for the queue design.
 
 **Schema:** Postgres-backed queue using `FOR UPDATE SKIP LOCKED` for safe concurrent processing. Retry with exponential backoff (max 3 attempts). CASCADE delete on parent pattern.
+
+**Uniqueness:** A partial unique index prevents duplicate pending or processing jobs for the same pattern:
+
+```sql
+CREATE UNIQUE INDEX idx_enrichment_jobs_unique_pending
+    ON enrichment_jobs(pattern_id)
+    WHERE status IN ('pending', 'processing');
+```
 
 ### Storage Architecture
 
@@ -489,6 +498,8 @@ sequenceDiagram
     WORKER->>OPENAI: Extract entities
     OPENAI-->>WORKER: concepts, technologies
     WORKER->>NEO: CREATE/MERGE nodes and relationships
+    Note over WORKER,NEO: Step 6: Compute RELATED_TO edges between<br/>this pattern and others sharing concepts
+    WORKER->>NEO: MERGE RELATED_TO edges (shared-concept patterns)
     WORKER->>PG: UPDATE pattern status = 'enriched'
     WORKER->>PG: UPDATE job status = 'completed'
 ```
@@ -685,23 +696,18 @@ For relational tables (patterns):
 
 #### Schema Versioning
 
-**Migration Tool:** golang-migrate
+**Migration Tool:** golang-migrate CLI, run as a deployment pipeline step external to Mnemonic. Mnemonic does not embed or invoke golang-migrate; it never manages DDL or runs migrations directly.
 
 **Directory Structure:**
 
 ```text
-src/mnemonic/
-└── migrations/
-    ├── postgres/
-    │   ├── 001_create_agents.up.sql
-    │   ├── 001_create_agents.down.sql
-    │   ├── 002_create_patterns.up.sql
-    │   ├── 002_create_patterns.down.sql
-    │   └── ...
-    └── neo4j/
-        ├── 001_create_constraints.cypher
-        ├── 002_create_existence_constraints.cypher
-        └── 003_create_indexes.cypher
+src/migrations/
+└── postgres/
+    ├── 001_extensions_and_functions.up.sql
+    ├── 001_extensions_and_functions.down.sql
+    ├── 002_create_agents.up.sql
+    ├── 002_create_agents.down.sql
+    └── ...
 ```
 
 **Version Tracking:**
@@ -754,13 +760,13 @@ ALTER TABLE patterns DROP COLUMN IF EXISTS version;
 
 ```bash
 # Check current version
-migrate -path src/mnemonic/migrations/postgres -database "$DB_URL" version
+migrate -path src/migrations/postgres -database "$DB_URL" version
 
 # Rollback one version
-migrate -path src/mnemonic/migrations/postgres -database "$DB_URL" down 1
+migrate -path src/migrations/postgres -database "$DB_URL" down 1
 
 # Rollback to specific version
-migrate -path src/mnemonic/migrations/postgres -database "$DB_URL" goto 5
+migrate -path src/migrations/postgres -database "$DB_URL" goto 5
 ```
 
 **Rollback Safety:**
@@ -779,7 +785,7 @@ migrate -path src/mnemonic/migrations/postgres -database "$DB_URL" goto 5
 
 | Index                             | Table                      | Column(s)                              | Type                | Purpose                       |
 | --------------------------------- | -------------------------- | -------------------------------------- | ------------------- | ----------------------------- |
-| `idx_patterns_embedding`          | patterns                   | `embedding`                            | IVFFlat (lists=100) | Vector similarity search      |
+| `idx_patterns_embedding_cosine`   | patterns                   | `embedding`                            | IVFFlat (lists=100) | Vector similarity search      |
 | `idx_patterns_enriched`           | patterns                   | `id` WHERE status='enriched'           | btree (partial)     | Filter to searchable patterns |
 | `idx_patterns_tags`               | patterns                   | `tags`                                 | GIN                 | Tag containment queries       |
 | `idx_patterns_search`             | patterns                   | `to_tsvector(name \|\| description)`   | GIN                 | Full-text search              |
@@ -810,7 +816,7 @@ WHERE enrichment_status = 'enriched'
 ORDER BY embedding <=> $1::vector
 LIMIT 5;
 
--- Expected: Index Scan using idx_patterns_embedding
+-- Expected: Index Scan using idx_patterns_embedding_cosine
 ```
 
 **Skills/Commands List Query:**

@@ -520,7 +520,7 @@ components:
           type: string
           pattern: ^[a-z][a-z0-9-]*$
           minLength: 1
-          maxLength: 255
+          maxLength: 128
           examples:
             - go-error-handling
         description:
@@ -595,7 +595,7 @@ components:
           type: string
           pattern: ^[a-z][a-z0-9-]*$
           minLength: 1
-          maxLength: 255
+          maxLength: 128
         description:
           type: string
           maxLength: 500
@@ -626,7 +626,7 @@ components:
           type: string
           pattern: ^[a-z][a-z0-9-]*$
           minLength: 1
-          maxLength: 255
+          maxLength: 128
         description:
           type: string
           maxLength: 500

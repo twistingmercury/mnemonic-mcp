@@ -266,6 +266,8 @@ MATCH (a:Agent {name: "database-agent"})
 MERGE (p)-[:RELEVANT_FOR {relevance: 0.95}]->(a)
 ```
 
+After creating concept nodes and MENTIONED_IN edges, the enricher computes RELATED_TO edges between this pattern and other patterns that share one or more of the same concepts. This step populates the pattern-to-pattern similarity relationships used by `find_related_patterns`.
+
 **Step 7: Complete Enrichment Job**
 
 ```sql

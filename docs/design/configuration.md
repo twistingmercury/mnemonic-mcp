@@ -133,6 +133,8 @@ database:
     max_open_conns: 25
     max_idle_conns: 5
     conn_max_lifetime: 5m
+    # Post-MVP: when running multiple Mnemonic instances, ensure
+    # N x max_open_conns does not exceed the database connection limit.
 
   # Neo4j is REQUIRED (post-pivot: no longer optional)
   neo4j:
@@ -406,7 +408,7 @@ export MNEMONIC_DATABASE_POSTGRES_PASSWORD="secure-password"
 export MNEMONIC_OPENAI_API_KEY="sk-openai-key"
 ```
 
-**Secret management integrations** (future):
+**Secret management integrations** (Post-MVP; see [Deployment Architecture](../architecture/06-deployment-architecture.md)):
 
 - AWS Secrets Manager
 - HashiCorp Vault

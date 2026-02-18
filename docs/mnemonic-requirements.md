@@ -130,8 +130,10 @@ from the runtime environment.
 <a id="dp-2"></a>**DP-2.** Mnemonic must be stateless. All persistent state must reside in external storage so that
 multiple instances can run without coordination.
 
-<a id="dp-3"></a>**DP-3.** Mnemonic must manage its own database schema versioning, ensuring the schema is always
-consistent with the running version.
+<a id="dp-3"></a>**DP-3.** Mnemonic must verify schema compatibility at startup (e.g., by checking that the database
+schema version is compatible with the running version). Mnemonic does not manage schema versioning or
+run migrations. Migrations are applied externally by the golang-migrate CLI as a deployment step,
+independent of the application lifecycle.
 
 ## Scope Boundaries
 

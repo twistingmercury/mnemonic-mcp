@@ -65,7 +65,7 @@ This document provides implementation details for the Mnemonic data storage laye
 | Relational Storage | PostgreSQL 15+ | Document tables (JSONB), patterns, jobs |
 | Vector Storage | PGVector extension | Pattern embeddings for semantic search |
 | Graph Storage | Neo4j 5.x | Knowledge graph relationships |
-| Migrations | golang-migrate | Schema versioning and deployment |
+| Migrations | golang-migrate CLI | Schema versioning and deployment (run externally, not embedded in Mnemonic) |
 
 **Post-Pivot Changes (JSONB Document Model):**
 
@@ -307,36 +307,35 @@ For database-level JSONB schema validation, consider the [pg_jsonschema](https:/
 
 ### Migration File Structure
 
-All PostgreSQL migrations follow the golang-migrate convention:
+All PostgreSQL migrations follow the golang-migrate flat file convention. Migrations are run by the golang-migrate CLI as a deployment step; Mnemonic does not run or manage migrations at runtime.
 
 ```text
-src/mnemonic/
-└── migrations/
-    └── postgres/
-        ├── 001_extensions.up.sql
-        ├── 001_extensions.down.sql
-        ├── 002_create_agents.up.sql
-        ├── 002_create_agents.down.sql
-        ├── 003_create_patterns.up.sql
-        ├── 003_create_patterns.down.sql
-        ├── 004_create_pattern_agent_associations.up.sql
-        ├── 004_create_pattern_agent_associations.down.sql
-        ├── 005_create_routing_rules.up.sql
-        ├── 005_create_routing_rules.down.sql
-        ├── 006_create_enrichment_jobs.up.sql
-        ├── 006_create_enrichment_jobs.down.sql
-        ├── 007_create_performance_indexes.up.sql
-        ├── 007_create_performance_indexes.down.sql
-        ├── 008_drop_routing_rules.up.sql
-        ├── 008_drop_routing_rules.down.sql
-        ├── 009_migrate_agents_to_jsonb.up.sql
-        ├── 009_migrate_agents_to_jsonb.down.sql
-        ├── 010_create_skills.up.sql
-        ├── 010_create_skills.down.sql
-        ├── 011_create_commands.up.sql
-        ├── 011_create_commands.down.sql
-        ├── 012_create_skill_files.up.sql
-        └── 012_create_skill_files.down.sql
+src/migrations/
+└── postgres/
+    ├── 001_extensions_and_functions.up.sql
+    ├── 001_extensions_and_functions.down.sql
+    ├── 002_create_agents.up.sql
+    ├── 002_create_agents.down.sql
+    ├── 003_create_patterns.up.sql
+    ├── 003_create_patterns.down.sql
+    ├── 004_create_pattern_agent_associations.up.sql
+    ├── 004_create_pattern_agent_associations.down.sql
+    ├── 005_create_routing_rules.up.sql
+    ├── 005_create_routing_rules.down.sql
+    ├── 006_create_enrichment_jobs.up.sql
+    ├── 006_create_enrichment_jobs.down.sql
+    ├── 007_create_performance_indexes.up.sql
+    ├── 007_create_performance_indexes.down.sql
+    ├── 008_drop_routing_rules.up.sql
+    ├── 008_drop_routing_rules.down.sql
+    ├── 009_migrate_agents_to_jsonb.up.sql
+    ├── 009_migrate_agents_to_jsonb.down.sql
+    ├── 010_create_skills.up.sql
+    ├── 010_create_skills.down.sql
+    ├── 011_create_commands.up.sql
+    ├── 011_create_commands.down.sql
+    ├── 012_create_skill_files.up.sql
+    └── 012_create_skill_files.down.sql
 ```
 
 **Post-Pivot Migrations:**
@@ -353,13 +352,13 @@ Migrations 008-012 implement the pivot from routing to knowledge sync with the J
 
 ```bash
 # Apply all pending migrations
-migrate -path src/mnemonic/migrations/postgres -database "$DATABASE_URL" up
+migrate -path src/migrations/postgres -database "$DATABASE_URL" up
 
 # Rollback last migration
-migrate -path src/mnemonic/migrations/postgres -database "$DATABASE_URL" down 1
+migrate -path src/migrations/postgres -database "$DATABASE_URL" down 1
 
 # Check current version
-migrate -path src/mnemonic/migrations/postgres -database "$DATABASE_URL" version
+migrate -path src/migrations/postgres -database "$DATABASE_URL" version
 ```
 
 ### Migration 001: Extensions
@@ -367,7 +366,7 @@ migrate -path src/mnemonic/migrations/postgres -database "$DATABASE_URL" version
 **Purpose:** Enable required PostgreSQL extensions.
 
 ```sql
--- src/mnemonic/migrations/postgres/001_extensions.up.sql
+-- src/migrations/postgres/001_extensions_and_functions.up.sql
 -- Enables required extensions
 -- Part of Mnemonic MVP
 
@@ -379,7 +378,7 @@ create extension if not exists vector;
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/001_extensions.down.sql
+-- src/migrations/postgres/001_extensions_and_functions.down.sql
 -- Extensions are not dropped to avoid breaking other schemas
 -- drop extension if exists vector;
 -- drop extension if exists "uuid-ossp";
@@ -394,7 +393,7 @@ create extension if not exists vector;
 **Note:** This migration was created pre-pivot. Migration 009 replaces the decomposed columns with the JSONB document model.
 
 ```sql
--- src/mnemonic/migrations/postgres/002_create_agents.up.sql
+-- src/migrations/postgres/002_create_agents.up.sql
 -- Creates the agents table for storing agent definitions
 -- Part of Mnemonic MVP (pre-pivot schema)
 
@@ -440,7 +439,7 @@ comment on column agents.name is 'Unique identifier, lowercase-with-hyphens form
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/002_create_agents.down.sql
+-- src/migrations/postgres/002_create_agents.down.sql
 drop table if exists agents;
 ```
 
@@ -451,7 +450,7 @@ drop table if exists agents;
 **Note:** This table is NOT affected by the JSONB document model pivot. Patterns have enrichment status, graph context, and pgvector embeddings that require relational columns.
 
 ```sql
--- src/mnemonic/migrations/postgres/003_create_patterns.up.sql
+-- src/migrations/postgres/003_create_patterns.up.sql
 -- Creates the patterns table with vector embeddings
 -- Part of Mnemonic MVP
 
@@ -497,7 +496,7 @@ comment on column patterns.enrichment_status is 'Processing state: pending, enri
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/003_create_patterns.down.sql
+-- src/migrations/postgres/003_create_patterns.down.sql
 drop table if exists patterns;
 ```
 
@@ -506,7 +505,7 @@ drop table if exists patterns;
 **Purpose:** Create the many-to-many association table between patterns and agents with relevance scores.
 
 ```sql
--- src/mnemonic/migrations/postgres/004_create_pattern_agent_associations.up.sql
+-- src/migrations/postgres/004_create_pattern_agent_associations.up.sql
 -- Creates the pattern-agent association table
 -- Part of Mnemonic MVP
 
@@ -543,7 +542,7 @@ comment on table pattern_agent_associations is
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/004_create_pattern_agent_associations.down.sql
+-- src/migrations/postgres/004_create_pattern_agent_associations.down.sql
 drop index if exists idx_pattern_agent_assoc_agent;
 drop index if exists idx_pattern_agent_assoc_pattern;
 drop table if exists pattern_agent_associations;
@@ -556,7 +555,7 @@ drop table if exists pattern_agent_associations;
 **Note:** This table is created in migration 005 and dropped in migration 008 (post-pivot). See migration 008 for the drop statement. The full creation SQL is retained here for migration rollback purposes.
 
 ```sql
--- src/mnemonic/migrations/postgres/005_create_routing_rules.up.sql
+-- src/migrations/postgres/005_create_routing_rules.up.sql
 -- Creates the routing rules table
 -- REMOVED: This table is dropped in migration 008 (pivot to knowledge sync)
 
@@ -590,7 +589,7 @@ create index idx_routing_rules_agent on routing_rules(agent_name);
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/005_create_routing_rules.down.sql
+-- src/migrations/postgres/005_create_routing_rules.down.sql
 drop index if exists idx_routing_rules_agent;
 drop table if exists routing_rules;
 ```
@@ -600,7 +599,7 @@ drop table if exists routing_rules;
 **Purpose:** Create the enrichment jobs queue table for background pattern processing.
 
 ```sql
--- src/mnemonic/migrations/postgres/006_create_enrichment_jobs.up.sql
+-- src/migrations/postgres/006_create_enrichment_jobs.up.sql
 -- Creates the enrichment jobs queue table
 -- Part of Mnemonic MVP
 
@@ -647,13 +646,19 @@ create table if not exists enrichment_jobs (
 create index idx_enrichment_jobs_pattern
     on enrichment_jobs(pattern_id);
 
+-- Prevent duplicate pending or processing jobs for the same pattern
+create unique index idx_enrichment_jobs_unique_pending
+    on enrichment_jobs(pattern_id)
+    where status in ('pending', 'processing');
+
 comment on table enrichment_jobs is 'Background processing queue for pattern enrichment';
 comment on column enrichment_jobs.status is 'Job state: pending, processing, completed, or failed';
 comment on column enrichment_jobs.scheduled_for is 'When the job should be processed (supports delayed retry)';
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/006_create_enrichment_jobs.down.sql
+-- src/migrations/postgres/006_create_enrichment_jobs.down.sql
+drop index if exists idx_enrichment_jobs_unique_pending;
 drop index if exists idx_enrichment_jobs_pattern;
 drop table if exists enrichment_jobs;
 ```
@@ -663,7 +668,7 @@ drop table if exists enrichment_jobs;
 **Purpose:** Create performance-optimized indexes for common query patterns.
 
 ```sql
--- src/mnemonic/migrations/postgres/007_create_performance_indexes.up.sql
+-- src/migrations/postgres/007_create_performance_indexes.up.sql
 -- Creates performance indexes for common query patterns
 -- Part of Mnemonic MVP
 
@@ -706,7 +711,7 @@ comment on index idx_enrichment_jobs_pending is
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/007_create_performance_indexes.down.sql
+-- src/migrations/postgres/007_create_performance_indexes.down.sql
 drop index if exists idx_patterns_search;
 drop index if exists idx_patterns_tags;
 drop index if exists idx_enrichment_jobs_processing;
@@ -720,7 +725,7 @@ drop index if exists idx_patterns_enriched;
 **Purpose:** Remove routing rules table (pivot to knowledge sync).
 
 ```sql
--- src/mnemonic/migrations/postgres/008_drop_routing_rules.up.sql
+-- src/migrations/postgres/008_drop_routing_rules.up.sql
 -- Drops the routing_rules table and related indexes
 -- Part of Mnemonic pivot to knowledge sync (2026-02-15)
 
@@ -730,7 +735,7 @@ drop table if exists routing_rules;
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/008_drop_routing_rules.down.sql
+-- src/migrations/postgres/008_drop_routing_rules.down.sql
 -- Recreates the routing_rules table and indexes
 -- WARNING: This recreates the schema but does not restore data
 
@@ -769,7 +774,7 @@ This migration:
 5. Makes `name` a regular unique column instead of the primary key, with `id` as the new primary key
 
 ```sql
--- src/mnemonic/migrations/postgres/009_migrate_agents_to_jsonb.up.sql
+-- src/migrations/postgres/009_migrate_agents_to_jsonb.up.sql
 -- Migrates agents table to JSONB document model with CRC64
 -- Part of Mnemonic pivot to knowledge sync (2026-02-15)
 
@@ -785,7 +790,7 @@ update agents set definition = jsonb_build_object(
     'system_prompt', system_prompt,
     'model', model,
     'allowed_tools', allowed_tools,
-    'version', coalesce(version, '0.0.0')
+    'version', '0.0.0'
 );
 
 -- Step 3: CRC64 must be set by the application after migration.
@@ -840,7 +845,7 @@ comment on column agents.crc64 is 'CRC-64 checksum of serialized definition for 
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/009_migrate_agents_to_jsonb.down.sql
+-- src/migrations/postgres/009_migrate_agents_to_jsonb.down.sql
 -- Reverses: migrate agents to JSONB document model
 -- WARNING: This restores the schema but individual field data is extracted from JSONB
 
@@ -909,7 +914,7 @@ alter table pattern_agent_associations
 **Purpose:** Create the skills table using the JSONB document model.
 
 ```sql
--- src/mnemonic/migrations/postgres/010_create_skills.up.sql
+-- src/migrations/postgres/010_create_skills.up.sql
 -- Creates the skills table with JSONB document model
 -- Part of Mnemonic pivot to knowledge sync (2026-02-15)
 
@@ -936,7 +941,7 @@ comment on column skills.crc64 is 'CRC-64 checksum of serialized definition for 
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/010_create_skills.down.sql
+-- src/migrations/postgres/010_create_skills.down.sql
 drop index if exists idx_skills_definition;
 drop table if exists skills;
 ```
@@ -946,7 +951,7 @@ drop table if exists skills;
 **Purpose:** Create the commands table using the JSONB document model.
 
 ```sql
--- src/mnemonic/migrations/postgres/011_create_commands.up.sql
+-- src/migrations/postgres/011_create_commands.up.sql
 -- Creates the commands table with JSONB document model
 -- Part of Mnemonic pivot to knowledge sync (2026-02-15)
 
@@ -958,7 +963,8 @@ create table if not exists commands (
     created_at  timestamptz not null default now(),
     updated_at  timestamptz not null default now(),
 
-    constraint commands_name_unique unique (name)
+    constraint commands_name_unique unique (name),
+    constraint commands_name_format check (name ~ '^[a-z][a-z0-9-]*$')
 );
 
 -- GIN index on definition for tag filtering and JSONB queries
@@ -971,7 +977,7 @@ comment on column commands.crc64 is 'CRC-64 checksum of serialized definition fo
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/011_create_commands.down.sql
+-- src/migrations/postgres/011_create_commands.down.sql
 drop index if exists idx_commands_definition;
 drop table if exists commands;
 ```
@@ -981,7 +987,7 @@ drop table if exists commands;
 **Purpose:** Create the skill_files table for scripts, references, and assets associated with skills.
 
 ```sql
--- src/mnemonic/migrations/postgres/012_create_skill_files.up.sql
+-- src/migrations/postgres/012_create_skill_files.up.sql
 -- Creates the skill_files table with JSONB document model
 -- Part of Mnemonic pivot to knowledge sync (2026-02-15)
 
@@ -997,7 +1003,9 @@ create table if not exists skill_files (
 
     constraint skill_files_unique_name unique (skill_id, file_type, filename),
     constraint skill_files_file_type_valid
-        check (file_type in ('script', 'reference', 'asset'))
+        check (file_type in ('script', 'reference', 'asset')),
+    constraint skill_files_filename_format
+        check (filename ~ '^[a-zA-Z0-9][a-zA-Z0-9._-]*$')
 );
 
 -- Index for skill_id lookups (foreign key)
@@ -1012,7 +1020,7 @@ comment on column skill_files.crc64 is 'CRC-64 checksum of serialized document f
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/012_create_skill_files.down.sql
+-- src/migrations/postgres/012_create_skill_files.down.sql
 drop index if exists idx_skill_files_skill_id;
 drop table if exists skill_files;
 ```
@@ -1153,7 +1161,7 @@ Create these constraints during initial Neo4j setup.
 These constraints are compatible with all Neo4j editions and are created by `001_create_constraints.cypher`:
 
 ```cypher
-// src/mnemonic/migrations/neo4j/001_create_constraints.cypher
+// src/migrations/neo4j/001_create_constraints.cypher
 // Creates uniqueness constraints for node labels
 // Part of Mnemonic MVP
 
@@ -1175,7 +1183,7 @@ FOR (c:Concept) REQUIRE c.name IS UNIQUE;
 These constraints require Neo4j Enterprise Edition and are created by `002_create_existence_constraints.cypher`. Community Edition users should skip this migration. The application layer enforces property completeness regardless of whether these database-level constraints are present.
 
 ```cypher
-// src/mnemonic/migrations/neo4j/002_create_existence_constraints.cypher
+// src/migrations/neo4j/002_create_existence_constraints.cypher
 // Requires Neo4j Enterprise Edition
 // Part of Mnemonic MVP
 
@@ -1225,16 +1233,16 @@ If constraints are missing, run the appropriate migration scripts manually:
 
 ```bash
 # Using cypher-shell (Community + Enterprise)
-cypher-shell -u neo4j -p <password> -f src/mnemonic/migrations/neo4j/001_create_constraints.cypher
+cypher-shell -u neo4j -p <password> -f src/migrations/neo4j/001_create_constraints.cypher
 
 # Enterprise Edition only (optional)
-cypher-shell -u neo4j -p <password> -f src/mnemonic/migrations/neo4j/002_create_existence_constraints.cypher
+cypher-shell -u neo4j -p <password> -f src/migrations/neo4j/002_create_existence_constraints.cypher
 ```
 
 ### Index Configuration
 
 ```cypher
-// src/mnemonic/migrations/neo4j/003_create_indexes.cypher
+// src/migrations/neo4j/003_create_indexes.cypher
 // Creates indexes for common query patterns
 // Part of Mnemonic MVP
 
