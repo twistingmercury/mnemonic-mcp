@@ -4,6 +4,14 @@
 
 **Note:** This document reflects the post-pivot implementation following the architectural change from routing to knowledge graph + tooling sync (see [2026-02-14-mnemonic-pivot-knowledge-sync.md](../plans/2026-02-14-mnemonic-pivot-knowledge-sync.md)).
 
+> **Pre-pivot code pending removal:** The following packages still exist in the codebase but are slated for removal. Do **not** instrument them:
+> - `internal/routing/` (routing engine)
+> - `internal/handlers/routes/` (route handlers)
+> - `internal/repository/routingrule/` (routing rule repository)
+> - `RoutingConfig` in `internal/config/config.go`
+
+> **Note:** This document describes the target observability implementation. The current codebase has not been fully migrated to match this specification. Code will be updated to conform to this design during implementation phases.
+
 ## Table of Contents
 
 - [Overview](#overview)
@@ -11,20 +19,22 @@
 - [Initialization and Configuration](#initialization-and-configuration)
 - [Distributed Tracing Implementation](#distributed-tracing-implementation)
 - [Metrics Implementation](#metrics-implementation)
+- [Enrichment Worker Observability](#enrichment-worker-observability)
+- [Metrics Registry](#metrics-registry)
 - [Structured Logging Implementation](#structured-logging-implementation)
 - [Handler Instrumentation Patterns](#handler-instrumentation-patterns)
 - [Database Instrumentation](#database-instrumentation)
+- [Health Check Implementation](#health-check-implementation)
 - [Gaps and Additional Implementation](#gaps-and-additional-implementation)
-- [Testing Strategy](#testing-strategy)
 - [Implementation Checklist](#implementation-checklist)
 
 ## Overview
 
 > **Architecture Reference:** [Observability Architecture](../../architecture/07-observability-architecture.md) | [Requirements - Quality Attributes](../mnemonic-requirements.md#quality-attributes)
 
-This document provides the detailed Go implementation design for Phase 1 (MVP) observability in Mnemonic, as defined in the [Observability Architecture](../../architecture/07-observability-architecture.md).
+This document provides the detailed Go implementation design for MVP observability in Mnemonic, as defined in the [Observability Architecture](../../architecture/07-observability-architecture.md).
 
-**Phase 1 Scope:**
+**MVP Scope:**
 
 - OpenTelemetry SDK integration via `otelx`
 - Structured logging with trace correlation
@@ -103,13 +113,13 @@ The `otelgin` package provides the tracing middleware that otelx does not includ
 
 ## Initialization and Configuration
 
-> **Architecture Reference:** [Observability Architecture - Implementation Phases](../../architecture/07-observability-architecture.md#implementation-phases) | [Deployment Architecture - Operational Considerations](../../architecture/06-deployment-architecture.md#operational-considerations)
+> **Architecture Reference:** [Observability Architecture](../../architecture/07-observability-architecture.md) | [Deployment Architecture - Operational Considerations](../../architecture/06-deployment-architecture.md#operational-considerations)
 >
 > **Note:** This configuration aligns with the established patterns in [Configuration Design](configuration.md). Environment variables use the `MNEMONIC_OBSERVABILITY_*` prefix for observability settings.
 
 ### Configuration Package
 
-Observability configuration is integrated into the main `MnemonicConfig` structure following the Phase 2 unified configuration pattern. The observability settings are nested under the `Observability` section.
+Observability configuration is integrated into the main `MnemonicConfig` structure following the unified configuration pattern. The observability settings are nested under the `Observability` section.
 
 **Actual Implementation:**
 
@@ -122,9 +132,23 @@ type MnemonicConfig struct {
     Observability ObservabilityConfig
 }
 
+type ServerConfig struct {
+    AdminHost string
+    AdminPort int
+    MCPHost   string
+    MCPPort   int
+}
+
 type ObservabilityConfig struct {
-    Metrics MetricsConfig
-    Tracing TracingConfig
+    Metrics         MetricsConfig
+    Tracing         TracingConfig
+    Health          HealthConfig
+    LogDBStatements bool // Default: false. When true, logs SQL/Cypher queries via zerolog at DEBUG level.
+}
+
+type HealthConfig struct {
+    Enabled bool   // Default: true. When false, the /api/health endpoint is not registered.
+    Path    string // Default: "/api/health". The path for the health check endpoint.
 }
 
 type MetricsConfig struct {
@@ -141,11 +165,13 @@ type TracingConfig struct {
 }
 
 type LoggingConfig struct {
-    Level string // Parsed to zerolog.Level in telemetry package
+    Level         string // Parsed to zerolog.Level in telemetry package
+    Format        string // "json" (default) or "console" for human-readable development output
+    IncludeCaller bool   // When true, adds caller file:line to log entries
 }
 ```
 
-The configuration is loaded via the Phase 2 `config.Load()` function which handles environment variables and defaults.
+The configuration is loaded via the `config.Load()` function which handles environment variables and defaults.
 
 ### Telemetry Initialization
 
@@ -159,8 +185,9 @@ import (
     "fmt"
 
     "github.com/rs/zerolog"
-    "github.com/twistingmercury/mnemonic/cmd/version"
     "github.com/twistingmercury/mnemonic/internal/config"
+    "github.com/twistingmercury/mnemonic/internal/metrics"
+    "github.com/twistingmercury/mnemonic/internal/version"
     "github.com/twistingmercury/otelx"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/metric"
@@ -169,8 +196,9 @@ import (
 
 // Telemetry wraps the otelx.Telemetry with application-specific helpers.
 type Telemetry struct {
-    otel   *otelx.Telemetry
-    logger zerolog.Logger
+    otel            *otelx.Telemetry
+    logger          zerolog.Logger
+    metricsRegistry *metrics.Registry
 }
 
 // Initialize creates and configures the telemetry system using otelx.
@@ -185,9 +213,17 @@ func Initialize(ctx context.Context, cfg *config.MnemonicConfig) (*Telemetry, er
         return nil, fmt.Errorf("failed to initialize telemetry: %w", err)
     }
 
+    // Create the centralized metrics registry using the meter provider.
+    meter := tel.MeterProvider.Meter("mnemonic")
+    registry, err := metrics.NewRegistry(meter)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create metrics registry: %w", err)
+    }
+
     return &Telemetry{
-        otel:   tel,
-        logger: tel.Logger,
+        otel:            tel,
+        logger:          tel.Logger,
+        metricsRegistry: registry,
     }, nil
 }
 
@@ -201,7 +237,7 @@ func buildOptions(cfg *config.MnemonicConfig) ([]otelx.Option, error) {
         otelx.WithService(
             "mnemonic",
             version.Version(),
-            getEnvironment(cfg),
+            getEnvironment(),
         ),
         otelx.WithLogLevel(logLevel),
     }
@@ -269,6 +305,11 @@ func (t *Telemetry) MeterProvider() metric.MeterProvider {
     return otel.GetMeterProvider()
 }
 
+// MetricsRegistry returns the centralized metrics registry.
+func (t *Telemetry) MetricsRegistry() *metrics.Registry {
+    return t.metricsRegistry
+}
+
 // Otelx returns the underlying otelx.Telemetry instance.
 func (t *Telemetry) Otelx() *otelx.Telemetry {
     return t.otel
@@ -279,13 +320,13 @@ func (t *Telemetry) Otelx() *otelx.Telemetry {
 
 **Actual Implementation:**
 
-In Phase 3, telemetry initialization is owned by the `server` package, not `main.go`. This follows the Phase 2 pattern where the server package owns configuration loading and lifecycle management.
+Telemetry initialization is owned by the `server` package, not `main.go`. This follows the pattern where the server package owns configuration loading and lifecycle management.
 
 From `internal/server/server.go`:
 
 ```go
-// ListenAndServeWithConfig starts the server using the provided configuration.
-func ListenAndServeWithConfig(cfg *config.MnemonicConfig) error {
+// ListenAndServe starts the server using the provided configuration.
+func ListenAndServe(cfg *config.MnemonicConfig) error {
     shutdown, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
     defer stop()
 
@@ -303,8 +344,10 @@ func ListenAndServeWithConfig(cfg *config.MnemonicConfig) error {
 
     logger := tel.Logger()
     logger.Info().
-        Str("host", cfg.Server.Host).
-        Int("port", cfg.Server.Port).
+        Str("admin_host", cfg.Server.AdminHost).
+        Int("admin_port", cfg.Server.AdminPort).
+        Str("mcp_host", cfg.Server.MCPHost).
+        Int("mcp_port", cfg.Server.MCPPort).
         Bool("metrics_enabled", cfg.Observability.Metrics.Enabled).
         Bool("tracing_enabled", cfg.Observability.Tracing.Enabled).
         Msg("mnemonic starting")
@@ -368,8 +411,7 @@ import (
 
 // skipPaths defines paths to exclude from tracing to reduce noise.
 var defaultSkipPaths = []string{
-    "/health",
-    "/ops/health",
+    "/api/health",
     "/metrics",
 }
 
@@ -462,13 +504,15 @@ func SearchPatterns(c *gin.Context) {
 | MCP tool call      | `mcp.{tool_name}`       | `tool.name`, `session.id`           |
 | Request validation | `validate_request`      | `query.preview`                     |
 | Pattern fetch      | `fetch_patterns`        | `patterns.count`                    |
-| Postgres query     | `postgres.query`        | `db.statement`, `db.operation`      |
-| PGVector search    | `pgvector.search`       | `db.statement`, `vector.dimensions` |
-| Neo4j query        | `neo4j.query`           | `db.statement`, `db.operation`      |
+| Postgres query     | `postgres.query`        | `db.system`, `db.operation`         |
+| PGVector search    | `pgvector.search`       | `db.system`, `vector.dimensions`    |
+| Neo4j query        | `neo4j.query`           | `db.system`, `db.operation`         |
 
 ## Metrics Implementation
 
 > **Architecture Reference:** [Observability Architecture - Metrics (Prometheus)](../../architecture/07-observability-architecture.md#metrics-prometheus)
+
+> **Prometheus naming:** OpenTelemetry uses dot-separated metric names (e.g., `mnemonic.http.request.count`), but Prometheus converts dots to underscores when scraping and appends a `_total` suffix to counters. For example, `mnemonic.http.request.count` becomes `mnemonic_http_request_count_total` in PromQL, and `mnemonic.http.request.duration` becomes `mnemonic_http_request_duration_milliseconds`. Keep this conversion in mind when writing PromQL queries or configuring alert rules.
 
 ### Metrics Categories
 
@@ -477,7 +521,8 @@ Based on the architecture document, implement these metric categories:
 1. **Request metrics** - HTTP request counts, durations, in-flight (Admin API)
 2. **MCP server metrics** - Tool invocations, session counts, active sessions
 3. **Pattern metrics** - Query latency, patterns returned
-4. **Database metrics** - Connection pools, query latency, errors
+4. **Tooling metrics** - List, get, and write operations by resource type (agents/skills/commands)
+5. **Database metrics** - Connection pools, query latency, errors
 
 ### Request Metrics Middleware
 
@@ -487,6 +532,7 @@ Based on the architecture document, implement these metric categories:
 package middleware
 
 import (
+    "context"
     "strconv"
     "time"
 
@@ -545,13 +591,17 @@ func (m *RequestMetrics) Middleware() gin.HandlerFunc {
         start := time.Now()
 
         // Track in-flight requests
+        // Use the request context for increment but context.Background() for decrement
+        // because the request context may be cancelled after c.Next() completes
         m.requestInFlight.Add(c.Request.Context(), 1)
-        defer m.requestInFlight.Add(c.Request.Context(), -1)
+        defer m.requestInFlight.Add(context.Background(), -1)
 
         // Process request
         c.Next()
 
-        // Record metrics
+        // Record metrics after request completes
+        // Use context.Background() for post-request metric recording
+        // because the request context may be cancelled after c.Next() completes
         duration := float64(time.Since(start).Milliseconds())
         attrs := []attribute.KeyValue{
             attribute.String("http.method", c.Request.Method),
@@ -559,8 +609,8 @@ func (m *RequestMetrics) Middleware() gin.HandlerFunc {
             attribute.String("http.status_code", strconv.Itoa(c.Writer.Status())),
         }
 
-        m.requestCount.Add(c.Request.Context(), 1, metric.WithAttributes(attrs...))
-        m.requestDuration.Record(c.Request.Context(), duration, metric.WithAttributes(attrs...))
+        m.requestCount.Add(context.Background(), 1, metric.WithAttributes(attrs...))
+        m.requestDuration.Record(context.Background(), duration, metric.WithAttributes(attrs...))
     }
 }
 ```
@@ -653,6 +703,8 @@ func (m *MCP) RecordSessionClosed(ctx context.Context) {
 }
 ```
 
+> **Deferred:** MCP server-side instrumentation (wiring these metrics into MCP tool handlers, adding tracing spans for MCP requests) is deferred to a later MVP iteration. The metric instruments above define the contract; the integration point in `internal/handlers/mcp/` will be implemented once the MCP SDK's handler middleware patterns are finalized. Until then, MCP tool calls are observable only through the Admin API request metrics when proxied.
+
 ### Pattern Metrics
 
 Create `internal/metrics/patterns.go`:
@@ -709,6 +761,89 @@ func (m *Pattern) RecordQuery(ctx context.Context, database string, duration tim
     m.patternsReturned.Record(ctx, int64(count), attrs)
 }
 ```
+
+### Tooling Metrics
+
+> **Architecture Reference:** [Observability Architecture - Metrics](../../architecture/07-observability-architecture.md#metrics) (Tooling metrics section)
+
+Create `internal/metrics/tooling.go`:
+
+```go
+package metrics
+
+import (
+    "context"
+
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/metric"
+)
+
+// Tooling holds instruments for agent/skill/command CRUD operation metrics.
+type Tooling struct {
+    listOperations  metric.Int64Counter
+    getOperations   metric.Int64Counter
+    writeOperations metric.Int64Counter
+}
+
+// NewTooling creates tooling metric instruments.
+func NewTooling(meter metric.Meter) (*Tooling, error) {
+    listOperations, err := meter.Int64Counter(
+        "mnemonic.tooling.list.operations",
+        metric.WithDescription("Number of tooling list operations"),
+        metric.WithUnit("{operation}"),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    getOperations, err := meter.Int64Counter(
+        "mnemonic.tooling.get.operations",
+        metric.WithDescription("Number of tooling get-by-ID operations"),
+        metric.WithUnit("{operation}"),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    writeOperations, err := meter.Int64Counter(
+        "mnemonic.tooling.write.operations",
+        metric.WithDescription("Number of tooling admin write operations (create, update, delete)"),
+        metric.WithUnit("{operation}"),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    return &Tooling{
+        listOperations:  listOperations,
+        getOperations:   getOperations,
+        writeOperations: writeOperations,
+    }, nil
+}
+
+// RecordListOperation records a tooling list operation for the given resource type.
+func (m *Tooling) RecordListOperation(ctx context.Context, resourceType string) {
+    attrs := metric.WithAttributes(attribute.String("resource_type", resourceType))
+    m.listOperations.Add(ctx, 1, attrs)
+}
+
+// RecordGetOperation records a tooling get-by-ID operation for the given resource type.
+func (m *Tooling) RecordGetOperation(ctx context.Context, resourceType string) {
+    attrs := metric.WithAttributes(attribute.String("resource_type", resourceType))
+    m.getOperations.Add(ctx, 1, attrs)
+}
+
+// RecordWriteOperation records a tooling admin write operation.
+func (m *Tooling) RecordWriteOperation(ctx context.Context, resourceType, operation string) {
+    attrs := metric.WithAttributes(
+        attribute.String("resource_type", resourceType),
+        attribute.String("operation", operation),
+    )
+    m.writeOperations.Add(ctx, 1, attrs)
+}
+```
+
+The `resource_type` attribute distinguishes between `agents`, `skills`, and `commands`. The `operation` attribute on write operations distinguishes between `create`, `update`, and `delete`.
 
 ### Database Metrics
 
@@ -804,7 +939,302 @@ func (m *Database) RecordError(ctx context.Context, database, operation string) 
 }
 ```
 
-### Metrics Registry
+## Enrichment Worker Observability
+
+> **Architecture Reference:** [Observability Architecture - Metrics](../../architecture/07-observability-architecture.md#metrics) | [Pattern Enrichment](pattern-processing.md)
+
+The enrichment worker runs as a background goroutine processing pattern enrichment jobs (embedding generation, concept extraction, graph node creation). It requires dedicated metrics, tracing spans, and structured logging to provide visibility into asynchronous processing.
+
+### Enrichment Metrics
+
+Create `internal/metrics/enrichment.go`:
+
+```go
+package metrics
+
+import (
+    "context"
+
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/metric"
+)
+
+// Enrichment holds instruments for enrichment worker metrics.
+type Enrichment struct {
+    jobsQueued    metric.Int64Counter
+    jobsClaimed   metric.Int64Counter
+    jobsCompleted metric.Int64Counter
+    jobsFailed    metric.Int64Counter
+    jobDuration   metric.Float64Histogram
+    retries       metric.Int64Counter
+}
+
+// NewEnrichment creates enrichment worker metric instruments.
+func NewEnrichment(meter metric.Meter) (*Enrichment, error) {
+    jobsQueued, err := meter.Int64Counter(
+        "mnemonic.enrichment.jobs.queued",
+        metric.WithDescription("Number of enrichment jobs added to the queue"),
+        metric.WithUnit("{job}"),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    jobsClaimed, err := meter.Int64Counter(
+        "mnemonic.enrichment.jobs.claimed",
+        metric.WithDescription("Number of enrichment jobs picked up by the worker"),
+        metric.WithUnit("{job}"),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    jobsCompleted, err := meter.Int64Counter(
+        "mnemonic.enrichment.jobs.completed",
+        metric.WithDescription("Number of enrichment jobs finished successfully"),
+        metric.WithUnit("{job}"),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    jobsFailed, err := meter.Int64Counter(
+        "mnemonic.enrichment.jobs.failed",
+        metric.WithDescription("Number of enrichment jobs that failed"),
+        metric.WithUnit("{job}"),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    jobDuration, err := meter.Float64Histogram(
+        "mnemonic.enrichment.job.duration",
+        metric.WithDescription("Enrichment job processing time from claim to completion in milliseconds"),
+        metric.WithUnit("ms"),
+        metric.WithExplicitBucketBoundaries(100, 500, 1000, 2000, 5000, 10000, 30000),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    retries, err := meter.Int64Counter(
+        "mnemonic.enrichment.retries",
+        metric.WithDescription("Number of enrichment job retry attempts"),
+        metric.WithUnit("{retry}"),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    return &Enrichment{
+        jobsQueued:    jobsQueued,
+        jobsClaimed:   jobsClaimed,
+        jobsCompleted: jobsCompleted,
+        jobsFailed:    jobsFailed,
+        jobDuration:   jobDuration,
+        retries:       retries,
+    }, nil
+}
+
+// RecordJobQueued records an enrichment job being added to the queue.
+func (m *Enrichment) RecordJobQueued(ctx context.Context) {
+    m.jobsQueued.Add(ctx, 1)
+}
+
+// RecordJobClaimed records an enrichment job being picked up by the worker.
+func (m *Enrichment) RecordJobClaimed(ctx context.Context) {
+    m.jobsClaimed.Add(ctx, 1)
+}
+
+// RecordJobCompleted records a successfully completed enrichment job.
+func (m *Enrichment) RecordJobCompleted(ctx context.Context, durationMS float64) {
+    m.jobsCompleted.Add(ctx, 1)
+    m.jobDuration.Record(ctx, durationMS)
+}
+
+// RecordJobFailed records a failed enrichment job with the failure reason.
+func (m *Enrichment) RecordJobFailed(ctx context.Context, reason string) {
+    attrs := metric.WithAttributes(attribute.String("reason", reason))
+    m.jobsFailed.Add(ctx, 1, attrs)
+}
+
+// RecordRetry records an enrichment job retry attempt.
+func (m *Enrichment) RecordRetry(ctx context.Context) {
+    m.retries.Add(ctx, 1)
+}
+```
+
+### Enrichment Tracing Spans
+
+The enrichment worker creates a parent span for the full job lifecycle with child spans for each processing step. This enables trace-based debugging of slow or failed enrichment jobs.
+
+| Span Name                        | Parent                 | Attributes                                    |
+| -------------------------------- | ---------------------- | --------------------------------------------- |
+| `enrichment.process`             | (root)                 | `pattern.id`, `job.id`, `job.attempt`         |
+| `enrichment.embed`               | `enrichment.process`   | `pattern.id`, `embedding.dimensions`          |
+| `enrichment.extract_concepts`    | `enrichment.process`   | `pattern.id`, `concept.count`                 |
+| `enrichment.create_graph_nodes`  | `enrichment.process`   | `pattern.id`, `node.count`, `edge.count`      |
+
+Example span creation in the enrichment worker:
+
+```go
+package enrichment
+
+import (
+    "context"
+
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/codes"
+    "go.opentelemetry.io/otel/trace"
+)
+
+var tracer = otel.Tracer("mnemonic/enrichment")
+
+// processJob processes a single enrichment job with full tracing.
+func (w *Worker) processJob(ctx context.Context, job EnrichmentJob) error {
+    ctx, span := tracer.Start(ctx, "enrichment.process",
+        trace.WithAttributes(
+            attribute.String("pattern.id", job.PatternID.String()),
+            attribute.String("job.id", job.ID.String()),
+            attribute.Int("job.attempt", job.Attempts),
+        ),
+    )
+    defer span.End()
+
+    // Step 1: Generate embedding
+    ctx, embedSpan := tracer.Start(ctx, "enrichment.embed",
+        trace.WithAttributes(
+            attribute.String("pattern.id", job.PatternID.String()),
+        ),
+    )
+    embedding, err := w.generateEmbedding(ctx, job.PatternID)
+    if err != nil {
+        embedSpan.RecordError(err)
+        embedSpan.SetStatus(codes.Error, "embedding generation failed")
+        embedSpan.End()
+        return err
+    }
+    embedSpan.SetAttributes(attribute.Int("embedding.dimensions", len(embedding)))
+    embedSpan.End()
+
+    // Step 2: Extract concepts
+    ctx, extractSpan := tracer.Start(ctx, "enrichment.extract_concepts",
+        trace.WithAttributes(
+            attribute.String("pattern.id", job.PatternID.String()),
+        ),
+    )
+    concepts, err := w.extractConcepts(ctx, job.PatternID)
+    if err != nil {
+        extractSpan.RecordError(err)
+        extractSpan.SetStatus(codes.Error, "concept extraction failed")
+        extractSpan.End()
+        return err
+    }
+    extractSpan.SetAttributes(attribute.Int("concept.count", len(concepts)))
+    extractSpan.End()
+
+    // Step 3: Create graph nodes
+    _, graphSpan := tracer.Start(ctx, "enrichment.create_graph_nodes",
+        trace.WithAttributes(
+            attribute.String("pattern.id", job.PatternID.String()),
+        ),
+    )
+    nodeCount, edgeCount, err := w.createGraphNodes(ctx, job.PatternID, concepts)
+    if err != nil {
+        graphSpan.RecordError(err)
+        graphSpan.SetStatus(codes.Error, "graph node creation failed")
+        graphSpan.End()
+        return err
+    }
+    graphSpan.SetAttributes(
+        attribute.Int("node.count", nodeCount),
+        attribute.Int("edge.count", edgeCount),
+    )
+    graphSpan.End()
+
+    span.SetStatus(codes.Ok, "enrichment completed")
+    return nil
+}
+```
+
+### Enrichment Structured Logging
+
+The enrichment worker emits structured log events using `github.com/rs/zerolog` for each stage of job processing. These events provide operational visibility into the background pipeline.
+
+| Event               | Level | Fields                                          |
+| ------------------- | ----- | ----------------------------------------------- |
+| Job claimed         | Info  | `pattern_id`, `worker_id`                       |
+| Embedding generated | Debug | `pattern_id`, `duration_ms`                     |
+| Concepts extracted  | Debug | `pattern_id`, `concept_count`                   |
+| Graph nodes created | Debug | `pattern_id`                                    |
+| Job completed       | Info  | `pattern_id`, `total_duration_ms`               |
+| Job failed          | Error | `pattern_id`, `error`, `attempt_count`          |
+| Job retried         | Warn  | `pattern_id`, `attempt_number`, `next_scheduled`|
+
+Example logging in the enrichment worker:
+
+```go
+package enrichment
+
+import (
+    "time"
+
+    "github.com/rs/zerolog/log"
+)
+
+func (w *Worker) logJobClaimed(patternID string) {
+    log.Info().
+        Str("pattern_id", patternID).
+        Str("worker_id", w.id).
+        Msg("enrichment job claimed")
+}
+
+func (w *Worker) logEmbeddingGenerated(patternID string, duration time.Duration) {
+    log.Debug().
+        Str("pattern_id", patternID).
+        Int64("duration_ms", duration.Milliseconds()).
+        Msg("embedding generated")
+}
+
+func (w *Worker) logConceptsExtracted(patternID string, conceptCount int) {
+    log.Debug().
+        Str("pattern_id", patternID).
+        Int("concept_count", conceptCount).
+        Msg("concepts extracted")
+}
+
+func (w *Worker) logGraphNodesCreated(patternID string) {
+    log.Debug().
+        Str("pattern_id", patternID).
+        Msg("graph nodes created")
+}
+
+func (w *Worker) logJobCompleted(patternID string, totalDuration time.Duration) {
+    log.Info().
+        Str("pattern_id", patternID).
+        Int64("total_duration_ms", totalDuration.Milliseconds()).
+        Msg("enrichment job completed")
+}
+
+func (w *Worker) logJobFailed(patternID string, err error, attemptCount int) {
+    log.Error().
+        Err(err).
+        Str("pattern_id", patternID).
+        Int("attempt_count", attemptCount).
+        Msg("enrichment job failed")
+}
+
+func (w *Worker) logJobRetried(patternID string, attemptNumber int, nextScheduled time.Time) {
+    log.Warn().
+        Str("pattern_id", patternID).
+        Int("attempt_number", attemptNumber).
+        Time("next_scheduled", nextScheduled).
+        Msg("enrichment job retried")
+}
+```
+
+## Metrics Registry
 
 Create `internal/metrics/registry.go` to centralize metric initialization:
 
@@ -817,9 +1247,11 @@ import (
 
 // Registry holds all metric instruments for the application.
 type Registry struct {
-    MCP      *MCP
-    Patterns *Pattern
-    Database *Database
+    MCP        *MCP
+    Patterns   *Pattern
+    Tooling    *Tooling
+    Database   *Database
+    Enrichment *Enrichment
 }
 
 // NewRegistry creates all metric instruments.
@@ -834,15 +1266,27 @@ func NewRegistry(meter metric.Meter) (*Registry, error) {
         return nil, err
     }
 
+    tooling, err := NewTooling(meter)
+    if err != nil {
+        return nil, err
+    }
+
     database, err := NewDatabase(meter)
     if err != nil {
         return nil, err
     }
 
+    enrichment, err := NewEnrichment(meter)
+    if err != nil {
+        return nil, err
+    }
+
     return &Registry{
-        MCP:      mcp,
-        Patterns: patterns,
-        Database: database,
+        MCP:        mcp,
+        Patterns:   patterns,
+        Tooling:    tooling,
+        Database:   database,
+        Enrichment: enrichment,
     }, nil
 }
 ```
@@ -876,14 +1320,14 @@ func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMet
     router.Use(gin.Recovery())
 
     // Paths to skip for tracing and metrics
-    skipPaths := []string{"/health", "/ops/health", "/metrics"}
+    skipPaths := []string{"/api/health", "/metrics"}
 
     // Tracing middleware using otelgin
     router.Use(middleware.TracingMiddlewareWithSkipPaths("mnemonic", skipPaths))
 
     // otelx logging middleware with trace correlation
     router.Use(otelxgin.LoggingMiddleware(tel.Otelx(),
-        otelxgin.WithSkipPaths("/health", "/ops/health", "/metrics"),
+        otelxgin.WithSkipPaths("/api/health", "/metrics"),
         otelxgin.WithRequestHeaders("X-Request-ID", "X-Correlation-ID"),
     ))
 
@@ -898,7 +1342,7 @@ func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMet
 
 - Import alias `otelxgin` distinguishes from contrib `otelgin`
 - `WithSkipPaths()` uses variadic parameters, not slices
-- Additional skip paths for `/ops/health` and `/metrics`
+- Skip paths for `/api/health` and `/metrics`
 - `WithRequestHeaders()` uses variadic parameters
 - Middleware registration includes tracing and metrics
 
@@ -916,7 +1360,7 @@ import (
 )
 
 func ListAgents(c *gin.Context, tel *telemetry.Telemetry) {
-    logger := otelgin.Logger(c, tel.Telemetry)
+    logger := otelgin.Logger(c, tel.Otelx())
 
     logger.Info().Msg("listing agents")
 
@@ -941,7 +1385,7 @@ All log entries automatically include (via otelx):
   "span_id": "789xyz...",
   "message": "request completed",
   "http.method": "POST",
-  "http.path": "/v1/api/route",
+  "http.path": "/v1/api/patterns",
   "http.status_code": 200,
   "latency_ms": 45
 }
@@ -966,13 +1410,7 @@ All log entries automatically include (via otelx):
 
 > **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/02-system-architecture.md#mnemonic) | [Observability Architecture - Key Takeaways](../../architecture/07-observability-architecture.md#key-takeaways)
 
-### Handler Dependencies (Future Phase)
-
-**Status:** Not implemented in Phase 3.
-
-This section is deferred to Phase 1D per the implementation checklist. Handler instrumentation will be implemented when handlers require metrics and tracing.
-
-**Planned Implementation:**
+### Handler Dependencies
 
 Create `internal/handlers/deps.go`:
 
@@ -997,7 +1435,7 @@ func NewDependencies(tel *telemetry.Telemetry, metrics *metrics.Registry) *Depen
     return &Dependencies{
         Tel:     tel,
         Metrics: metrics,
-        Tracer:  tel.TracerProvider.Tracer("mnemonic/handlers"),
+        Tracer:  tel.TracerProvider().Tracer("mnemonic/handlers"),
     }
 }
 ```
@@ -1025,7 +1463,7 @@ import (
 func SearchPatterns(deps *handlers.Dependencies) gin.HandlerFunc {
     return func(c *gin.Context) {
         ctx := c.Request.Context()
-        logger := otelgin.Logger(c, deps.Tel.Telemetry)
+        logger := otelgin.Logger(c, deps.Tel.Otelx())
 
         // 1. Validate request with span
         ctx, validateSpan := deps.Tracer.Start(ctx, "validate_request")
@@ -1091,13 +1529,7 @@ func SetupHandlers(r *gin.Engine, deps *handlers.Dependencies) {
 
 > **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/02-system-architecture.md#mnemonic) | [Observability Architecture - Metrics (Prometheus)](../../architecture/07-observability-architecture.md#metrics-prometheus)
 
-### Postgres/PGVector Instrumentation (Future Phase)
-
-**Status:** Not implemented in Phase 3.
-
-This section is deferred to Phase 1E per the implementation checklist. Database instrumentation will be implemented with the repository layer.
-
-**Planned Implementation:**
+### Postgres/PGVector Instrumentation
 
 Create `internal/repository/postgres/instrumented.go`:
 
@@ -1111,6 +1543,7 @@ import (
     "github.com/jackc/pgx/v5"
     "github.com/jackc/pgx/v5/pgconn"
     "github.com/jackc/pgx/v5/pgxpool"
+    "github.com/rs/zerolog/log"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/codes"
@@ -1123,15 +1556,30 @@ var tracer = otel.Tracer("mnemonic/repository/postgres")
 
 // InstrumentedPool wraps pgxpool.Pool with observability.
 type InstrumentedPool struct {
-    pool    *pgxpool.Pool
-    metrics *metrics.Database
+    pool            *pgxpool.Pool
+    metrics         *metrics.Database
+    logDBStatements bool
 }
 
 // NewInstrumentedPool creates an instrumented database pool.
-func NewInstrumentedPool(pool *pgxpool.Pool, metrics *metrics.Database) *InstrumentedPool {
+func NewInstrumentedPool(pool *pgxpool.Pool, metrics *metrics.Database, logDBStatements bool) *InstrumentedPool {
     return &InstrumentedPool{
-        pool:    pool,
-        metrics: metrics,
+        pool:            pool,
+        metrics:         metrics,
+        logDBStatements: logDBStatements,
+    }
+}
+
+// logStatement conditionally logs the SQL query text at DEBUG level.
+// Controlled by the observability.log_db_statements config flag (default: false).
+// Mnemonic does not store sensitive data, but defaulting to off keeps logs lean
+// and gives operators a knob for debugging.
+func (p *InstrumentedPool) logStatement(sql string, args ...any) {
+    if p.logDBStatements {
+        log.Debug().
+            Str("statement", sql).
+            Int("args_count", len(args)).
+            Msg("db.query")
     }
 }
 
@@ -1140,10 +1588,11 @@ func (p *InstrumentedPool) Query(ctx context.Context, sql string, args ...any) (
     ctx, span := tracer.Start(ctx, "postgres.query",
         trace.WithAttributes(
             attribute.String("db.system", "postgresql"),
-            attribute.String("db.statement", sql),
         ),
     )
     defer span.End()
+
+    p.logStatement(sql, args...)
 
     start := time.Now()
     rows, err := p.pool.Query(ctx, sql, args...)
@@ -1162,13 +1611,21 @@ func (p *InstrumentedPool) Query(ctx context.Context, sql string, args ...any) (
 }
 
 // QueryRow executes a query that returns a single row with tracing.
+//
+// NOTE: Span timing limitation — pgx.Row uses lazy scanning, so the actual
+// data read happens when the caller invokes Scan(), not during QueryRow().
+// The span created here closes before data is read, which means the recorded
+// duration reflects only the query dispatch time, not the full read cycle.
+// For accurate QueryRow timing, create a span at the service layer that
+// encompasses both the QueryRow call and the subsequent Scan().
 func (p *InstrumentedPool) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
     ctx, span := tracer.Start(ctx, "postgres.query_row",
         trace.WithAttributes(
             attribute.String("db.system", "postgresql"),
-            attribute.String("db.statement", sql),
         ),
     )
+
+    p.logStatement(sql, args...)
 
     start := time.Now()
     row := p.pool.QueryRow(ctx, sql, args...)
@@ -1185,10 +1642,11 @@ func (p *InstrumentedPool) Exec(ctx context.Context, sql string, args ...any) (p
     ctx, span := tracer.Start(ctx, "postgres.exec",
         trace.WithAttributes(
             attribute.String("db.system", "postgresql"),
-            attribute.String("db.statement", sql),
         ),
     )
     defer span.End()
+
+    p.logStatement(sql, args...)
 
     start := time.Now()
     tag, err := p.pool.Exec(ctx, sql, args...)
@@ -1216,13 +1674,7 @@ func (p *InstrumentedPool) RecordPoolStats(ctx context.Context) {
 }
 ```
 
-### Neo4j Instrumentation (Future Phase)
-
-**Status:** Not implemented in Phase 3.
-
-This section is deferred to Phase 1E per the implementation checklist. Database instrumentation will be implemented with the repository layer.
-
-**Planned Implementation:**
+### Neo4j Instrumentation
 
 Create `internal/repository/neo4j/instrumented.go`:
 
@@ -1234,6 +1686,7 @@ import (
     "time"
 
     "github.com/neo4j/neo4j-go-driver/v5/neo4j"
+    "github.com/rs/zerolog/log"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/codes"
@@ -1246,15 +1699,17 @@ var tracer = otel.Tracer("mnemonic/repository/neo4j")
 
 // InstrumentedSession wraps neo4j.SessionWithContext with observability.
 type InstrumentedSession struct {
-    session neo4j.SessionWithContext
-    metrics *metrics.Database
+    session         neo4j.SessionWithContext
+    metrics         *metrics.Database
+    logDBStatements bool
 }
 
 // NewInstrumentedSession creates an instrumented Neo4j session.
-func NewInstrumentedSession(session neo4j.SessionWithContext, metrics *metrics.Database) *InstrumentedSession {
+func NewInstrumentedSession(session neo4j.SessionWithContext, metrics *metrics.Database, logDBStatements bool) *InstrumentedSession {
     return &InstrumentedSession{
-        session: session,
-        metrics: metrics,
+        session:         session,
+        metrics:         metrics,
+        logDBStatements: logDBStatements,
     }
 }
 
@@ -1263,10 +1718,16 @@ func (s *InstrumentedSession) Run(ctx context.Context, cypher string, params map
     ctx, span := tracer.Start(ctx, "neo4j.query",
         trace.WithAttributes(
             attribute.String("db.system", "neo4j"),
-            attribute.String("db.statement", cypher),
         ),
     )
     defer span.End()
+
+    if s.logDBStatements {
+        log.Debug().
+            Str("statement", cypher).
+            Int("args_count", len(params)).
+            Msg("db.query")
+    }
 
     start := time.Now()
     result, err := s.session.Run(ctx, cypher, params)
@@ -1320,6 +1781,79 @@ func StartPoolStatsRecorder(ctx context.Context, pool *postgres.InstrumentedPool
 }
 ```
 
+## Health Check Implementation
+
+> **Architecture Reference:** [Observability Architecture - Health Check Endpoint](../../architecture/07-observability-architecture.md#health-check-endpoint)
+
+Mnemonic uses the [`github.com/twistingmercury/heartbeat`](https://github.com/twistingmercury/heartbeat) package for health checks. The health endpoint is registered at `GET /api/health` on the Admin API (:8080).
+
+### Heartbeat Integration
+
+The `heartbeat` package provides a Gin-compatible handler that checks registered dependencies and returns structured health status. The operations handler registers it directly on the router.
+
+**Actual Implementation** from `internal/handlers/operations/operations.go`:
+
+```go
+package operations
+
+import (
+    "net/http"
+
+    "github.com/gin-gonic/gin"
+    "github.com/twistingmercury/heartbeat"
+    "github.com/twistingmercury/mnemonic/internal/version"
+)
+
+// SetupHandlers associates the handlers related to operations endpoints
+// to the gin.Engine that is passed in.
+func SetupHandlers(r *gin.Engine) {
+    deps := DefineDependencies()
+
+    r.GET("/api/health", heartbeat.Handler("mnemonic", deps...))
+    r.GET("/api/version", GetVersion)
+}
+```
+
+The `heartbeat.Handler` function accepts a service name and a variadic list of `heartbeat.DependencyDescriptor` values. Each descriptor defines a named dependency with a health check function that returns a `heartbeat.StatusResult`.
+
+### Dependency Registration
+
+Health check dependencies are defined in `internal/health/health.go` using `heartbeat.DependencyDescriptor`:
+
+```go
+package health
+
+import (
+    "github.com/twistingmercury/heartbeat"
+    "github.com/twistingmercury/mnemonic/internal/config"
+)
+
+func Initialize(conf *config.MnemonicConfig) error {
+    // Register dependency descriptors for PostgreSQL, Neo4j,
+    // and AI model connectivity checks
+    deps = []heartbeat.DependencyDescriptor{
+        {
+            Name:        "PostgreSQL check",
+            Type:        "database",
+            HandlerFunc: checkPostgreSQLHealth,
+        },
+        {
+            Name:        "Neo4j check",
+            Type:        "database",
+            HandlerFunc: checkNeo4jHealth,
+        },
+        // Additional dependency checks...
+    }
+    return nil
+}
+```
+
+Each `HandlerFunc` performs a lightweight connectivity probe (ping or equivalent) against its dependency. The `heartbeat` package aggregates results and returns HTTP 200 when all dependencies are healthy or HTTP 503 when any dependency is unhealthy.
+
+### Health Check in Middleware Skip Paths
+
+The health endpoint `/api/health` is included in `DefaultSkipPaths` to exclude it from tracing, logging, and request metrics, avoiding noise from frequent probe requests by container orchestration and load balancers.
+
 ## Gaps and Additional Implementation
 
 ### What otelx Provides
@@ -1357,8 +1891,9 @@ src/mnemonic/internal/
 │   └── metrics.go             # Request metrics middleware
 ├── metrics/
 │   ├── registry.go            # Centralized metric registry
-│   ├── routing.go             # Routing-specific metrics
 │   ├── patterns.go            # Pattern-specific metrics
+│   ├── tooling.go             # Tooling (agents/skills/commands) metrics
+│   ├── enrichment.go          # Enrichment worker metrics
 │   └── database.go            # Database-specific metrics
 ├── handlers/
 │   ├── deps.go                # Handler dependencies
@@ -1370,136 +1905,31 @@ src/mnemonic/internal/
         └── instrumented.go    # Instrumented Neo4j session
 ```
 
-## Testing Strategy
-
-> **Architecture Reference:** [Requirements - Success Criteria](../mnemonic-requirements.md#success-criteria)
-
-### Unit Testing Observability
-
-Test metric recording without external dependencies:
-
-```go
-package metrics_test
-
-import (
-    "context"
-    "testing"
-
-    "go.opentelemetry.io/otel/sdk/metric"
-    "go.opentelemetry.io/otel/sdk/metric/metricdata"
-
-    mmetrics "github.com/twistingmercury/mnemonic/internal/metrics"
-)
-
-func TestRouting(t *testing.T) {
-    // Create a test meter provider with in-memory reader
-    reader := metric.NewManualReader()
-    provider := metric.NewMeterProvider(metric.WithReader(reader))
-    meter := provider.Meter("test")
-
-    // Create metrics
-    rm, err := mmetrics.NewRouting(meter)
-    if err != nil {
-        t.Fatalf("failed to create routing metrics: %v", err)
-    }
-
-    // Record some metrics
-    ctx := context.Background()
-    rm.RecordRoutingDecision(ctx, "go-engineer")
-    rm.RecordRuleMatch(ctx, "keyword")
-    rm.RecordCacheHit(ctx)
-
-    // Collect and verify
-    var data metricdata.ResourceMetrics
-    if err := reader.Collect(ctx, &data); err != nil {
-        t.Fatalf("failed to collect metrics: %v", err)
-    }
-
-    // Assert expected metrics exist with correct values
-    // ...
-}
-```
-
-### Integration Testing
-
-Test middleware integration with Gin:
-
-```go
-package middleware_test
-
-import (
-    "net/http"
-    "net/http/httptest"
-    "testing"
-
-    "github.com/gin-gonic/gin"
-    "github.com/twistingmercury/mnemonic/internal/middleware"
-    "go.opentelemetry.io/otel/trace"
-)
-
-func TestTracingMiddleware(t *testing.T) {
-    gin.SetMode(gin.TestMode)
-
-    router := gin.New()
-    router.Use(middleware.TracingMiddleware("test-service"))
-    router.GET("/test", func(c *gin.Context) {
-        // Verify span is in context
-        span := trace.SpanFromContext(c.Request.Context())
-        if !span.SpanContext().IsValid() {
-            t.Error("expected valid span in context")
-        }
-        c.Status(http.StatusOK)
-    })
-
-    req := httptest.NewRequest(http.MethodGet, "/test", nil)
-    w := httptest.NewRecorder()
-    router.ServeHTTP(w, req)
-
-    if w.Code != http.StatusOK {
-        t.Errorf("expected status 200, got %d", w.Code)
-    }
-}
-```
-
-### E2E Observability Verification
-
-Verify telemetry emission in E2E tests:
-
-```go
-func TestObservabilityEmission(t *testing.T) {
-    // Start test server with telemetry
-    // Make requests
-    // Verify:
-    // 1. Prometheus metrics endpoint returns expected metrics
-    // 2. Logs contain trace IDs
-    // 3. (With collector) Traces are exported
-}
-```
-
 ## Implementation Checklist
 
-### Phase 1A: Foundation
+### Foundation
 
 - [ ] Create `internal/config/config.go` with observability configuration
 - [ ] Create `internal/telemetry/telemetry.go` wrapping otelx
 - [ ] Update `cmd/main/main.go` to initialize telemetry
 - [ ] Add required dependencies to `go.mod`
 
-### Phase 1B: Middleware
+### Middleware
 
 - [ ] Create `internal/middleware/tracing.go` using otelgin
 - [ ] Create `internal/middleware/metrics.go` for request metrics
 - [ ] Update `internal/server/server.go` to register middleware
 - [ ] Configure otelx logging middleware with skip paths
 
-### Phase 1C: Application Metrics
+### Application Metrics
 
 - [ ] Create `internal/metrics/registry.go`
-- [ ] Create `internal/metrics/routing.go`
 - [ ] Create `internal/metrics/patterns.go`
+- [ ] Create `internal/metrics/tooling.go`
+- [ ] Create `internal/metrics/enrichment.go`
 - [ ] Create `internal/metrics/database.go`
 
-### Phase 1D: Handler Instrumentation
+### Handler Instrumentation
 
 - [ ] Create `internal/handlers/deps.go` for dependency injection
 - [ ] Update handler signatures to accept dependencies
@@ -1507,14 +1937,14 @@ func TestObservabilityEmission(t *testing.T) {
 - [ ] Add metric recording calls in handlers
 - [ ] Use otelgin.Logger for trace-correlated logging
 
-### Phase 1E: Database Instrumentation
+### Database Instrumentation
 
 - [ ] Create `internal/repository/postgres/instrumented.go`
 - [ ] Create `internal/repository/neo4j/instrumented.go`
 - [ ] Implement connection pool stat recording
 - [ ] Wrap all database calls with instrumentation
 
-### Phase 1F: Testing and Verification
+### Testing and Verification
 
 - [ ] Unit tests for metric instruments
 - [ ] Integration tests for middleware

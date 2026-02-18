@@ -197,7 +197,7 @@ sequenceDiagram
 
 [Back to Table of Contents](#table-of-contents)
 
-Mnemonic exposes a health check endpoint at `GET /healthz` on the Admin API (:8080). It is used by container orchestration, load balancers, and monitoring infrastructure to determine service availability.
+Mnemonic exposes a health check endpoint at `GET /api/health` on the Admin API (:8080). It is used by container orchestration, load balancers, and monitoring infrastructure to determine service availability.
 
 **Healthy response** (HTTP 200):
 
