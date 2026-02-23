@@ -191,6 +191,9 @@ enrichment:
   # Job timeout (stuck jobs are reclaimed after this duration)
   job_timeout: 5m
 
+  # Minimum similarity for creating RELATED_TO edges (0.0-1.0)
+  related_to_min_similarity: 0.3
+
 # Logging
 logging:
   # Log level: debug, info, warn, error
@@ -326,6 +329,7 @@ The otelx package handles the complexity of OpenTelemetry SDK setup, allowing Mn
 | `enrichment.worker_count`                 | int      | `2`                      | `MNEMONIC_ENRICHMENT_WORKER_COUNT`                 | Concurrent workers                                                               |
 | `enrichment.poll_interval`                | duration | `5s`                     | `MNEMONIC_ENRICHMENT_POLL_INTERVAL`                | Job poll interval                                                                |
 | `enrichment.max_attempts`                 | int      | `3`                      | `MNEMONIC_ENRICHMENT_MAX_ATTEMPTS`                 | Max retry attempts                                                               |
+| `enrichment.related_to_min_similarity`    | float    | `0.3`                    | `MNEMONIC_ENRICHMENT_RELATED_TO_MIN_SIMILARITY`    | Minimum concept-overlap similarity (0.0-1.0) for creating RELATED_TO edges between patterns |
 | `logging.level`                           | string   | `info`                   | `MNEMONIC_LOGGING_LEVEL`                           | Log level                                                                        |
 | `logging.format`                          | string   | `json`                   | `MNEMONIC_LOGGING_FORMAT`                          | Log format                                                                       |
 | `observability.metrics.enabled`           | bool     | `true`                   | `MNEMONIC_OBSERVABILITY_METRICS_ENABLED`           | Enable metrics                                                                   |
@@ -480,6 +484,7 @@ func setDefaults(v *viper.Viper) {
     v.SetDefault("enrichment.max_attempts", 3)
     v.SetDefault("enrichment.retry_delay", "30s")
     v.SetDefault("enrichment.job_timeout", "5m")
+    v.SetDefault("enrichment.related_to_min_similarity", 0.3)
 
     // Logging defaults
     v.SetDefault("logging.level", "info")
@@ -751,11 +756,12 @@ type PerUserRateLimit struct {
 }
 
 type EnrichmentConfig struct {
-    WorkerCount  int           `mapstructure:"worker_count"`
-    PollInterval time.Duration `mapstructure:"poll_interval"`
-    MaxAttempts  int           `mapstructure:"max_attempts"`
-    RetryDelay   time.Duration `mapstructure:"retry_delay"`
-    JobTimeout   time.Duration `mapstructure:"job_timeout"`
+    WorkerCount            int           `mapstructure:"worker_count"`
+    PollInterval           time.Duration `mapstructure:"poll_interval"`
+    MaxAttempts            int           `mapstructure:"max_attempts"`
+    RetryDelay             time.Duration `mapstructure:"retry_delay"`
+    JobTimeout             time.Duration `mapstructure:"job_timeout"`
+    RelatedToMinSimilarity float64       `mapstructure:"related_to_min_similarity"`
 }
 
 type LoggingConfig struct {

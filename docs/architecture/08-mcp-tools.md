@@ -55,9 +55,9 @@ Semantic search over the team knowledge graph.
 | `tags`      | string array | no       | —       | —           | Conjunctive (AND) filter by tag      |
 | `agent`     | string       | no       | —       | —           | Filter results by agent association  |
 
-**Returns:** Markdown-formatted text with ranked results. Each result includes pattern name, similarity percentage, tags, and full content. The similarity percentage reflects the blended score.
+**Returns:** Markdown-formatted text with ranked results. Each result includes pattern name, similarity percentage, tags, and full content. The similarity percentage reflects the vector similarity score.
 
-**Notes:** Only enriched patterns appear in results. Results are ranked using blended scoring: `relevance = (0.7 × vector_similarity) + (0.3 × graph_score)`, where vector similarity comes from PGVector cosine distance and graph score comes from Neo4j relationship traversal (agent associations, shared concepts, hop distance). See [Pattern Processing](../design/pattern-processing.md) for details.
+**Notes:** Only enriched patterns appear in results. Results are ranked by PGVector cosine similarity (vector similarity only for MVP). Post-MVP enhancement: blended scoring combining vector similarity with Neo4j graph context is planned. See [Pattern Processing](../design/pattern-processing.md) for details.
 
 ### `find_related_patterns`
 
@@ -70,9 +70,9 @@ Find patterns related to a given pattern via the knowledge graph.
 | `pattern_id` | UUID    | yes      | —       | —           | ID of the pattern to find relations for  |
 | `limit`      | integer | no       | 5       | max 20      | Maximum number of related patterns       |
 
-**Returns:** Markdown with related patterns, relationship type, strength score, and shared concepts.
+**Returns:** Markdown with related patterns, relationship type, similarity score, and shared concepts.
 
-**Notes:** Traverses `RELATED_TO` edges in Neo4j. Strength score (0.0–1.0) reflects concept overlap between the source pattern and each related pattern.
+**Notes:** Traverses `RELATED_TO` edges in Neo4j. Similarity score (0.0–1.0) reflects concept overlap between the source pattern and each related pattern.
 
 ### `get_pattern`
 

@@ -342,48 +342,7 @@ id: 550e8400-...002, name: database-indexing, similarity: 0.82
 id: 550e8400-...003, name: query-performance, similarity: 0.78
 ```
 
-**Step 3: Graph Traversal (Neo4j)**
-
-```cypher
-// Find related patterns and concepts, compute graph score
-MATCH (p:Pattern)
-WHERE p.id IN [
-  "550e8400-...001",
-  "550e8400-...002",
-  "550e8400-...003"
-]
-OPTIONAL MATCH (c:Concept)-[:MENTIONED_IN]->(p)
-OPTIONAL MATCH (p)-[:RELATED_TO]->(related:Pattern)
-OPTIONAL MATCH (p)-[:RELEVANT_FOR]->(a:Agent)
-RETURN p.id,
-       collect(DISTINCT c.name) AS concepts,
-       collect(DISTINCT related.id) AS related_patterns,
-       collect(DISTINCT a.name) AS agents;
-```
-
-**Results:**
-
-```text
-pattern: 550e8400-...001
-  concepts: [sql, query-optimization, performance-tuning]
-  related: [550e8400-...004, 550e8400-...005]
-
-pattern: 550e8400-...002
-  concepts: [indexing, database]
-  related: [550e8400-...001]
-```
-
-**Step 4: Blend Scores and Rank**
-
-Vector similarity and graph score are combined into a blended relevance score:
-
-```text
-relevance = (0.7 × vector_similarity) + (0.3 × graph_score)
-```
-
-Where `graph_score` reflects agent association relevance, hop distance from matched patterns, and shared concept count.
-
-**Step 5: Response Assembly**
+**Step 3: Response Assembly**
 
 ```json
 {
@@ -410,6 +369,8 @@ Where `graph_score` reflects agent association relevance, hop distance from matc
 
 The MCP server returns these ranked patterns to Claude Code, which uses them to inform its responses.
 
+Post-MVP: search_patterns will incorporate graph scores via `relevance = (0.7 × vector_similarity) + (0.3 × graph_score)`. See [Pattern Processing](../../docs/design/pattern-processing.md) for the planned algorithm.
+
 ## Sequence Diagram
 
 ```mermaid
@@ -418,7 +379,6 @@ sequenceDiagram
     participant MCP as MCP Server
     participant API as Mnemonic API
     participant PGV as PGVector
-    participant Neo as Neo4j
     participant PG as PostgreSQL
 
     CC->>MCP: search_patterns tool call
@@ -427,14 +387,9 @@ sequenceDiagram
     Note over API: Step 1: Generate query embedding<br/>(OpenAI API, not shown)
 
     API->>PGV: Step 2: Vector similarity search<br/>SELECT ... WHERE similarity > 0.7
-    PGV-->>API: Pattern IDs + similarity scores
+    PGV-->>API: Ranked pattern IDs + similarity scores
 
-    API->>Neo: Step 3: Graph traversal<br/>MATCH (p:Pattern) agent associations, concepts, hop distance
-    Neo-->>API: Graph scores
-
-    Note over API: Step 4: Blend scores<br/>(0.7 × vector_similarity) + (0.3 × graph_score)
-
-    API->>PG: Step 5: Pattern details<br/>SELECT FROM patterns
+    API->>PG: Step 3: Pattern details<br/>SELECT FROM patterns
     PG-->>API: Full pattern content
 
     API-->>MCP: Ranked pattern results
@@ -449,17 +404,15 @@ This table shows how each database contributes to pattern search:
 
 | Step | Database   | Question Asked                 | Query Type        | Returns                        |
 | ---- | ---------- | ------------------------------ | ----------------- | ------------------------------ |
-| 1    | PGVector   | "What patterns match?"         | Vector similarity | Pattern IDs + similarity score |
-| 2    | Neo4j      | "What graph score applies?"    | Graph traversal   | Agent associations, hop distance, shared concepts |
-| 3    | —          | "What is the blended score?"   | Score combination | `(0.7 × vector_similarity) + (0.3 × graph_score)` |
-| 4    | PostgreSQL | "Get full pattern details"     | Relational lookup | Pattern content and metadata   |
+| 1    | PGVector   | "What patterns match?"         | Vector similarity | Ranked pattern IDs + similarity scores |
+| 2    | PostgreSQL | "Get full pattern details"     | Relational lookup | Pattern content and metadata   |
 
 **Data Flow Pattern:**
 
-1. PGVector finds candidate patterns via vector similarity
-2. Neo4j contributes a graph score (agent associations, shared concepts, hop distance)
-3. Blended score ranks final results: `(0.7 × vector_similarity) + (0.3 × graph_score)`
-4. PostgreSQL provides authoritative pattern details (structured data lookup)
+1. PGVector finds and ranks candidate patterns via vector similarity (MVP)
+2. PostgreSQL provides full pattern content and metadata
+
+Post-MVP: search_patterns will incorporate Neo4j graph scores via `relevance = (0.7 × vector_similarity) + (0.3 × graph_score)`.
 
 ## Post-MVP: Visualization
 
@@ -532,7 +485,7 @@ This is a post-MVP feature. The database-level operations work; admin tooling ad
 - **Three complementary databases** - Each chosen for specific strengths: PostgreSQL (ACID), PGVector (semantic search), Neo4j (relationships)
 - **Pattern UUID is the universal key** - Same identifier connects data across PostgreSQL and Neo4j
 - **Enrichment is asynchronous** - Pattern processing happens in background jobs to avoid API latency
-- **Pattern search uses blended scoring** - PGVector similarity and Neo4j graph score are combined (`0.7 × vector + 0.3 × graph`) before PostgreSQL provides full details
+- **Pattern search uses vector similarity (MVP-1)** - PGVector ranks results by cosine similarity; PostgreSQL provides full pattern details. Blended scoring with Neo4j graph context is planned post-MVP.
 - **PostgreSQL is source of truth** - Other databases contain projections and derived data
 - **Graph relationships add context** - Neo4j expands beyond similarity to include explicit knowledge connections
 

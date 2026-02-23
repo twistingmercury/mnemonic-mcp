@@ -184,7 +184,6 @@ sequenceDiagram
     participant MCP as MCP Server
     participant OPENAI as OpenAI Embedding API
     participant PG as Postgres + PGVector
-    participant NEO as Neo4j
 
     User->>CC: Ask question
     CC->>CC: Determine need for team knowledge
@@ -194,18 +193,15 @@ sequenceDiagram
     MCP->>OPENAI: Generate query embedding
     OPENAI-->>MCP: vector(1536)
     MCP->>PG: Vector similarity search (PGVector)
-    PG-->>MCP: Candidate patterns + similarity scores
+    PG-->>MCP: Ranked patterns + similarity scores
 
-    MCP->>NEO: Graph traversal (related patterns, agent associations)
-    NEO-->>MCP: Graph scores
-
-    Note over MCP: Blend scores: (0.7 × vector_similarity) + (0.3 × graph_score)
-
-    MCP-->>CC: {patterns ranked by blended score}
+    MCP-->>CC: {patterns ranked by vector similarity}
 
     CC->>CC: Incorporate team knowledge
     CC-->>User: Answer with team context
 ```
+
+Post-MVP: search_patterns will incorporate Neo4j graph scores for blended ranking.
 
 ### Data Loading via Admin API
 

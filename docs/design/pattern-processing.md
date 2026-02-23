@@ -43,6 +43,8 @@ Pattern:
       description: Timestamp of last successful enrichment
 ```
 
+`enrichment_status` on the pattern tracks the pattern's own state and uses the values `pending`, `enriched`, and `failed`. The `enrichment_jobs` table has a separate status field with an additional `processing` state (`pending`, `processing`, `completed`, `failed`). The `processing` state exists only on jobs, not on patterns.
+
 ## Automatic Enrichment Flow
 
 > **Architecture Reference:** [System Architecture - Data Flow](../../architecture/02-system-architecture.md#data-flow)
@@ -211,27 +213,37 @@ CREATE (p)-[:RELEVANT_FOR {relevance: assoc.relevance}]->(a)
 MATCH (:Concept)-[r:MENTIONED_IN]->(:Pattern {id: $patternId})
 DELETE r
 
-// Step 5: Create concepts (normalized lowercase) and relationships
+// Step 5: Create concepts and MENTIONED_IN relationships
 UNWIND $concepts AS concept
-MERGE (c:Concept {name: toLower($conceptName), type: $conceptType})
+MERGE (c:Concept {name: concept.name})
+ON CREATE SET c.type = concept.type, c.createdAt = datetime()
 WITH c
 MATCH (p:Pattern {id: $patternId})
 CREATE (c)-[:MENTIONED_IN]->(p)
+
+// Step 6: Delete old RELATED_TO edges for this pattern
+MATCH (p:Pattern {id: $patternId})-[r:RELATED_TO]-()
+DELETE r
 ```
 
 ### RELATED_TO Edge Computation
+
+RELATED_TO is a symmetric relationship. Edges are created in one direction only, and queries use direction-agnostic traversal (`MATCH (a)-[:RELATED_TO]-(b)`, no arrow). This is the standard Neo4j pattern for symmetric relationships.
 
 After concept extraction and MENTIONED_IN edge creation, the enrichment pipeline
 computes direct RELATED_TO edges between patterns:
 
 1. For each newly enriched pattern, query Neo4j for other patterns that share
    concepts (via MENTIONED_IN traversal)
-2. Compute a similarity score (0.0-1.0) based on:
-   - Number of shared concepts (normalized by total concepts)
-   - Embedding cosine similarity between pattern vectors (from PGVector)
-3. Create or update RELATED_TO edges between pattern pairs with the computed
-   similarity score
-4. Edges below a minimum threshold (configurable, default 0.3) are not created
+2. Compute a similarity score (0.0-1.0) based on concept overlap only:
+
+   ```text
+   similarity = sharedConcepts / max(totalConceptsA, totalConceptsB)
+   ```
+
+3. Create RELATED_TO edges between pattern pairs with the computed similarity score
+4. Edges below a minimum threshold (default 0.3) are not created; the threshold
+   is configurable via `enrichment.related_to_min_similarity` (see [configuration.md](configuration.md))
 
 This step runs as part of the asynchronous enrichment pipeline, after embedding
 generation and concept extraction.
@@ -279,40 +291,24 @@ stateDiagram-v2
         Only enriched patterns
     end note
 
-    VectorSearch --> GraphTraversal
-
-    state "3. Graph Traversal" as GraphTraversal
-    note right of GraphTraversal
-        Neo4j: Expand to related patterns
-        Boost strong graph connections
-    end note
-
-    GraphTraversal --> RankAndReturn
-
-    state "4. Rank and Return" as RankAndReturn
-    note right of RankAndReturn
-        Combine similarity + graph scores
-        Return top N patterns
-    end note
-
-    RankAndReturn --> [*]
+    VectorSearch --> [*]
 ```
 
 Note: Query-time search only considers patterns with `enrichment_status = 'enriched'`. Patterns still pending or failed enrichment are excluded from search results.
 
+Graph traversal to expand and re-rank results via Neo4j is a post-MVP enhancement (see Relevance Scoring below).
+
 #### Relevance Scoring
 
+**MVP**: `search_patterns` ranks results by vector similarity only (PGVector cosine similarity). This is the similarity score returned in results.
+
+**Post-MVP Enhancement**: Blended scoring combining vector similarity with graph context:
+
 ```text
-relevance = (0.7 * vector_similarity) + (0.3 * graph_score)
+relevance = (0.7 × vector_similarity) + (0.3 × graph_score)
 ```
 
-This combined scoring formula (0.7 vector similarity + 0.3 graph relevance) is used by the MCP `search_patterns` tool for pattern ranking.
-
-Where `graph_score` considers:
-
-- Direct agent association relevance
-- Number of hops from matched patterns
-- Shared entity count
+Where `graph_score` would consider direct agent association relevance, hop distance from matched patterns, and shared concept count. The algorithm for computing `graph_score` will be designed when this enhancement is prioritized.
 
 ## Enrichment Worker Deployment
 
