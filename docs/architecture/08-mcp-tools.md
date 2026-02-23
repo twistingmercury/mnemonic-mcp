@@ -55,9 +55,9 @@ Semantic search over the team knowledge graph.
 | `tags`      | string array | no       | —       | —           | Conjunctive (AND) filter by tag      |
 | `agent`     | string       | no       | —       | —           | Filter results by agent association  |
 
-**Returns:** Markdown-formatted text with ranked results. Each result includes pattern name, similarity percentage, tags, and full content.
+**Returns:** Markdown-formatted text with ranked results. Each result includes pattern name, similarity percentage, tags, and full content. The similarity percentage reflects the blended score.
 
-**Notes:** Only enriched patterns appear in results. Similarity is computed using PGVector cosine similarity.
+**Notes:** Only enriched patterns appear in results. Results are ranked using blended scoring: `relevance = (0.7 × vector_similarity) + (0.3 × graph_score)`, where vector similarity comes from PGVector cosine distance and graph score comes from Neo4j relationship traversal (agent associations, shared concepts, hop distance). See [Pattern Processing](../design/pattern-processing.md) for details.
 
 ### `find_related_patterns`
 

@@ -11,6 +11,8 @@ Pattern enrichment transforms raw pattern content into searchable, interconnecte
 1. **Semantic search** - Find patterns by meaning, not just keywords via the MCP `search_patterns` tool and Admin API search endpoint
 2. **Relationship discovery** - Connect related patterns and agents via knowledge graph
 
+Enrichment data feeds all three MCP tools: `search_patterns` (semantic search), `find_related_patterns` (graph traversal), and `get_pattern` (full pattern with graph context).
+
 This design is inspired by Cognee's cognify pipeline (chunk, classify, extract, integrate, summarize) but adapted for Mnemonic's simpler use case: patterns are already curated documents, not raw data requiring extensive preprocessing.
 
 **Note:** Following the architectural pivot (see [2026-02-14-mnemonic-pivot-knowledge-sync.md](../plans/2026-02-14-mnemonic-pivot-knowledge-sync.md)), enriched patterns are consumed by the MCP server's search tools and the Admin API search endpoint, not by a routing engine.
@@ -103,7 +105,7 @@ stateDiagram-v2
     state "1. Validate & Store Metadata" as ValidateAndStore
     note right of ValidateAndStore
         Postgres: Name, description,
-        tags, agent_associations
+        tags, pattern_agent_associations
         enrichment_status: 'pending'
     end note
 
@@ -149,7 +151,7 @@ Store pattern metadata in Postgres:
 - `id` (UUID, generated)
 - `name`, `description`, `content`
 - `tags` (array)
-- `agent_associations` (JSON with agent_name + relevance)
+- `pattern_agent_associations` (join table: `pattern_id UUID`, `agent_id UUID`, `relevance double precision`)
 - `enrichment_status` (initially "pending")
 - `enrichment_error` (null initially)
 - `enriched_at` (null initially)
@@ -179,27 +181,42 @@ Use an LLM to extract structured information from the pattern content:
 }
 ```
 
+These categories map to Concept nodes with `type` = `"domain"`, `"technology"`, and `"practice"` respectively. Concept names are normalized to lowercase before storage.
+
 This LLM call adds 1-5 seconds of processing time per pattern, which is why enrichment runs asynchronously.
 
 #### Step 4: Create Relationships
 
 Store relationships in Neo4j:
 
+The following runs as a transaction during enrichment:
+
 ```cypher
-// Pattern to agent relationship
+// Step 1: Create/update pattern node with full properties
 MERGE (p:Pattern {id: $patternId})
-MERGE (a:Agent {name: $agentName})
-MERGE (p)-[:RELEVANT_FOR {relevance: $relevance}]->(a)
+ON CREATE SET p.name = $name, p.description = $description, p.createdAt = datetime()
+ON MATCH SET p.name = $name, p.description = $description, p.updatedAt = datetime()
 
-// Pattern to concept relationship
-MERGE (p:Pattern {id: $patternId})
-MERGE (c:Concept {name: $conceptName})
-MERGE (c)-[:MENTIONED_IN]->(p)
+// Step 2: Remove old RELEVANT_FOR relationships
+MATCH (p:Pattern {id: $patternId})-[r:RELEVANT_FOR]->()
+DELETE r
 
-// Pattern to pattern relationship (based on shared concepts)
-MATCH (p1:Pattern)<-[:MENTIONED_IN]-(c:Concept)-[:MENTIONED_IN]->(p2:Pattern)
-WHERE p1.id <> p2.id
-MERGE (p1)-[:RELATED_TO]->(p2)
+// Step 3: Create new RELEVANT_FOR relationships
+UNWIND $associations AS assoc
+MATCH (p:Pattern {id: $patternId})
+MATCH (a:Agent {name: assoc.agentName})
+CREATE (p)-[:RELEVANT_FOR {relevance: assoc.relevance}]->(a)
+
+// Step 4: Remove old MENTIONED_IN relationships for this pattern
+MATCH (:Concept)-[r:MENTIONED_IN]->(:Pattern {id: $patternId})
+DELETE r
+
+// Step 5: Create concepts (normalized lowercase) and relationships
+UNWIND $concepts AS concept
+MERGE (c:Concept {name: toLower($conceptName), type: $conceptType})
+WITH c
+MATCH (p:Pattern {id: $patternId})
+CREATE (c)-[:MENTIONED_IN]->(p)
 ```
 
 ### RELATED_TO Edge Computation
@@ -209,11 +226,11 @@ computes direct RELATED_TO edges between patterns:
 
 1. For each newly enriched pattern, query Neo4j for other patterns that share
    concepts (via MENTIONED_IN traversal)
-2. Compute a strength score (0.0-1.0) based on:
+2. Compute a similarity score (0.0-1.0) based on:
    - Number of shared concepts (normalized by total concepts)
    - Embedding cosine similarity between pattern vectors (from PGVector)
 3. Create or update RELATED_TO edges between pattern pairs with the computed
-   strength score
+   similarity score
 4. Edges below a minimum threshold (configurable, default 0.3) are not created
 
 This step runs as part of the asynchronous enrichment pipeline, after embedding
@@ -349,6 +366,11 @@ CREATE TABLE enrichment_jobs (
 
 CREATE INDEX idx_enrichment_jobs_pending ON enrichment_jobs (scheduled_for)
     WHERE status = 'pending';
+CREATE INDEX idx_enrichment_jobs_pattern ON enrichment_jobs (pattern_id);
+CREATE INDEX idx_enrichment_jobs_processing ON enrichment_jobs (started_at)
+    WHERE status = 'processing';
+CREATE UNIQUE INDEX idx_enrichment_jobs_unique_pending ON enrichment_jobs (pattern_id)
+    WHERE status IN ('pending', 'processing');
 ```
 
 Worker polling:
@@ -598,6 +620,7 @@ enrichment:
   poll_interval: 5s # How often to check for new jobs
   max_attempts: 3 # Retry attempts before marking as failed
   retry_delay: 30s # Delay between retry attempts
+  job_timeout: 5m  # Maximum time for a single enrichment job
 
 # Neo4j configuration (required)
 neo4j:
@@ -649,6 +672,8 @@ For bulk pattern imports, implement:
 ## Deployment Requirements
 
 > **Architecture Reference:** [Deployment Architecture - Infrastructure Requirements](../../architecture/06-deployment-architecture.md#infrastructure-requirements) | [Deployment Architecture - Deployment Topology](../../architecture/06-deployment-architecture.md#deployment-topology)
+>
+> **Observability Reference:** [Enrichment Worker Observability](observability-implementation.md#enrichment-worker-observability) — metrics, tracing spans, and structured logging for the enrichment pipeline
 
 ### Infrastructure Checklist
 
@@ -739,6 +764,17 @@ FOR (c:Concept) REQUIRE c.name IS UNIQUE;
 // Create indexes for common queries
 CREATE INDEX pattern_name IF NOT EXISTS
 FOR (p:Pattern) ON (p.name);
+
+// Full-text indexes for search
+CREATE FULLTEXT INDEX pattern_content_fulltext IF NOT EXISTS
+FOR (p:Pattern) ON EACH [p.name, p.description];
+
+CREATE FULLTEXT INDEX concept_name_fulltext IF NOT EXISTS
+FOR (c:Concept) ON EACH [c.name];
+
+// Property index for concept type filtering
+CREATE INDEX concept_type_index IF NOT EXISTS
+FOR (c:Concept) ON (c.type);
 ```
 
 ### Entity Extraction Prompt

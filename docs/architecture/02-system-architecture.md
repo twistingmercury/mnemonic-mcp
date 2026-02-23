@@ -193,13 +193,15 @@ sequenceDiagram
 
     MCP->>OPENAI: Generate query embedding
     OPENAI-->>MCP: vector(1536)
-    MCP->>PG: Semantic search (PGVector)
-    PG-->>MCP: Top N patterns
+    MCP->>PG: Vector similarity search (PGVector)
+    PG-->>MCP: Candidate patterns + similarity scores
 
-    MCP->>NEO: Fetch related patterns
-    NEO-->>MCP: Knowledge graph relationships
+    MCP->>NEO: Graph traversal (related patterns, agent associations)
+    NEO-->>MCP: Graph scores
 
-    MCP-->>CC: {patterns with context}
+    Note over MCP: Blend scores: (0.7 × vector_similarity) + (0.3 × graph_score)
+
+    MCP-->>CC: {patterns ranked by blended score}
 
     CC->>CC: Incorporate team knowledge
     CC-->>User: Answer with team context
