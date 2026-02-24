@@ -79,8 +79,8 @@ docs/scripts/
 **/rlm_state/*
 **/*.backup
 /docs/architecture/reviews
-/docs/operations
+/operations
 /api/mcp
 /_ideas
 /_archive
-/docs/uml
+/_reviews
