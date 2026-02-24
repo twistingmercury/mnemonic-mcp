@@ -377,22 +377,22 @@ Post-MVP: search_patterns will incorporate graph scores via `relevance = (0.7 ×
 sequenceDiagram
     participant CC as Claude Code
     participant MCP as MCP Server
-    participant API as Mnemonic API
+    participant SVC as SearchService
     participant PGV as PGVector
     participant PG as PostgreSQL
 
     CC->>MCP: search_patterns tool call
-    MCP->>API: POST /v1/patterns/search
+    MCP->>SVC: SearchPatterns(SearchOptions{query, limit, threshold})
 
-    Note over API: Step 1: Generate query embedding<br/>(OpenAI API, not shown)
+    Note over SVC: Step 1: Generate query embedding<br/>(OpenAI API, not shown)
 
-    API->>PGV: Step 2: Vector similarity search<br/>SELECT ... WHERE similarity > 0.7
-    PGV-->>API: Ranked pattern IDs + similarity scores
+    SVC->>PGV: Step 2: Vector similarity search<br/>SELECT ... WHERE similarity > 0.7
+    PGV-->>SVC: Ranked pattern IDs + similarity scores
 
-    API->>PG: Step 3: Pattern details<br/>SELECT FROM patterns
-    PG-->>API: Full pattern content
+    SVC->>PG: Step 3: Pattern details<br/>SELECT FROM patterns
+    PG-->>SVC: Full pattern content
 
-    API-->>MCP: Ranked pattern results
+    SVC-->>MCP: Ranked pattern results
     MCP-->>CC: Pattern list with metadata
 
     Note over CC: Uses patterns to inform response

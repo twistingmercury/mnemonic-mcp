@@ -68,9 +68,9 @@ Mnemonic emits metrics via OpenTelemetry across several categories:
 - Patterns returned per search request
 - Pattern cache effectiveness
 
-**Tooling metrics** - Track agent/skill/command operations:
+**Tooling metrics** - Track agent/skill operations:
 
-- List operations by type (agents, skills, commands)
+- List operations by type (agents, skills)
 - Get operations by resource type
 - Admin API write operations (create, update, delete)
 
@@ -197,7 +197,7 @@ sequenceDiagram
 
 [Back to Table of Contents](#table-of-contents)
 
-Mnemonic exposes a health check endpoint at `GET /api/health` on the Admin API (:8080). It is used by container orchestration, load balancers, and monitoring infrastructure to determine service availability.
+Mnemonic exposes a health check endpoint at `GET /health` on the Admin API (:8080). It is used by container orchestration, load balancers, and monitoring infrastructure to determine service availability.
 
 **Healthy response** (HTTP 200):
 

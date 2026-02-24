@@ -22,7 +22,7 @@ architectural decisions, how we do things around here. When Claude Code needs co
 your team's approach to something, it can ask Mnemonic and get a real answer instead of
 guessing.
 
-**A tooling library.** Agents, skills, and commands are stored in Mnemonic and synced down to
+**A tooling library.** Agents and skills are stored in Mnemonic and synced down to
 every developer's machine. Everyone runs the same versions. When the team improves a skill,
 everyone gets the update on their next sync.
 
@@ -43,8 +43,8 @@ Claude Code connects to Mnemonic using MCP (Model Context Protocol). MCP is the 
 Claude Code talks to external services — no extra CLI, no scripts, no glue code needed.
 
 Once Mnemonic is configured as an MCP server, Claude Code can call it directly during a
-conversation. It can search the knowledge base, pull up a pattern, ask what agents are available,
-or fetch the full definition of a skill.
+conversation. It can search the knowledge base for patterns, find related patterns, or pull up a
+specific pattern by ID. These three pattern search operations are the full MCP tool surface.
 
 All MCP access is read-only. Claude Code can look things up, but it cannot write to Mnemonic.
 That keeps things predictable.
@@ -54,8 +54,6 @@ graph LR
     User([You]) --> CC[Claude Code]
     CC -->|searches for knowledge| MCP[Mnemonic MCP]
     MCP --> KB[(Knowledge Base)]
-    CC -->|fetches tooling| MCP
-    MCP --> Tools[(Agents & Skills)]
 ```
 
 ## How knowledge gets in
@@ -64,7 +62,7 @@ Someone on the team — an admin, a CI pipeline, a script — pushes content int
 a REST API. That is the write path. You POST a pattern, Mnemonic stores it, generates a
 semantic embedding in the background, and it becomes searchable within a few moments.
 
-The same API handles tooling: upload an agent definition, register a skill, publish a command.
+The same API handles tooling: upload an agent definition, register a skill.
 Mnemonic becomes the canonical source.
 
 ```mermaid
@@ -153,8 +151,7 @@ The default configuration searches roughly 10% of patterns per query, which dram
 
 Every developer runs a sync command periodically — `/mnemonic-sync` as a Claude Code skill. It
 checks what has changed on the server and downloads only the things that are new or updated.
-Agents land in `~/.claude/agents/`. Skills land in `~/.claude/skills/`. Commands land in
-`~/.claude/commands/`.
+Agents land in `~/.claude/agents/`. Skills land in `~/.claude/skills/`.
 
 After a sync, you are running the same tooling as everyone else on the team.
 
@@ -168,7 +165,6 @@ is fast regardless of how much total content Mnemonic holds.
 | Patterns (team knowledge) | Mnemonic | Your team, via the REST API |
 | Agent definitions | Mnemonic | Your team, via the REST API |
 | Skill definitions | Mnemonic | Your team, via the REST API |
-| Command definitions | Mnemonic | Your team, via the REST API |
 | Local copies of tooling | `~/.claude/` on each machine | Synced from Mnemonic |
 | Workflow decisions | You | Always |
 | AI inference | Claude Code / Anthropic | Mnemonic never does inference |

@@ -65,7 +65,7 @@ This document provides implementation details for the Mnemonic data storage laye
 **JSONB Document Model:**
 
 - `agents`, `skills` use JSONB document model with `crc64` change detection
-- `skill_files` stores skill child resources as JSONB documents
+- `skill_files` stores skill child files with path and content columns
 - `patterns` use relational columns (enrichment workflow, pgvector embeddings, graph context)
 - `pattern_agent_associations` is a join table for agent-scoped pattern filtering
 - `enrichment_jobs` is a background processing queue
@@ -107,13 +107,13 @@ All document tables (agents, skills) share the same column structure:
 | Column | Type | Constraints | Purpose |
 |--------|------|-------------|---------|
 | `id` | UUID | PK, DEFAULT gen_random_uuid() | Internal identifier |
-| `name` | VARCHAR | UNIQUE NOT NULL | Lookup key; the one field always queried by |
+| `name` | VARCHAR(255) | UNIQUE NOT NULL | Lookup key; the one field always queried by |
 | `definition` | JSONB | NOT NULL | Complete document (all entity fields) |
-| `crc64` | BIGINT | NOT NULL | CRC-64 checksum of serialized JSONB, for change detection |
+| `crc64` | VARCHAR(20) | NOT NULL | CRC-64 checksum of serialized JSONB, for change detection |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | DB sets on INSERT |
 | `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | App updates on UPDATE |
 
-The `skill_files` table follows the same pattern with `document` instead of `definition`, and adds `skill_id`, `file_type`, and `filename` columns for the composite lookup key.
+The `skill_files` table stores child files for skills with `skill_id` and `path` as the composite lookup key, plus `content` as TEXT for the file body.
 
 ### CRC64 Change Detection
 
@@ -124,7 +124,7 @@ Each document table includes a `crc64` column storing a CRC-64 checksum of the J
 - Computed server-side (in the Go application) on every INSERT and UPDATE.
 - Input: the serialized JSONB content in canonical form (deterministic key ordering, no extra whitespace). Go's `encoding/json` produces deterministic output for the same struct, but the application should use a canonical serialization function to guarantee consistency.
 - Algorithm: CRC-64 with ISO polynomial (matching Go's `hash/crc64` package with `crc64.MakeTable(crc64.ISO)`).
-- Output: a 64-bit unsigned integer, stored as PostgreSQL BIGINT (64-bit signed). Go handles the uint64-to-int64 conversion.
+- Output: a 64-bit unsigned integer, stored as PostgreSQL VARCHAR(20) (decimal string representation). Go converts the uint64 to its decimal string form for storage and parses it back on read.
 
 **Usage in the sync protocol:**
 
@@ -134,7 +134,7 @@ Each document table includes a `crc64` column storing a CRC-64 checksum of the J
 
 **Why CRC-64 and not SHA-256:**
 
-CRC-64 is fast, fits in a single BIGINT column, and provides sufficient collision resistance for change detection (not security). The sync protocol uses it to answer "has this document changed?" not "is this document authentic?"
+CRC-64 is fast, fits in a single VARCHAR(20) column, and provides sufficient collision resistance for change detection (not security). The sync protocol uses it to answer "has this document changed?" not "is this document authentic?"
 
 ### JSONB Contents by Entity
 
@@ -188,27 +188,20 @@ Aligned with the [Claude Code Agent Skills spec](https://docs.anthropic.com/en/d
 | `allowed_tools` | string[] | no | MCP tool names this skill can use |
 | `version` | string | yes | Semantic version of the definition |
 
-#### Skill files document JSONB
+#### Skill files
 
-```json
-{
-  "content_type": "text/x-python",
-  "content": "#!/usr/bin/env python3\nimport sys...",
-  "encoding": "utf-8",
-  "size": 2048
-}
-```
+Skill files do not use the JSONB document model. They store file content directly in a TEXT column with a `path` column for identification within the skill directory. The `crc64` column provides change detection on the file content.
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `content_type` | string | yes | MIME type of the file content |
-| `content` | string | yes | File content (text or base64-encoded binary) |
-| `encoding` | string | yes | Content encoding: utf-8 or base64 |
-| `size` | integer | yes | Decoded size in bytes |
+| Column | Type | Purpose |
+|--------|------|---------|
+| `skill_id` | UUID | FK to parent skill |
+| `path` | VARCHAR(1024) | File path within the skill directory |
+| `content` | TEXT | File content |
+| `crc64` | VARCHAR(20) | CRC-64 checksum for change detection |
 
 ### JSONB Indexing Strategy
 
-Document tables use GIN indexes on the `definition` (or `document`) column to support queries that filter by JSONB contents.
+Document tables use GIN indexes on the `definition` column to support queries that filter by JSONB contents.
 
 **Primary use case: tag filtering.**
 
@@ -221,7 +214,7 @@ FROM skills
 WHERE definition @> '{"tags": ["sync"]}'::jsonb;
 ```
 
-**Index definitions** (created in migration 006 or respective table migrations):
+**Index definitions** (created in respective table migrations):
 
 ```sql
 -- GIN index on definition column for tag filtering
@@ -243,21 +236,22 @@ Because JSONB contents are not constrained at the database level, the applicatio
 
 | Entity | Field | Constraint | Enforced By |
 |--------|-------|-----------|-------------|
-| Agent | name | max 64 chars, `^[a-z][a-z0-9-]*$` | DB (VARCHAR + CHECK) |
+| Agent | name | max 255 chars, unique | DB (VARCHAR + UNIQUE) |
+| Agent | name | `^[a-z][a-z0-9-]*$` format | Application |
 | Agent | definition.description | max 500 chars | Application |
 | Agent | definition.system_prompt | max 50KB | Application |
 | Agent | definition.model | one of: sonnet, opus, haiku | Application |
 | Agent | definition.allowed_tools | must be string array | Application |
 | Agent | definition.version | required, semver format | Application |
-| Skill | name | max 64 chars, `^[a-z][a-z0-9-]*$` | DB (VARCHAR + CHECK) |
+| Skill | name | max 255 chars, unique | DB (VARCHAR + UNIQUE) |
+| Skill | name | `^[a-z][a-z0-9-]*$` format | Application |
 | Skill | definition.description | max 1024 chars | Application |
 | Skill | definition.content | max 512KB | Application |
 | Skill | definition.version | required, semver format | Application |
-| Skill File | filename | max 255 chars | DB (VARCHAR) |
-| Skill File | file_type | one of: script, reference, asset | DB (CHECK) |
-| Skill File | document.content | max 1MB | Application |
+| Skill File | path | max 1024 chars | DB (VARCHAR) |
+| Skill File | content | max 1MB | Application |
 
-The database enforces only structural constraints (primary keys, uniqueness, foreign keys, the `name` column format). Content-level validation belongs to the application.
+The database enforces only structural constraints (primary keys, uniqueness, foreign keys). Name format validation and content-level validation belong to the application.
 
 **Future Consideration:**
 
@@ -321,16 +315,17 @@ migrate -path src/migrations/postgres -database "$DATABASE_URL" version
 
 ```sql
 -- src/migrations/postgres/000001_extensions.up.sql
--- Enables required extensions
+-- Enables required PostgreSQL extensions.
 -- Part of Mnemonic MVP
 
--- Enable vector operations for embeddings
+-- Enable vector operations for embeddings (pgvector extension)
 create extension if not exists vector;
 ```
 
 ```sql
 -- src/migrations/postgres/000001_extensions.down.sql
--- Extensions are not dropped to avoid breaking other schemas
+-- Extensions are not dropped to avoid breaking other schemas that may use them.
+-- If you need to drop extensions, uncomment the following line:
 -- drop extension if exists vector;
 ```
 
@@ -342,7 +337,7 @@ create extension if not exists vector;
 
 ```sql
 -- src/migrations/postgres/000002_create_agents.up.sql
--- Creates the agents table with JSONB document model
+-- Creates the agents table with JSONB document model.
 -- Part of Mnemonic MVP
 
 create table if not exists agents (
@@ -350,22 +345,17 @@ create table if not exists agents (
     id uuid primary key default gen_random_uuid(),
 
     -- Unique lookup key: lowercase-with-hyphens format, URL-safe
-    name varchar(64) not null,
+    name varchar(255) unique not null,
 
     -- Complete agent definition as JSONB document
     definition jsonb not null,
 
     -- CRC-64 checksum of serialized definition for change detection
-    crc64 bigint not null,
+    crc64 varchar(20) not null,
 
     -- Audit timestamps
     created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now(),
-
-    -- Constraints
-    constraint agents_name_unique unique (name),
-    constraint agents_name_format
-        check (name ~ '^[a-z][a-z0-9-]*$')
+    updated_at timestamptz not null default now()
 );
 
 -- GIN index on definition for JSONB queries
@@ -388,11 +378,11 @@ drop table if exists agents;
 
 **Purpose:** Create the patterns table with PGVector embedding column for semantic search.
 
-**Note:** Patterns use relational columns (not the JSONB document model) because they have enrichment status, graph context, and pgvector embeddings that require individual columns.
+**Note:** Patterns use relational columns (not the JSONB document model) because they have enrichment status, graph context, and pgvector embeddings that require individual columns. Performance indexes (IVFFlat, GIN, full-text) are created separately in migration 006.
 
 ```sql
 -- src/migrations/postgres/000003_create_patterns.up.sql
--- Creates the patterns table with vector embeddings
+-- Creates the patterns table with PGVector embedding support.
 -- Part of Mnemonic MVP
 
 create table if not exists patterns (
@@ -400,7 +390,7 @@ create table if not exists patterns (
     id uuid primary key default gen_random_uuid(),
 
     -- Pattern metadata
-    name varchar(128) not null,
+    name varchar(255) not null,
     description varchar(500),
 
     -- Pattern content (up to 10KB)
@@ -445,9 +435,11 @@ drop table if exists patterns;
 
 **Purpose:** Create the many-to-many association table between patterns and agents with relevance scores.
 
+**Note:** The `agent_id` column references `agents(id)` (UUID), not the agent name. This follows the post-pivot schema where agents have a UUID primary key.
+
 ```sql
 -- src/migrations/postgres/000004_create_pattern_agent_associations.up.sql
--- Creates the pattern-agent association table
+-- Creates the pattern-agent association table for many-to-many relationships.
 -- Part of Mnemonic MVP
 
 create table if not exists pattern_agent_associations (
@@ -495,7 +487,7 @@ drop table if exists pattern_agent_associations;
 
 ```sql
 -- src/migrations/postgres/000005_create_enrichment_jobs.up.sql
--- Creates the enrichment jobs queue table
+-- Creates the enrichment jobs queue table for background pattern processing.
 -- Part of Mnemonic MVP
 
 create table if not exists enrichment_jobs (
@@ -564,39 +556,48 @@ drop table if exists enrichment_jobs;
 
 ```sql
 -- src/migrations/postgres/000006_create_performance_indexes.up.sql
--- Creates performance indexes for common query patterns
+-- Creates performance-optimized indexes for common query patterns.
 -- Part of Mnemonic MVP
 
--- Patterns: enriched patterns only (for similarity search filtering)
+-- =============================================================================
+-- PATTERNS INDEXES
+-- =============================================================================
+
+-- Partial index for filtering to only enriched patterns
+-- Used when selecting patterns eligible for similarity search
 create index idx_patterns_enriched
     on patterns(id)
     where enrichment_status = 'enriched';
 
--- Patterns: vector similarity search (IVFFlat for MVP scale)
+-- Vector similarity search (IVFFlat for MVP scale)
 -- lists = 100 suitable for 1,000-10,000 patterns
 create index idx_patterns_embedding
     on patterns using ivfflat (embedding vector_cosine_ops)
     with (lists = 100);
 
--- Enrichment jobs: pending jobs by scheduled time (worker polling)
-create index idx_enrichment_jobs_pending
-    on enrichment_jobs(scheduled_for)
-    where status = 'pending';
-
--- Enrichment jobs: processing jobs for timeout detection
-create index idx_enrichment_jobs_processing
-    on enrichment_jobs(started_at)
-    where status = 'processing';
-
--- Patterns: GIN index for tag filtering
+-- GIN index for tag filtering using JSONB containment operator (@>)
 create index idx_patterns_tags
     on patterns using gin (tags);
 
--- Patterns: full-text search on name and description
+-- Full-text search on name and description
 create index idx_patterns_search
     on patterns using gin (
         to_tsvector('english', name || ' ' || coalesce(description, ''))
     );
+
+-- =============================================================================
+-- ENRICHMENT JOBS INDEXES
+-- =============================================================================
+
+-- Pending jobs by scheduled time (worker polling)
+create index idx_enrichment_jobs_pending
+    on enrichment_jobs(scheduled_for)
+    where status = 'pending';
+
+-- Processing jobs for timeout detection
+create index idx_enrichment_jobs_processing
+    on enrichment_jobs(started_at)
+    where status = 'processing';
 
 -- Index documentation
 comment on index idx_patterns_embedding is
@@ -607,10 +608,10 @@ comment on index idx_enrichment_jobs_pending is
 
 ```sql
 -- src/migrations/postgres/000006_create_performance_indexes.down.sql
-drop index if exists idx_patterns_search;
-drop index if exists idx_patterns_tags;
 drop index if exists idx_enrichment_jobs_processing;
 drop index if exists idx_enrichment_jobs_pending;
+drop index if exists idx_patterns_search;
+drop index if exists idx_patterns_tags;
 drop index if exists idx_patterns_embedding;
 drop index if exists idx_patterns_enriched;
 ```
@@ -621,20 +622,25 @@ drop index if exists idx_patterns_enriched;
 
 ```sql
 -- src/migrations/postgres/000007_create_skills.up.sql
--- Creates the skills table with JSONB document model
+-- Creates the skills table with JSONB document model.
 -- Part of Mnemonic MVP
 
 create table if not exists skills (
-    id          uuid primary key default gen_random_uuid(),
-    name        varchar(64) not null,
-    definition  jsonb not null,
-    crc64       bigint not null,
-    created_at  timestamptz not null default now(),
-    updated_at  timestamptz not null default now(),
+    -- UUID primary key
+    id uuid primary key default gen_random_uuid(),
 
-    constraint skills_name_unique unique (name),
-    constraint skills_name_format
-        check (name ~ '^[a-z][a-z0-9-]*$')
+    -- Unique lookup key: matches Claude Code skill directory name
+    name varchar(255) unique not null,
+
+    -- Complete skill definition as JSONB document
+    definition jsonb not null,
+
+    -- CRC-64 checksum of serialized definition for change detection
+    crc64 varchar(20) not null,
+
+    -- Audit timestamps
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
 );
 
 -- GIN index on definition for tag filtering and JSONB queries
@@ -654,28 +660,35 @@ drop table if exists skills;
 
 ### Migration 008: Create Skill Files Table
 
-**Purpose:** Create the skill_files table for scripts, references, and assets associated with skills.
+**Purpose:** Create the skill_files table for files associated with skills.
 
 ```sql
 -- src/migrations/postgres/000008_create_skill_files.up.sql
--- Creates the skill_files table with JSONB document model
+-- Creates the skill_files table for files associated with skills.
 -- Part of Mnemonic MVP
 
 create table if not exists skill_files (
-    id          uuid primary key default gen_random_uuid(),
-    skill_id    uuid not null references skills(id) on delete cascade,
-    file_type   varchar(20) not null,
-    filename    varchar(255) not null,
-    document    jsonb not null,
-    crc64       bigint not null,
-    created_at  timestamptz not null default now(),
-    updated_at  timestamptz not null default now(),
+    -- UUID primary key
+    id uuid primary key default gen_random_uuid(),
 
-    constraint skill_files_unique_name unique (skill_id, file_type, filename),
-    constraint skill_files_file_type_valid
-        check (file_type in ('script', 'reference', 'asset')),
-    constraint skill_files_filename_format
-        check (filename ~ '^[a-zA-Z0-9][a-zA-Z0-9._-]*$')
+    -- Parent skill reference, cascade delete
+    skill_id uuid not null references skills(id) on delete cascade,
+
+    -- File path within the skill directory
+    path varchar(1024) not null,
+
+    -- File content
+    content text not null,
+
+    -- CRC-64 checksum of content for change detection
+    crc64 varchar(20) not null,
+
+    -- Audit timestamps
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+
+    -- Unique constraint: one file per path per skill
+    constraint skill_files_unique_path unique (skill_id, path)
 );
 
 -- Index for skill_id lookups (foreign key)
@@ -683,10 +696,9 @@ create index idx_skill_files_skill_id on skill_files(skill_id);
 
 comment on table skill_files is 'Child files (scripts, references, assets) for skill definitions';
 comment on column skill_files.skill_id is 'Parent skill reference, cascade delete';
-comment on column skill_files.file_type is 'File category: script, reference, or asset';
-comment on column skill_files.filename is 'File name within the skill directory';
-comment on column skill_files.document is 'File content and metadata as JSONB document';
-comment on column skill_files.crc64 is 'CRC-64 checksum of serialized document for change detection';
+comment on column skill_files.path is 'File path within the skill directory';
+comment on column skill_files.content is 'File content';
+comment on column skill_files.crc64 is 'CRC-64 checksum of content for change detection';
 ```
 
 ```sql
@@ -1189,7 +1201,7 @@ type Agent struct {
     ID         uuid.UUID       `db:"id"`
     Name       string          `db:"name"`
     Definition json.RawMessage `db:"definition"` // JSONB document
-    CRC64      int64           `db:"crc64"`       // CRC-64 checksum
+    CRC64      string          `db:"crc64"`       // CRC-64 checksum (decimal string)
     CreatedAt  time.Time       `db:"created_at"`
     UpdatedAt  time.Time       `db:"updated_at"`
 }
@@ -1197,7 +1209,7 @@ type Agent struct {
 // ManifestEntry represents a single entity in the sync manifest.
 type ManifestEntry struct {
     Name  string `db:"name"`
-    CRC64 int64  `db:"crc64"`
+    CRC64 string `db:"crc64"`
 }
 ```
 
@@ -1341,7 +1353,7 @@ type Skill struct {
     ID         uuid.UUID       `db:"id"`
     Name       string          `db:"name"`
     Definition json.RawMessage `db:"definition"` // JSONB document
-    CRC64      int64           `db:"crc64"`       // CRC-64 checksum
+    CRC64      string          `db:"crc64"`       // CRC-64 checksum (decimal string)
     CreatedAt  time.Time       `db:"created_at"`
     UpdatedAt  time.Time       `db:"updated_at"`
 }
@@ -1351,19 +1363,19 @@ type Skill struct {
 
 ```go
 // SkillFileRepository defines data access operations for skill child files.
-// Skill files are stored as JSONB documents keyed by (skill_id, file_type, filename).
+// Skill files are keyed by (skill_id, path).
 // Implementation: internal/repository/skillfile/repository.go
 type SkillFileRepository interface {
     // Create stores a new skill file. Returns ErrExists if the
-    // (skill_id, file_type, filename) combination already exists.
+    // (skill_id, path) combination already exists.
     Create(ctx context.Context, file *SkillFile) error
 
     // Get retrieves a skill file by ID. Returns ErrNotFound if not found.
     Get(ctx context.Context, id uuid.UUID) (*SkillFile, error)
 
-    // GetByKey retrieves a skill file by its composite key.
+    // GetByPath retrieves a skill file by skill ID and path.
     // Returns ErrNotFound if not found.
-    GetByKey(ctx context.Context, skillID uuid.UUID, fileType string, filename string) (*SkillFile, error)
+    GetByPath(ctx context.Context, skillID uuid.UUID, path string) (*SkillFile, error)
 
     // Update modifies an existing skill file. Returns ErrNotFound if not found.
     Update(ctx context.Context, file *SkillFile) error
@@ -1371,23 +1383,22 @@ type SkillFileRepository interface {
     // Delete removes a skill file by ID. Returns ErrNotFound if not found.
     Delete(ctx context.Context, id uuid.UUID) error
 
-    // ListBySkill retrieves all files for a given skill, optionally filtered by file_type.
-    ListBySkill(ctx context.Context, skillID uuid.UUID, fileType *string) ([]*SkillFile, error)
+    // ListBySkill retrieves all files for a given skill.
+    ListBySkill(ctx context.Context, skillID uuid.UUID) ([]*SkillFile, error)
 
     // DeleteBySkill removes all files for a given skill.
     DeleteBySkill(ctx context.Context, skillID uuid.UUID) error
 }
 
-// SkillFile represents a child file (script, reference, asset) for a skill.
+// SkillFile represents a child file for a skill.
 type SkillFile struct {
-    ID        uuid.UUID       `db:"id"`
-    SkillID   uuid.UUID       `db:"skill_id"`
-    FileType  string          `db:"file_type"` // script, reference, asset
-    Filename  string          `db:"filename"`
-    Document  json.RawMessage `db:"document"`  // JSONB document (content, encoding, etc.)
-    CRC64     int64           `db:"crc64"`      // CRC-64 checksum
-    CreatedAt time.Time       `db:"created_at"`
-    UpdatedAt time.Time       `db:"updated_at"`
+    ID        uuid.UUID `db:"id"`
+    SkillID   uuid.UUID `db:"skill_id"`
+    Path      string    `db:"path"`
+    Content   string    `db:"content"`
+    CRC64     string    `db:"crc64"`
+    CreatedAt time.Time `db:"created_at"`
+    UpdatedAt time.Time `db:"updated_at"`
 }
 ```
 
@@ -1581,8 +1592,8 @@ var (
 
 // skillfile package errors
 var (
-    ErrNotFound = errors.New("skill file not found")
-    ErrExists   = errors.New("skill file already exists")
+    ErrNotFound  = errors.New("skill file not found")
+    ErrExists    = errors.New("skill file already exists")
 )
 
 // enrichmentjob package errors

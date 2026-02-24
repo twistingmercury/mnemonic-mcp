@@ -135,7 +135,7 @@ graph TB
 
 **Storage Stack:**
 
-- **Postgres** - Relational data (patterns, agents, skills, commands, metadata)
+- **Postgres** - Relational data (patterns, agents, skills, metadata)
 - **PGVector** - Vector embeddings for semantic search
 - **Neo4j** - Knowledge graph for pattern relationships (required)
 
@@ -192,7 +192,7 @@ Mnemonic emits structured logs with trace correlation via OpenTelemetry (see [Ob
 
 | Component      | Log Focus                                                        |
 | -------------- | ---------------------------------------------------------------- |
-| Mnemonic MCP   | Pattern searches, tooling requests, errors (instrumented in MVP) |
+| Mnemonic MCP   | Pattern searches, errors (instrumented in MVP)                   |
 | Mnemonic Admin | Data loading, CRUD operations, errors (instrumented in MVP)      |
 
 ### Independent Deployment Pipelines
@@ -296,7 +296,7 @@ Backup procedures for all components are to be designed.
 | Component                        | Strategy                         |
 | -------------------------------- | -------------------------------- |
 | Patterns                         | Backup procedures to be designed |
-| Tooling (agents/skills/commands) | Backup procedures to be designed |
+| Tooling (agents/skills)          | Backup procedures to be designed |
 | Postgres data                    | Backup procedures to be designed |
 | Neo4j data                       | Backup procedures to be designed |
 

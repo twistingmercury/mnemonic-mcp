@@ -26,7 +26,7 @@ Each architectural decision follows this structure:
 
 ### Context
 
-Teams using Claude Code develop inconsistent tooling over time. Each developer accumulates their own set of agents, skills, and commands at different versions, with no shared baseline. Alongside this, knowledge silos form — patterns and approaches discovered by one team member don't reliably reach others. The result is duplicated effort, divergent practices, and no persistent team memory.
+Teams using Claude Code develop inconsistent tooling over time. Each developer accumulates their own set of agents and skills at different versions, with no shared baseline. Alongside this, knowledge silos form — patterns and approaches discovered by one team member don't reliably reach others. The result is duplicated effort, divergent practices, and no persistent team memory.
 
 Claude Code already handles orchestration well. The real problems are tooling drift and knowledge isolation.
 
@@ -37,7 +37,7 @@ Claude Code already handles orchestration well. The real problems are tooling dr
 Core capabilities:
 
 1. **Team knowledge graph**: Curated patterns with semantic search (PGVector) and knowledge relationships (Neo4j)
-2. **Tooling synchronization**: Agents, skills, and commands synchronized across team members via MCP protocol
+2. **Tooling synchronization**: Agents and skills synchronized across team members via the Admin REST API
 3. **User is the orchestrator**: Mnemonic provides memory and consistent tools; the user decides workflow
 
 ### Consequences
@@ -61,7 +61,7 @@ Core capabilities:
 
 ### Context
 
-Mnemonic needs a way to expose its knowledge graph and tooling catalog to Claude Code sessions. The integration must support read-only access — Claude Code queries patterns and retrieves agent/skill/command definitions, but does not write to Mnemonic directly. Admin operations (data loading, updates) still need a programmatic interface.
+Mnemonic needs a way to expose its knowledge graph to Claude Code sessions. The integration must support read-only access — Claude Code searches for patterns, but does not write to Mnemonic directly. Admin operations (data loading, updates) and tooling synchronization (agents, skills) use a separate REST API.
 
 Options considered:
 
@@ -81,8 +81,8 @@ Key considerations:
 
 Architecture:
 
-- **MCP Server** (`:8081`): Read-only access to patterns, agents, skills, commands
-- **Admin REST API** (`:8080`): Write operations for data loading
+- **MCP Server** (`:8081`): Read-only pattern search for Claude Code (3 tools)
+- **Admin REST API** (`:8080`): Write operations for data loading, tooling sync for agents and skills
 - **Single server**: Two HTTP listeners on one Go server
 
 MCP tools (3 pattern search tools):
@@ -114,7 +114,7 @@ MCP tools (3 pattern search tools):
 
 ### Context
 
-Agents, skills, commands, and skill files are first-class entities in Mnemonic (see [ADR-001](#adr-001)). Each entity type has a different internal schema: agents have system prompts and allowed tools; skills have content and child files; commands have content. Traditional column-per-field modeling creates tight coupling between Go structs and database schema, requiring migrations for every field change.
+Agents, skills, and skill files are first-class entities in Mnemonic (see [ADR-001](#adr-001)). Each entity type has a different internal schema: agents have system prompts and allowed tools; skills have content and child files. Traditional column-per-field modeling creates tight coupling between Go structs and database schema, requiring migrations for every field change.
 
 ### Decision
 
@@ -133,7 +133,6 @@ Agents, skills, commands, and skill files are first-class entities in Mnemonic (
 
 - Agents: max 64 chars, `^[a-z][a-z0-9-]*$`
 - Skills: max 64 chars, `^[a-z][a-z0-9-]*$`
-- Commands: max 255 chars
 
 **CRC-64 change detection:** Computed in Go via `hash/crc64` with ISO polynomial. Stored as BIGINT. Enables efficient diff without comparing full JSONB documents.
 
@@ -160,7 +159,7 @@ Agents, skills, commands, and skill files are first-class entities in Mnemonic (
 
 ### Context
 
-Patterns are the core knowledge artifacts in Mnemonic. Unlike entities (agents, skills, commands) which use JSONB documents, patterns require relational columns for vector search, enrichment tracking, and graph relationships. The enrichment pipeline must generate embeddings via an external API (OpenAI text-embedding-3-small) and extract entities for the Neo4j knowledge graph.
+Patterns are the core knowledge artifacts in Mnemonic. Unlike entities (agents, skills) which use JSONB documents, patterns require relational columns for vector search, enrichment tracking, and graph relationships. The enrichment pipeline must generate embeddings via an external API (OpenAI text-embedding-3-small) and extract entities for the Neo4j knowledge graph.
 
 ### Decision
 

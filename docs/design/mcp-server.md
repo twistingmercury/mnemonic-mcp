@@ -38,7 +38,7 @@ All 3 tools are stateless: each invocation is a standalone request/response with
 
 **SDK:** `github.com/modelcontextprotocol/go-sdk/mcp` v1.3.1
 
-**Scope:** This document covers the 3 pattern search tools only. The [YAML tool specification](../../api/mcp/mnemonic-mcp-tools-v1.yaml) defines 10 tools total (3 pattern search + 7 tooling synchronization). The 7 tooling sync tools (`list_agents`, `get_agent`, `list_skills`, `get_skill`, `list_commands`, `get_command`, `get_sync_manifest`) will be covered in a separate design document after the pattern search tools are implemented. Their implementation follows the same handler patterns documented here but returns JSON text content instead of markdown.
+**Scope:** There are only 3 MCP tools, all for pattern search. Tooling synchronization (agents and skills) uses the REST API, not MCP. This document covers the complete MCP tool surface.
 
 **Tools:**
 
@@ -232,19 +232,7 @@ When the handler returns a non-nil error, the SDK wraps it as `isError: true` in
 
 When the handler returns `nil` error, it must return a `*mcp.CallToolResult` with text content containing the markdown response. The second return value (`Out`) is always `nil` for these text-only tools.
 
-**Dependency injection:** Each handler is created via a closure that captures `ToolDependencies`. The `ToolDependencies` interface is defined in this package but its concrete implementation depends on the service layer (not yet designed). At minimum, handlers will need access to a search service (for `search_patterns`), a graph service (for `find_related_patterns`), and a pattern repository (for `get_pattern`).
-
-```go
-// ToolDependencies defines the interface that tool handlers require.
-// The concrete implementation will be provided by the service layer.
-type ToolDependencies interface {
-    // Methods will be defined when the service layer is designed.
-    // At minimum, handlers need:
-    //   - SearchPatterns(ctx, query, limit, threshold, tags, agent) -> results, error
-    //   - FindRelatedPatterns(ctx, patternID, limit) -> results, error
-    //   - GetPattern(ctx, id) -> pattern, error
-}
-```
+**Dependency injection:** Each handler is created via a closure that captures `ToolDependencies`. See [service-layer.md#tooldependencies-mcp-facade](service-layer.md#tooldependencies-mcp-facade) for the full interface definition and concrete implementation.
 
 **`jsonschema` struct tag convention:** The SDK uses `github.com/google/jsonschema-go` for schema inference. The `jsonschema` tag value is interpreted as the field's **description** string in its entirety -- it does not support comma-separated directives like `required` or `description=`. Required/optional status is controlled by the `json` tag:
 
@@ -565,41 +553,48 @@ type Middleware func(mcp.MethodHandler) mcp.MethodHandler
 `AddReceivingMiddleware` accepts one or more `Middleware` functions. Each wraps the inner `MethodHandler`, forming a chain. The `method` parameter is the JSON-RPC method string (e.g., `"tools/call"`, `"tools/list"`, `"initialize"`). To extract the specific tool name for a `tools/call` request, inspect the request parameters.
 
 ```go
-server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
-    return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
-        // Determine the span name. For tools/call, extract the tool name
-        // from the request params; for other methods, use the method string.
-        spanName := method
-        if method == "tools/call" {
-            if ctr, ok := req.GetParams().(*mcp.CallToolParamsRaw); ok {
-                spanName = fmt.Sprintf("mcp.%s", ctr.Name)
+// NewLoggingMiddleware creates MCP receiving middleware that adds tracing and metrics.
+// Logger and metrics registry are injected as constructor parameters.
+func NewLoggingMiddleware(logger zerolog.Logger, mcpMetrics *metrics.MCP, tracer trace.Tracer) mcp.Middleware {
+    return func(next mcp.MethodHandler) mcp.MethodHandler {
+        return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+            // Determine the span name. For tools/call, extract the tool name
+            // from the request params; for other methods, use the method string.
+            spanName := method
+            if method == "tools/call" {
+                if ctr, ok := req.GetParams().(*mcp.CallToolParamsRaw); ok {
+                    spanName = fmt.Sprintf("mcp.%s", ctr.Name)
+                }
             }
+
+            // Start trace span
+            ctx, span := tracer.Start(ctx, spanName)
+            defer span.End()
+
+            // Record start time for metrics
+            start := time.Now()
+
+            // Call next handler in chain
+            result, err := next(ctx, method, req)
+
+            // Record metrics (only for tool invocations)
+            if method == "tools/call" {
+                duration := float64(time.Since(start).Milliseconds())
+                toolName := strings.TrimPrefix(spanName, "mcp.")
+                mcpMetrics.RecordToolInvocation(ctx, toolName, duration)
+            }
+
+            if err != nil {
+                span.SetStatus(codes.Error, err.Error())
+            }
+
+            return result, err
         }
-
-        // Start trace span
-        ctx, span := tracer.Start(ctx, spanName)
-        defer span.End()
-
-        // Record start time for metrics
-        start := time.Now()
-
-        // Call next handler in chain
-        result, err := next(ctx, method, req)
-
-        // Record metrics (only for tool invocations)
-        if method == "tools/call" {
-            duration := float64(time.Since(start).Milliseconds())
-            toolName := strings.TrimPrefix(spanName, "mcp.")
-            deps.Metrics().MCP.RecordToolInvocation(ctx, toolName, duration)
-        }
-
-        if err != nil {
-            span.SetStatus(codes.Error, err.Error())
-        }
-
-        return result, err
     }
-})
+}
+
+// Usage:
+server.AddReceivingMiddleware(NewLoggingMiddleware(logger, metricsRegistry.MCP, tracer))
 ```
 
 This centralizes tracing and metrics so individual tool handlers do not need boilerplate instrumentation code. Tool handlers still log domain-specific fields (query preview, pattern ID, result count) directly.
@@ -639,10 +634,10 @@ Session metrics (`session_count`, `active_sessions`) are defined in the `interna
 
 ### Logging
 
-Tool handlers use the zerolog logger from the telemetry package. Since the MCP server uses `net/http` (not Gin), the otelx Gin logging middleware does not apply. Instead, handlers log directly:
+Tool handlers use the zerolog logger injected at construction time. Since the MCP server uses `net/http` (not Gin), the otelx Gin logging middleware does not apply. Instead, handlers log directly:
 
 ```go
-logger := deps.Logger()
+// logger is injected into the handler struct or closure at construction time
 logger.Info().
     Str("tool", "search_patterns").
     Str("query_preview", truncate(input.Query, 100)).
@@ -690,7 +685,7 @@ src/mnemonic/internal/mcpserver/
 
 ### Explicit InputSchema for richer validation (deferred)
 
-The SDK infers `InputSchema` from Go struct tags via `github.com/google/jsonschema-go`. This inferred schema does not support `minimum`, `maximum`, `maxLength`, or `pattern` constraints that the [YAML tool specification](../../api/mcp/mnemonic-mcp-tools-v1.yaml) defines. In theory, providing an explicit `InputSchema` as `json.RawMessage` on the `Tool` struct would let the SDK validate these constraints before calling the handler.
+The SDK infers `InputSchema` from Go struct tags via `github.com/google/jsonschema-go`. This inferred schema does not support `minimum`, `maximum`, `maxLength`, or `pattern` constraints. In theory, providing an explicit `InputSchema` as `json.RawMessage` on the `Tool` struct would let the SDK validate these constraints before calling the handler.
 
 This is deferred for MVP because:
 
@@ -699,12 +694,11 @@ This is deferred for MVP because:
 3. The remaining constraints (numeric ranges, string patterns) produce clear error messages from handler-level validation that are more descriptive than generic schema violation errors.
 4. Adding explicit schemas means maintaining JSON Schema alongside Go struct tags, creating a sync risk.
 
-If Claude Code or other MCP clients benefit from richer schema introspection (e.g., to show parameter constraints in tool discovery), explicit schemas can be added later by setting `Tool.InputSchema` to a `json.RawMessage` matching the YAML spec's `inputSchema` definitions.
+If Claude Code or other MCP clients benefit from richer schema introspection (e.g., to show parameter constraints in tool discovery), explicit schemas can be added later by setting `Tool.InputSchema` to a `json.RawMessage`.
 
 ## Architecture References
 
 - [MCP Tools](../architecture/08-mcp-tools.md) -- authoritative tool definitions, parameters, response formats, error handling
-- [MCP Tool Specification](../../api/mcp/mnemonic-mcp-tools-v1.yaml) -- YAML spec for all 10 tools (3 pattern search + 7 tooling sync)
 - [System Architecture](../architecture/02-system-architecture.md) -- component breakdown and data flow
 - [Communication Patterns](../architecture/03-communication-patterns.md) -- MCP protocol overview and request flow
 - [Configuration Design](configuration.md) -- `MCPServerConfig` struct and defaults

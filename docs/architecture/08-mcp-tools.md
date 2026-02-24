@@ -126,7 +126,6 @@ For protocol problems, Mnemonic returns a JSON-RPC error response. These use sta
 
 ## References
 
-- [MCP Tool Specification](../../api/mcp/mnemonic-mcp-tools-v1.yaml) — authoritative tool definitions including input schemas and response formats
 - [Pivot API Specification — MCP Tool Definitions](../design/2026-02-15-pivot-api-specification.md#3-mcp-tool-definitions) — design rationale and wire format details
 - [Communication Patterns](03-communication-patterns.md) — protocol overview and request flow
 

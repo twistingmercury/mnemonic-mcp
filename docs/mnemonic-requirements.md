@@ -50,9 +50,7 @@ per association.
 <a id="tm-2"></a>**TM-2.** Mnemonic must store skill definitions as named, retrievable documents. Skills may include
 child files (scripts, references, assets) that are returned as part of the skill definition.
 
-<a id="tm-3"></a>**TM-3.** Mnemonic must store command definitions as named, retrievable documents.
-
-<a id="tm-4"></a>**TM-4.** Mnemonic must enforce consistent naming rules for agents, skills, and commands so that
+<a id="tm-4"></a>**TM-4.** Mnemonic must enforce consistent naming rules for agents and skills so that
 names are URL-safe and predictable.
 
 <a id="tm-5"></a>**TM-5.** Mnemonic must support full create, update, and delete operations for all tooling types via
@@ -64,7 +62,7 @@ without requiring a full content comparison.
 ## Tooling Synchronization
 
 <a id="ts-1"></a>**TS-1.** Mnemonic must expose a synchronization manifest that a client can use to determine which
-agents, skills, and commands are new or changed since the client last synced.
+agents and skills are new or changed since the client last synced.
 
 <a id="ts-2"></a>**TS-2.** The synchronization manifest must include enough information for a client to fetch only
 what has changed, enabling incremental sync.
@@ -72,13 +70,13 @@ what has changed, enabling incremental sync.
 <a id="ts-3"></a>**TS-3.** Mnemonic must return complete skill definitions including all child files in a single
 response, so a sync client does not need multiple round-trips per skill.
 
-<a id="ts-4"></a>**TS-4.** Mnemonic must serve list and detail endpoints for agents, skills, and commands so a sync
+<a id="ts-4"></a>**TS-4.** Mnemonic must serve list and detail endpoints for agents and skills so a sync
 client can discover and retrieve any item individually.
 
 ## Administration
 
 <a id="ad-1"></a>**AD-1.** Mnemonic must expose an administrative API for all write operations: creating, updating,
-and deleting patterns, agents, skills, and commands.
+and deleting patterns, agents, and skills.
 
 <a id="ad-2"></a>**AD-2.** The admin API must return structured error responses so that scripts and CI pipelines can
 detect and handle failures programmatically.

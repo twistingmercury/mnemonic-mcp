@@ -117,7 +117,7 @@ Claude Code must handle MCP server errors gracefully.
 
 ## Admin to REST API Communication
 
-Admin tools (curl, scripts) communicate with Mnemonic via REST API for CRUD operations on patterns and tooling. The REST API supports full CRUD for agents, skills, commands, and patterns.
+Admin tools (curl, scripts) communicate with Mnemonic via REST API for CRUD operations on patterns and tooling. The REST API supports full CRUD for agents, skills, and patterns.
 
 > **API Reference:** See the [Pivot API Specification](../design/2026-02-15-pivot-api-specification.md) and the OpenAPI spec (`mnemonic-v1.yaml`) for complete endpoint reference including request/response schemas.
 
@@ -211,12 +211,12 @@ When components are unavailable:
 graph TB
     subgraph "Data Classification"
         PATTERNS[Team Patterns<br/>Stored in Mnemonic]
-        TOOLING[Agent/Skill/Command Definitions<br/>Stored in Mnemonic]
+        TOOLING[Agent/Skill Definitions<br/>Stored in Mnemonic]
         CREDS[User Credentials<br/>Never leave Claude Code]
     end
 
-    PATTERNS -->|"Accessible via MCP"| CC[Claude Code]
-    TOOLING -->|"Accessible via MCP"| CC
+    PATTERNS -->|"Searchable via MCP"| CC[Claude Code]
+    TOOLING -->|"Synced via REST"| CC
     CREDS -->|"Stays local"| CC
 ```
 
@@ -225,7 +225,7 @@ graph TB
 - User credentials never leave Claude Code
 - Patterns and tooling are team-shared (no user-specific secrets)
 - MCP read-only access prevents accidental data modification
-- Admin API write operations require API key authentication (MVP); infrastructure-layer auth via Envoy post-MVP
+- No authentication in MVP. Post-MVP: authentication and authorization handled externally by Envoy and OPA.
 - All LLM calls go directly from Claude Code to Anthropic API
 
 **Next:** [Data Architecture](04-data-architecture.md)

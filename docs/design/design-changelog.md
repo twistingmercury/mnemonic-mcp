@@ -20,7 +20,7 @@ Each entry includes:
 ### 2026-02-15: Architectural Pivot
 
 - **Removed:** Routing engine, routing rules, ACE CLI
-- **Added:** MCP server for Claude Code integration, skills/commands storage, Admin REST API
+- **Added:** MCP server for Claude Code integration, skills storage, Admin REST API
 - **Changed:** Mnemonic's focus from agent routing to team knowledge graph + tooling synchronization
 - **See:** [Pivot Proposal](../plans/2026-02-14-mnemonic-pivot-knowledge-sync.md), [ADR-008](../architecture/00-architectural-decisions.md)
 

@@ -33,7 +33,7 @@ This approach follows the principle of separation of concerns: security infrastr
 
 **Security Scope:**
 
-- **Admin REST API** (`:8080`): Protected by Envoy + OPA for write operations (patterns, agents, skills, commands)
+- **Admin REST API** (`:8080`): Protected by Envoy + OPA for write operations (patterns, agents, skills)
 - **MCP Server** (`:8081`): Read-only access in trusted environment (no authentication for MVP/Phase 2)
 
 ## Security Model Overview
@@ -161,11 +161,9 @@ graph TB
     TEAM1 --> R1[Agents]
     TEAM1 --> R2[Patterns]
     TEAM1 --> R3[Skills]
-    TEAM1 --> R4[Commands]
-    TEAM2 --> R5[Agents]
-    TEAM2 --> R6[Patterns]
-    TEAM2 --> R7[Skills]
-    TEAM2 --> R8[Commands]
+    TEAM2 --> R4[Agents]
+    TEAM2 --> R5[Patterns]
+    TEAM2 --> R6[Skills]
 ```
 
 **Roles:**
@@ -182,8 +180,7 @@ graph TB
 | -------- | ------------------------------------------------ |
 | agents   | Agent definitions and configurations             |
 | patterns | Context patterns for prompt enrichment           |
-| skills   | Reusable Claude Code skills (MCP)                |
-| commands | Reusable Claude Code slash commands (MCP)        |
+| skills   | Reusable Claude Code skills                      |
 
 ### OPA Policy Structure
 

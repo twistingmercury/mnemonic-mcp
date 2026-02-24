@@ -50,11 +50,10 @@ graph TB
     end
 
     CURL -->|"POST/PUT/DELETE"| ADMIN
-    CC -->|"MCP: Read-only"| MCP
+    CC -->|"MCP: Pattern search"| MCP
     ADMIN --> PATTERN
     ADMIN --> TOOLING
     MCP --> PATTERN
-    MCP --> TOOLING
     PATTERN <--> PG
     PATTERN <--> NEO
     TOOLING <--> PG
@@ -69,10 +68,10 @@ Mnemonic is a single Go server with two HTTP listeners providing team knowledge 
 
 **Responsibilities:**
 
-- **Admin REST API** (`:8080`): CRUD operations for patterns, agents, skills, commands
-- **MCP Server** (`:8081`): Read-only access to knowledge graph and tooling for Claude Code
+- **Admin REST API** (`:8080`): CRUD operations for patterns, agents, and skills
+- **MCP Server** (`:8081`): Read-only pattern search for Claude Code (3 tools)
 - **Pattern enrichment**: Semantic search via PGVector, knowledge graph via Neo4j
-- **Tooling synchronization**: Shared agent, skill, command definitions across team
+- **Tooling synchronization**: Shared agent and skill definitions across team
 
 **Key Characteristics:**
 
@@ -100,7 +99,6 @@ graph TB
             PATTERN[Pattern Service]
             AGENT[Agent Service]
             SKILL[Skill Service]
-            COMMAND[Command Service]
         end
 
         subgraph "Storage Layer"
@@ -123,20 +121,15 @@ graph TB
     ADMIN_SVC --> PATTERN
     ADMIN_SVC --> AGENT
     ADMIN_SVC --> SKILL
-    ADMIN_SVC --> COMMAND
 
     MCP_HANDLER --> MCP_TOOLS
     MCP_TOOLS --> PATTERN
-    MCP_TOOLS --> AGENT
-    MCP_TOOLS --> SKILL
-    MCP_TOOLS --> COMMAND
 
     PATTERN <--> PG
     PATTERN <--> PGV
     PATTERN <--> NEO
     AGENT <--> PG
     SKILL <--> PG
-    COMMAND <--> PG
 
     ENRICH --> PATTERN
     ENRICH --> OPENAI
@@ -240,7 +233,7 @@ sequenceDiagram
 | Protocol          | MCP over Streamable HTTP                       |
 | Authentication    | None (MVP, local trusted environment)          |
 | Request contains  | MCP tool name, parameters                      |
-| Response contains | Search results, pattern details, tooling lists |
+| Response contains | Search results, pattern details               |
 
 ### Admin Tools to REST API
 
@@ -285,7 +278,6 @@ graph TB
         AD1[Pattern CRUD]
         AD2[Agent CRUD]
         AD3[Skill CRUD]
-        AD4[Command CRUD]
     end
 
     UD1 --> CD3
@@ -299,14 +291,14 @@ graph TB
 - The user drives all workflow and orchestration decisions
 - Claude Code is the interface; Mnemonic is the memory
 - Pattern storage and search live only in Mnemonic
-- Tooling definitions (agents, skills, commands) managed via admin API
+- Tooling definitions (agents, skills) managed via admin API
 - File operations happen only on the workstation
 - Mnemonic never receives or stores user credentials
 
 ### Cross-Cutting Concerns
 
 - **Observability**: Mnemonic emits structured logs, exposes a health check endpoint, and publishes metrics on both interfaces. See [Observability Architecture](07-observability-architecture.md).
-- **Schema migration**: Mnemonic manages its own database schema versioning, running migrations on startup. See [Data Architecture - Migration Strategy](04-data-architecture.md#migration-strategy).
+- **Schema migration**: Migrations are applied externally by `golang-migrate` CLI as a deployment step. Mnemonic verifies schema compatibility at startup but does not run migrations. See [Data Architecture - Migration Strategy](04-data-architecture.md#migration-strategy).
 
 ## Post-MVP
 

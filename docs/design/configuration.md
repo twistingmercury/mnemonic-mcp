@@ -32,6 +32,8 @@
 
 > **Architecture Reference:** [System Architecture - Component Breakdown](../../architecture/02-system-architecture.md#component-breakdown) | [Deployment Architecture - Component Deployment](../../architecture/06-deployment-architecture.md#component-deployment)
 
+> **Note:** MVP-1 runs as a single deployable process. The dual-server configuration (separate admin and MCP listeners) is retained for future decomposition into independent deployables.
+
 The Mnemonic server uses a layered configuration system built on [`github.com/spf13/viper`](https://github.com/spf13/viper). Viper provides unified support for multiple configuration sources with well-defined precedence. This design enables:
 
 - **Sensible defaults**: Work out of the box with minimal configuration (via `viper.SetDefault()`)
@@ -338,6 +340,7 @@ The otelx package handles the complexity of OpenTelemetry SDK setup, allowing Mn
 | `enrichment.related_to_min_similarity`    | float    | `0.3`                    | `MNEMONIC_ENRICHMENT_RELATED_TO_MIN_SIMILARITY`    | Minimum concept-overlap similarity (0.0-1.0) for creating RELATED_TO edges between patterns |
 | `enrichment.completed_retention`          | duration | `168h`                   | `MNEMONIC_ENRICHMENT_COMPLETED_RETENTION`          | Retention period for completed enrichment jobs (default 7 days); older jobs are deleted       |
 | `enrichment.failed_retention`             | duration | `720h`                   | `MNEMONIC_ENRICHMENT_FAILED_RETENTION`             | Retention period for failed enrichment jobs (default 30 days); older jobs are deleted         |
+| `observability.log_db_statements`         | bool     | `false`                  | `MNEMONIC_OBSERVABILITY_LOG_DB_STATEMENTS`         | Log SQL/Cypher queries at DEBUG level                                                        |
 | `logging.level`                           | string   | `info`                   | `MNEMONIC_LOGGING_LEVEL`                           | Log level                                                                        |
 | `logging.format`                          | string   | `json`                   | `MNEMONIC_LOGGING_FORMAT`                          | Log format                                                                       |
 | `observability.metrics.enabled`           | bool     | `true`                   | `MNEMONIC_OBSERVABILITY_METRICS_ENABLED`           | Enable metrics                                                                   |
@@ -348,6 +351,8 @@ The otelx package handles the complexity of OpenTelemetry SDK setup, allowing Mn
 | `observability.tracing.enabled`           | bool     | `false`                  | `MNEMONIC_OBSERVABILITY_TRACING_ENABLED`           | Enable distributed tracing                                                       |
 | `observability.tracing.endpoint`          | string   | `""`                     | `MNEMONIC_OBSERVABILITY_TRACING_ENDPOINT`          | OTLP collector endpoint                                                          |
 | `observability.tracing.otlp_insecure`     | bool     | `false`                  | `MNEMONIC_OBSERVABILITY_TRACING_OTLP_INSECURE`     | Use insecure OTLP connection (local development only; production should use TLS) |
+
+> **Pending Implementation:** The following configuration fields are designed but not yet implemented in code: `enrichment.related_to_min_similarity`, `enrichment.completed_retention`, `enrichment.failed_retention`, and `observability.log_db_statements`. The Go struct definitions and Viper defaults include these fields, but the application code does not yet read or act on them. They will be wired during implementation of the enrichment worker and database instrumentation.
 
 ## Environment Variable Naming Conventions
 

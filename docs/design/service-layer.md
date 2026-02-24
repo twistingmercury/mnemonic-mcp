@@ -14,7 +14,6 @@
   - [AgentService](#agentservice)
   - [SkillService](#skillservice)
   - [SkillFileService](#skillfileservice)
-  - [CommandService](#commandservice)
   - [EnrichmentService](#enrichmentservice)
   - [SearchService](#searchservice)
 - [ToolDependencies: MCP Facade](#tooldependencies-mcp-facade)
@@ -91,7 +90,6 @@ graph TB
         AS[AgentService]
         SS[SkillService]
         SFS[SkillFileService]
-        CS[CommandService]
         ES[EnrichmentService]
         SEARCH[SearchService]
         TD[ToolDependencies<br/>MCP facade]
@@ -107,7 +105,6 @@ graph TB
         AR[AgentRepository]
         SR[SkillRepository]
         SFR[SkillFileRepository]
-        CR[CommandRepository<br/>deferred]
         EJR[EnrichmentJobRepository]
         GR[GraphRepository]
     end
@@ -116,7 +113,6 @@ graph TB
     REST --> AS
     REST --> SS
     REST --> SFS
-    REST --> CS
     REST --> SEARCH
 
     MCP --> TD
@@ -142,7 +138,6 @@ graph TB
     SS --> SR
     SFS --> SFR
     SFS --> SR
-    CS --> CR
 ```
 
 ## Package Layout
@@ -163,8 +158,6 @@ src/mnemonic/internal/service/
         service.go          -- SkillService interface + skillService struct
     skillfile/
         service.go          -- SkillFileService interface + skillFileService struct
-    command/
-        service.go          -- CommandService interface + commandService struct (deferred)
     enrichment/
         service.go          -- EnrichmentService interface + enrichmentService struct
     search/
@@ -381,6 +374,10 @@ import (
 )
 
 // AgentService manages agent lifecycle with Neo4j synchronization.
+//
+// Name-to-UUID resolution: The REST API accepts agent names. AgentService
+// resolves names to UUIDs internally. The pattern_agent_associations table
+// stores agent_id (UUID FK to agents.id), not the name.
 type AgentService interface {
     // Create stores a new agent in Postgres and syncs to Neo4j (best-effort).
     // The service computes crc64 from the definition before storage.
@@ -452,7 +449,7 @@ type SkillService interface {
     // Create stores a new skill. Computes crc64 from the definition.
     Create(ctx context.Context, input CreateInput) (*skillrepo.Skill, error)
 
-    // Get retrieves a skill by name. Returns ErrNotFound if not found.
+    // GetByName retrieves a skill by name. Returns ErrNotFound if not found.
     GetByName(ctx context.Context, name string) (*skillrepo.Skill, error)
 
     // GetByID retrieves a skill by UUID. Returns ErrNotFound if not found.
@@ -563,26 +560,6 @@ type UpdateInput struct {
     ContentType string
     Content     string
     Encoding    string
-}
-```
-
-### CommandService
-
-The commands table does not exist yet in the migration set. The `CommandService` interface mirrors the JSONB document pattern used by agents and skills. Its implementation is deferred until the commands migration is added.
-
-```go
-// Package: internal/service/command
-
-// CommandService manages command definitions.
-// Follows the same JSONB document model as agents and skills.
-// Implementation is deferred until the commands table migration is added.
-type CommandService interface {
-    Create(ctx context.Context, input CreateInput) (*Command, error)
-    Get(ctx context.Context, name string) (*Command, error)
-    Update(ctx context.Context, name string, input UpdateInput) (*Command, error)
-    Delete(ctx context.Context, name string) error
-    List(ctx context.Context, opts ListOptions) ([]*Command, int64, error)
-    GetManifest(ctx context.Context) ([]ManifestEntry, error)
 }
 ```
 
@@ -1051,8 +1028,10 @@ Mnemonic uses Postgres and Neo4j. They cannot share a transaction. The coordinat
 ### Coordination Pattern
 
 1. **Postgres is source of truth.** Commit Postgres first.
-2. **Neo4j sync is best-effort.** If Neo4j fails, log the error but do not roll back the Postgres commit.
-3. **Neo4j failures are never fatal to API responses.** The REST handler returns success based on the Postgres commit. The MCP handler degrades gracefully (omits graph data).
+2. **Neo4j sync is best-effort for synchronous API operations.** When a REST or MCP handler writes to Postgres (e.g., pattern CRUD, agent CRUD), Neo4j sync is fire-and-forget after the Postgres commit succeeds. If Neo4j fails, log the error but do not roll back the Postgres commit.
+3. **Neo4j failures are never fatal to synchronous API responses.** The REST handler returns success based on the Postgres commit. The MCP handler degrades gracefully (omits graph data).
+
+> **Note:** This best-effort principle applies only to the synchronous API path (REST and MCP handlers). The enrichment pipeline has different semantics -- see [Enrichment Job Lifecycle](#enrichment-job-lifecycle) where Neo4j failures are intentionally fatal to the job.
 
 ```mermaid
 sequenceDiagram
@@ -1335,6 +1314,8 @@ SELECT pattern_id FROM pattern_agent_associations WHERE agent_id = $1;
 > **Architecture Reference:** [Pattern Processing - Enrichment Pipeline](pattern-processing.md#enrichment-pipeline) | [Data Storage - EnrichmentJob Repository](data-storage.md#enrichmentjob-repository)
 
 The `EnrichmentService.ProcessJob` method executes the full enrichment pipeline for a single job.
+
+> **Neo4j failures are fatal in this context.** Unlike the synchronous API path where Neo4j sync is best-effort (see [Cross-Database Coordination](#cross-database-coordination)), the enrichment pipeline *requires* Neo4j to build the knowledge graph. If a Neo4j operation fails during enrichment, the job is marked as failed and scheduled for retry (if attempts remain). This is intentional: a pattern cannot be considered "enriched" unless its graph nodes, concept edges, and RELATED_TO relationships are successfully persisted in Neo4j.
 
 ### Pipeline Steps
 

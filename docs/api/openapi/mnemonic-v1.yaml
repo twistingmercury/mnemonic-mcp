@@ -3,8 +3,8 @@ info:
   title: Mnemonic Admin REST API
   description: |
     Admin REST API for Mnemonic, a knowledge graph and tooling synchronization server.
-    This API manages patterns, agents, skills, and commands. It is consumed by curl or
-    any HTTP client for data ingestion and administration.
+    This API manages patterns, agents, and skills. It is consumed by curl or any HTTP
+    client for data ingestion and administration.
 
     The MCP server (port 8081) is a separate protocol for Claude Code integration and
     is not documented in this OpenAPI specification.
@@ -16,13 +16,11 @@ info:
     - **Admin REST API** (this spec) on port 8080: Read + Write via HTTP
     - **MCP Server** on port 8081: Read-only tools for Claude Code via MCP over Streamable HTTP
 
-    ## Authentication (MVP)
+    ## Authentication
 
-    API key passed in the `Authorization: Bearer <key>` header. The server validates
-    against a configured key (environment variable). A single shared key suffices for
-    the single-user MVP.
+    MVP: no authentication. The server runs on localhost in a trusted environment.
 
-    Post-MVP: Envoy proxy handles authentication. OPA evaluates authorization policies.
+    Post-MVP: authentication and authorization handled externally by Envoy and OPA.
 
     ## Error Handling
 
@@ -62,22 +60,12 @@ tags:
     description: Skill definition management
   - name: Skill Files
     description: Script, reference, and asset file management for skills
-  - name: Commands
-    description: Command definition management
   - name: Operations
     description: Health, version, and metrics endpoints
   - name: Removed
     description: Endpoints removed in the pivot (return 410 Gone)
 
 components:
-  securitySchemes:
-    bearerApiKey:
-      type: http
-      scheme: bearer
-      description: |
-        API key passed as a Bearer token. The server validates the key against
-        a configured environment variable. Post-MVP, Envoy + OPA replaces this.
-
   parameters:
     agentNameParam:
       name: name
@@ -121,17 +109,6 @@ components:
         pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*$
         maxLength: 255
       example: extract.py
-
-    commandNameParam:
-      name: name
-      in: path
-      required: true
-      description: Command unique identifier (lowercase letters, numbers, and hyphens)
-      schema:
-        type: string
-        pattern: ^[a-z][a-z0-9-]*$
-        maxLength: 255
-      example: prime
 
     limitParam:
       name: limit
@@ -267,16 +244,28 @@ components:
     # ==================== Agent Schemas ====================
     Agent:
       type: object
-      description: Full agent definition
+      description: |
+        Full agent definition. Wire format uses flat fields. The server marshals
+        flat fields to/from a JSONB `definition` column internally. The `id` and
+        `crc64` fields are server-generated and read-only.
       required:
+        - id
         - name
         - description
         - system_prompt
         - model
         - version
+        - crc64
         - created_at
         - updated_at
       properties:
+        id:
+          type: string
+          format: uuid
+          description: Server-generated UUID primary key
+          readOnly: true
+          examples:
+            - 550e8400-e29b-41d4-a716-446655440010
         name:
           type: string
           description: Unique identifier (lowercase letters, numbers, and hyphens)
@@ -325,6 +314,12 @@ components:
           maxLength: 50
           examples:
             - "1.2.0"
+        crc64:
+          type: string
+          description: CRC-64 checksum of the serialized definition (server-computed, decimal string)
+          readOnly: true
+          examples:
+            - "1234567890123456789"
         created_at:
           type: string
           format: date-time
@@ -438,13 +433,16 @@ components:
     # ==================== Pattern Schemas ====================
     AgentAssociation:
       type: object
-      description: Association between a pattern and an agent with relevance score
+      description: |
+        Association between a pattern and an agent with relevance score.
+        The REST API accepts agent names (unique). The server resolves each
+        name to an internal UUID for storage in `pattern_agent_associations`.
       required:
         - agent_name
       properties:
         agent_name:
           type: string
-          description: Name of the associated agent
+          description: Agent name (unique). The server resolves the name to an internal UUID for storage in `pattern_agent_associations`.
           examples:
             - go-software-engineer
         relevance:
@@ -782,14 +780,26 @@ components:
       description: |
         Full skill definition including content and child resource counts.
         Aligns with the Agent Skills specification (https://agentskills.io/specification).
+        Wire format uses flat fields. The server marshals flat fields to/from a JSONB
+        `definition` column internally. The `id` and `crc64` fields are server-generated
+        and read-only.
       required:
+        - id
         - name
         - description
         - content
         - version
+        - crc64
         - created_at
         - updated_at
       properties:
+        id:
+          type: string
+          format: uuid
+          description: Server-generated UUID primary key
+          readOnly: true
+          examples:
+            - 550e8400-e29b-41d4-a716-446655440020
         name:
           type: string
           description: |
@@ -806,7 +816,7 @@ components:
           minLength: 1
           maxLength: 1024
           examples:
-            - Synchronize agents, skills, and commands from Mnemonic
+            - Synchronize agents and skills from Mnemonic
         content:
           type: string
           minLength: 1
@@ -879,6 +889,12 @@ components:
             assets_count:
               type: integer
               description: Number of asset files attached to this skill
+        crc64:
+          type: string
+          description: CRC-64 checksum of the serialized definition (server-computed, decimal string)
+          readOnly: true
+          examples:
+            - "9876543210987654321"
         created_at:
           type: string
           format: date-time
@@ -1119,132 +1135,6 @@ components:
           items:
             $ref: "#/components/schemas/SkillFileSummary"
 
-    # ==================== Command Schemas ====================
-    Command:
-      type: object
-      description: Full command definition including content
-      required:
-        - name
-        - content
-        - version
-        - created_at
-        - updated_at
-      properties:
-        name:
-          type: string
-          pattern: ^[a-z][a-z0-9-]*$
-          minLength: 1
-          maxLength: 255
-          examples:
-            - prime
-        description:
-          type:
-            - string
-            - "null"
-          maxLength: 500
-          examples:
-            - Initialize a Claude Code session with project context
-        content:
-          type: string
-          minLength: 1
-          maxLength: 51200
-          description: Command content (markdown, up to 50KB)
-        tags:
-          type: array
-          maxItems: 20
-          items:
-            type: string
-          default: []
-        version:
-          type: string
-          minLength: 1
-          maxLength: 50
-          examples:
-            - "1.0.0"
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-
-    CommandCreate:
-      type: object
-      description: Request body for creating a new command
-      required:
-        - name
-        - content
-        - version
-      properties:
-        name:
-          type: string
-          pattern: ^[a-z][a-z0-9-]*$
-          minLength: 1
-          maxLength: 255
-        description:
-          type: string
-          maxLength: 500
-        content:
-          type: string
-          minLength: 1
-          maxLength: 51200
-        tags:
-          type: array
-          maxItems: 20
-          items:
-            type: string
-          default: []
-        version:
-          type: string
-          minLength: 1
-          maxLength: 50
-
-    CommandUpdate:
-      type: object
-      description: Request body for updating a command (full replacement). Name in body must match path parameter or be omitted.
-      required:
-        - content
-        - version
-      properties:
-        name:
-          type: string
-          description: Must match the path parameter (or be omitted)
-          pattern: ^[a-z][a-z0-9-]*$
-          minLength: 1
-          maxLength: 255
-        description:
-          type: string
-          maxLength: 500
-        content:
-          type: string
-          minLength: 1
-          maxLength: 51200
-        tags:
-          type: array
-          maxItems: 20
-          items:
-            type: string
-        version:
-          type: string
-          minLength: 1
-          maxLength: 50
-
-    CommandList:
-      type: object
-      description: Paginated list of commands
-      required:
-        - data
-        - pagination
-      properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/Command"
-        pagination:
-          $ref: "#/components/schemas/Pagination"
-
     # ==================== Health/Operations Schemas ====================
     ComponentHealth:
       type: object
@@ -1330,38 +1220,6 @@ components:
               - field: system_prompt
                 code: REQUIRED
                 message: System prompt is required
-
-    Unauthorized:
-      description: Missing or invalid API key
-      headers:
-        X-Request-ID:
-          $ref: "#/components/headers/X-Request-ID"
-      content:
-        application/problem+json:
-          schema:
-            $ref: "#/components/schemas/ErrorResponse"
-          example:
-            type: https://mnemonic.example.com/problems/unauthorized
-            title: Unauthorized
-            status: 401
-            detail: Missing or invalid Authorization header
-            traceId: 550e8400-e29b-41d4-a716-446655440000
-
-    Forbidden:
-      description: Insufficient permissions (post-MVP)
-      headers:
-        X-Request-ID:
-          $ref: "#/components/headers/X-Request-ID"
-      content:
-        application/problem+json:
-          schema:
-            $ref: "#/components/schemas/ErrorResponse"
-          example:
-            type: https://mnemonic.example.com/problems/forbidden
-            title: Forbidden
-            status: 403
-            detail: Admin role required for this operation
-            traceId: 550e8400-e29b-41d4-a716-446655440000
 
     NotFound:
       description: Resource not found
@@ -1477,9 +1335,6 @@ components:
             detail: PGVector is not reachable
             traceId: 550e8400-e29b-41d4-a716-446655440000
 
-security:
-  - bearerApiKey: []
-
 paths:
   # ==================== Agent Endpoints ====================
   /v1/api/agents:
@@ -1514,7 +1369,8 @@ paths:
                 $ref: "#/components/schemas/AgentList"
               example:
                 data:
-                  - name: go-software-engineer
+                  - id: 550e8400-e29b-41d4-a716-446655440010
+                    name: go-software-engineer
                     description: "Implements Go code: functions, packages, tests"
                     system_prompt: "You are an expert Go engineer..."
                     model: sonnet
@@ -1526,6 +1382,7 @@ paths:
                       - Glob
                       - Grep
                     version: "1.2.0"
+                    crc64: "1234567890123456789"
                     created_at: "2026-01-15T10:30:00Z"
                     updated_at: "2026-02-10T14:00:00Z"
                 pagination:
@@ -1533,8 +1390,6 @@ paths:
                   cursor: null
                   next_cursor: null
                   has_more: false
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -1577,10 +1432,6 @@ paths:
                 $ref: "#/components/schemas/Agent"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
         "500":
@@ -1607,6 +1458,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Agent"
               example:
+                id: 550e8400-e29b-41d4-a716-446655440010
                 name: go-software-engineer
                 description: "Implements Go code: functions, packages, tests"
                 system_prompt: "You are an expert Go engineer..."
@@ -1619,10 +1471,9 @@ paths:
                   - Glob
                   - Grep
                 version: "1.2.0"
+                crc64: "1234567890123456789"
                 created_at: "2026-01-15T10:30:00Z"
                 updated_at: "2026-02-10T14:00:00Z"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -1654,10 +1505,6 @@ paths:
                 $ref: "#/components/schemas/Agent"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -1677,10 +1524,6 @@ paths:
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -1746,8 +1589,6 @@ paths:
                   cursor: null
                   next_cursor: "eyJpZCI6IjU1MGU4NDAw..."
                   has_more: true
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -1812,10 +1653,6 @@ paths:
                 updated_at: "2026-01-10T08:00:00Z"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
         "500":
@@ -1899,8 +1736,6 @@ paths:
                   search_duration_ms: 23
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalError"
         "503":
@@ -1957,8 +1792,6 @@ paths:
                       description: Package-level error variables for comparison
                 created_at: "2026-01-10T08:00:00Z"
                 updated_at: "2026-01-10T08:00:00Z"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -1989,10 +1822,6 @@ paths:
                 $ref: "#/components/schemas/Pattern"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2009,10 +1838,6 @@ paths:
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2044,8 +1869,6 @@ paths:
                     relevance: 0.95
                   - agent_name: go-software-architect
                     relevance: 0.80
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2081,10 +1904,6 @@ paths:
                 $ref: "#/components/schemas/PatternAgentAssociations"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2127,8 +1946,9 @@ paths:
                 $ref: "#/components/schemas/SkillList"
               example:
                 data:
-                  - name: mnemonic-sync
-                    description: Synchronize agents, skills, and commands from Mnemonic
+                  - id: 550e8400-e29b-41d4-a716-446655440020
+                    name: mnemonic-sync
+                    description: Synchronize agents and skills from Mnemonic
                     content: "---\nname: mnemonic-sync\ndescription: Synchronize...\n---\n\nYou are synchronizing..."
                     tags:
                       - sync
@@ -2142,6 +1962,7 @@ paths:
                       scripts_count: 1
                       references_count: 0
                       assets_count: 0
+                    crc64: "9876543210987654321"
                     created_at: "2026-02-01T10:00:00Z"
                     updated_at: "2026-02-10T14:00:00Z"
                 pagination:
@@ -2149,8 +1970,6 @@ paths:
                   cursor: null
                   next_cursor: null
                   has_more: false
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -2188,10 +2007,6 @@ paths:
                 $ref: "#/components/schemas/Skill"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
         "500":
@@ -2217,8 +2032,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Skill"
               example:
+                id: 550e8400-e29b-41d4-a716-446655440020
                 name: mnemonic-sync
-                description: Synchronize agents, skills, and commands from Mnemonic
+                description: Synchronize agents and skills from Mnemonic
                 content: "---\nname: mnemonic-sync\n..."
                 tags:
                   - sync
@@ -2232,10 +2048,9 @@ paths:
                   scripts_count: 1
                   references_count: 0
                   assets_count: 0
+                crc64: "9876543210987654321"
                 created_at: "2026-02-01T10:00:00Z"
                 updated_at: "2026-02-10T14:00:00Z"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2265,10 +2080,6 @@ paths:
                 $ref: "#/components/schemas/Skill"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2285,10 +2096,6 @@ paths:
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2326,8 +2133,6 @@ paths:
                     size: 2048
                     created_at: "2026-02-15T10:00:00Z"
                     updated_at: "2026-02-15T10:00:00Z"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2367,8 +2172,6 @@ paths:
                 $ref: "#/components/schemas/SkillFile"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -2409,8 +2212,6 @@ paths:
                 size: 54
                 created_at: "2026-02-15T10:00:00Z"
                 updated_at: "2026-02-15T10:00:00Z"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2440,8 +2241,6 @@ paths:
                 $ref: "#/components/schemas/SkillFile"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "413":
@@ -2460,8 +2259,6 @@ paths:
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2490,8 +2287,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SkillFileList"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2530,8 +2325,6 @@ paths:
                 $ref: "#/components/schemas/SkillFile"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -2564,8 +2357,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SkillFile"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2595,8 +2386,6 @@ paths:
                 $ref: "#/components/schemas/SkillFile"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "413":
@@ -2615,8 +2404,6 @@ paths:
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2645,8 +2432,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SkillFileList"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2685,8 +2470,6 @@ paths:
                 $ref: "#/components/schemas/SkillFile"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -2719,8 +2502,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SkillFile"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2750,8 +2531,6 @@ paths:
                 $ref: "#/components/schemas/SkillFile"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "413":
@@ -2770,168 +2549,6 @@ paths:
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
-
-  # ==================== Command Endpoints ====================
-  /v1/api/commands:
-    get:
-      tags:
-        - Commands
-      summary: List commands
-      description: |
-        Returns all commands with full content. Same structure as skills list.
-        Default page size is 100.
-      operationId: listCommands
-      parameters:
-        - name: limit
-          in: query
-          description: Maximum items per page
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-            default: 100
-        - $ref: "#/components/parameters/cursorParam"
-        - name: tags
-          in: query
-          description: Comma-separated tags to filter by
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Paginated list of commands with full content
-          headers:
-            X-Request-ID:
-              $ref: "#/components/headers/X-Request-ID"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CommandList"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "500":
-          $ref: "#/components/responses/InternalError"
-
-    post:
-      tags:
-        - Commands
-      summary: Create command
-      operationId: createCommand
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CommandCreate"
-            example:
-              name: prime
-              description: Initialize a Claude Code session with project context
-              content: "Load the project context and prepare for work..."
-              tags:
-                - initialization
-              version: "1.0.0"
-      responses:
-        "201":
-          description: Command created
-          headers:
-            Location:
-              $ref: "#/components/headers/Location"
-            X-Request-ID:
-              $ref: "#/components/headers/X-Request-ID"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Command"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalError"
-
-  /v1/api/commands/{name}:
-    parameters:
-      - $ref: "#/components/parameters/commandNameParam"
-
-    get:
-      tags:
-        - Commands
-      summary: Get command by name
-      operationId: getCommand
-      responses:
-        "200":
-          description: Command details
-          headers:
-            X-Request-ID:
-              $ref: "#/components/headers/X-Request-ID"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Command"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
-
-    put:
-      tags:
-        - Commands
-      summary: Update command
-      description: Full replacement. Name in body must match path parameter.
-      operationId: updateCommand
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CommandUpdate"
-      responses:
-        "200":
-          description: Command updated
-          headers:
-            X-Request-ID:
-              $ref: "#/components/headers/X-Request-ID"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Command"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
-
-    delete:
-      tags:
-        - Commands
-      summary: Delete command
-      operationId: deleteCommand
-      responses:
-        "204":
-          description: Command deleted
-          headers:
-            X-Request-ID:
-              $ref: "#/components/headers/X-Request-ID"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2948,7 +2565,6 @@ paths:
         All three components are required. Returns 503 if any component is
         unhealthy. No authentication required.
       operationId: healthCheck
-      security: []
       responses:
         "200":
           description: All components healthy
@@ -2991,7 +2607,6 @@ paths:
       summary: Version information
       description: Returns build version and metadata. No authentication required.
       operationId: getVersion
-      security: []
       responses:
         "200":
           description: Version information
@@ -3014,7 +2629,6 @@ paths:
         Prometheus metrics endpoint. Returns metrics in Prometheus exposition
         format (text/plain). No authentication required.
       operationId: getMetrics
-      security: []
       responses:
         "200":
           description: Prometheus metrics

@@ -63,10 +63,9 @@ src/mnemonic/
     │   ├── agents/            # Agent CRUD endpoints (Admin API)
     │   ├── patterns/          # Pattern CRUD endpoints (Admin API)
     │   ├── skills/            # Skill CRUD endpoints (Admin API)
-    │   ├── commands/          # Command CRUD endpoints (Admin API)
     │   ├── search/            # Search endpoints (Admin API)
-    │   ├── operations/        # Health and version endpoints
-    │   └── mcp/               # MCP server handlers
+    │   └── operations/        # Health and version endpoints
+    ├── mcpserver/             # MCP server handlers
     └── server/server.go       # HTTP server setup (Admin API + MCP)
 ```
 
@@ -166,8 +165,8 @@ type ObservabilityConfig struct {
 }
 
 type HealthConfig struct {
-    Enabled bool   // Default: true. When false, the /api/health endpoint is not registered.
-    Path    string // Default: "/api/health". The path for the health check endpoint.
+    Enabled bool   // Default: true. When false, the /health endpoint is not registered.
+    Path    string // Default: "/health". The path for the health check endpoint.
 }
 
 type MetricsConfig struct {
@@ -430,7 +429,7 @@ import (
 
 // skipPaths defines paths to exclude from tracing to reduce noise.
 var defaultSkipPaths = []string{
-    "/api/health",
+    "/health",
     "/metrics",
 }
 
@@ -540,7 +539,7 @@ Based on the architecture document, implement these metric categories:
 1. **Request metrics** - HTTP request counts, durations, in-flight (Admin API)
 2. **MCP server metrics** - Tool invocations, session counts, active sessions
 3. **Pattern metrics** - Query latency, patterns returned
-4. **Tooling metrics** - List, get, and write operations by resource type (agents/skills/commands)
+4. **Tooling metrics** - List, get, and write operations by resource type (agents/skills)
 5. **Database metrics** - Connection pools, query latency, errors
 
 ### Request Metrics Middleware
@@ -722,7 +721,7 @@ func (m *MCP) RecordSessionClosed(ctx context.Context) {
 }
 ```
 
-> **Deferred:** MCP server-side instrumentation (wiring these metrics into MCP tool handlers, adding tracing spans for MCP requests) is deferred to a later MVP iteration. The metric instruments above define the contract; the integration point in `internal/handlers/mcp/` will be implemented once the MCP SDK's handler middleware patterns are finalized. Until then, MCP tool calls are observable only through the Admin API request metrics when proxied.
+> **Deferred:** MCP server-side instrumentation (wiring these metrics into MCP tool handlers, adding tracing spans for MCP requests) is deferred to a later MVP iteration. The metric instruments above define the contract; the integration point in `internal/mcpserver/` will be implemented once the MCP SDK's handler middleware patterns are finalized. Until then, MCP tool calls are observable only through the Admin API request metrics when proxied.
 
 ### Pattern Metrics
 
@@ -797,7 +796,7 @@ import (
     "go.opentelemetry.io/otel/metric"
 )
 
-// Tooling holds instruments for agent/skill/command CRUD operation metrics.
+// Tooling holds instruments for agent/skill CRUD operation metrics.
 type Tooling struct {
     listOperations  metric.Int64Counter
     getOperations   metric.Int64Counter
@@ -862,7 +861,7 @@ func (m *Tooling) RecordWriteOperation(ctx context.Context, resourceType, operat
 }
 ```
 
-The `resource_type` attribute distinguishes between `agents`, `skills`, and `commands`. The `operation` attribute on write operations distinguishes between `create`, `update`, and `delete`.
+The `resource_type` attribute distinguishes between `agents` and `skills`. The `operation` attribute on write operations distinguishes between `create`, `update`, and `delete`.
 
 ### Database Metrics
 
@@ -1339,14 +1338,14 @@ func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMet
     router.Use(gin.Recovery())
 
     // Paths to skip for tracing and metrics
-    skipPaths := []string{"/api/health", "/metrics"}
+    skipPaths := []string{"/health", "/metrics"}
 
     // Tracing middleware using otelgin
     router.Use(middleware.TracingMiddlewareWithSkipPaths("mnemonic", skipPaths))
 
     // otelx logging middleware with trace correlation
     router.Use(otelxgin.LoggingMiddleware(tel.Otelx(),
-        otelxgin.WithSkipPaths("/api/health", "/metrics"),
+        otelxgin.WithSkipPaths("/health", "/metrics"),
         otelxgin.WithRequestHeaders("X-Request-ID", "X-Correlation-ID"),
     ))
 
@@ -1361,7 +1360,7 @@ func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMet
 
 - Import alias `otelxgin` distinguishes from contrib `otelgin`
 - `WithSkipPaths()` uses variadic parameters, not slices
-- Skip paths for `/api/health` and `/metrics`
+- Skip paths for `/health` and `/metrics`
 - `WithRequestHeaders()` uses variadic parameters
 - Middleware registration includes tracing and metrics
 
@@ -1804,7 +1803,7 @@ func StartPoolStatsRecorder(ctx context.Context, pool *postgres.InstrumentedPool
 
 > **Architecture Reference:** [Observability Architecture - Health Check Endpoint](../../architecture/07-observability-architecture.md#health-check-endpoint)
 
-Mnemonic uses the [`github.com/twistingmercury/heartbeat`](https://github.com/twistingmercury/heartbeat) package for health checks. The health endpoint is registered at `GET /api/health` on the Admin API (:8080).
+Mnemonic uses the [`github.com/twistingmercury/heartbeat`](https://github.com/twistingmercury/heartbeat) package for health checks. The health endpoint is registered at `GET /health` on the Admin API (:8080).
 
 ### Heartbeat Integration
 
@@ -1828,7 +1827,7 @@ import (
 func SetupHandlers(r *gin.Engine) {
     deps := DefineDependencies()
 
-    r.GET("/api/health", heartbeat.Handler("mnemonic", deps...))
+    r.GET("/health", heartbeat.Handler("mnemonic", deps...))
     r.GET("/api/version", GetVersion)
 }
 ```
@@ -1871,7 +1870,7 @@ Each `HandlerFunc` performs a lightweight connectivity probe (ping or equivalent
 
 ### Health Check in Middleware Skip Paths
 
-The health endpoint `/api/health` is included in `DefaultSkipPaths` to exclude it from tracing, logging, and request metrics, avoiding noise from frequent probe requests by container orchestration and load balancers.
+The health endpoint `/health` is included in `DefaultSkipPaths` to exclude it from tracing, logging, and request metrics, avoiding noise from frequent probe requests by container orchestration and load balancers.
 
 ## Gaps and Additional Implementation
 
@@ -1911,7 +1910,7 @@ src/mnemonic/internal/
 ├── metrics/
 │   ├── registry.go            # Centralized metric registry
 │   ├── patterns.go            # Pattern-specific metrics
-│   ├── tooling.go             # Tooling (agents/skills/commands) metrics
+│   ├── tooling.go             # Tooling (agents/skills) metrics
 │   ├── enrichment.go          # Enrichment worker metrics
 │   └── database.go            # Database-specific metrics
 ├── handlers/
