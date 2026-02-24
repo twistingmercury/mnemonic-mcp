@@ -194,6 +194,10 @@ enrichment:
   # Minimum similarity for creating RELATED_TO edges (0.0-1.0)
   related_to_min_similarity: 0.3
 
+  # Retention periods for completed/failed enrichment jobs
+  completed_retention: 168h   # 7 days
+  failed_retention: 720h      # 30 days
+
 # Logging
 logging:
   # Log level: debug, info, warn, error
@@ -329,7 +333,11 @@ The otelx package handles the complexity of OpenTelemetry SDK setup, allowing Mn
 | `enrichment.worker_count`                 | int      | `2`                      | `MNEMONIC_ENRICHMENT_WORKER_COUNT`                 | Concurrent workers                                                               |
 | `enrichment.poll_interval`                | duration | `5s`                     | `MNEMONIC_ENRICHMENT_POLL_INTERVAL`                | Job poll interval                                                                |
 | `enrichment.max_attempts`                 | int      | `3`                      | `MNEMONIC_ENRICHMENT_MAX_ATTEMPTS`                 | Max retry attempts                                                               |
+| `enrichment.retry_delay`                  | duration | `30s`                    | `MNEMONIC_ENRICHMENT_RETRY_DELAY`                  | Delay between retry attempts for failed enrichment jobs                                      |
+| `enrichment.job_timeout`                  | duration | `5m`                     | `MNEMONIC_ENRICHMENT_JOB_TIMEOUT`                  | Maximum time for a single enrichment job; stuck jobs are reclaimed after this duration        |
 | `enrichment.related_to_min_similarity`    | float    | `0.3`                    | `MNEMONIC_ENRICHMENT_RELATED_TO_MIN_SIMILARITY`    | Minimum concept-overlap similarity (0.0-1.0) for creating RELATED_TO edges between patterns |
+| `enrichment.completed_retention`          | duration | `168h`                   | `MNEMONIC_ENRICHMENT_COMPLETED_RETENTION`          | Retention period for completed enrichment jobs (default 7 days); older jobs are deleted       |
+| `enrichment.failed_retention`             | duration | `720h`                   | `MNEMONIC_ENRICHMENT_FAILED_RETENTION`             | Retention period for failed enrichment jobs (default 30 days); older jobs are deleted         |
 | `logging.level`                           | string   | `info`                   | `MNEMONIC_LOGGING_LEVEL`                           | Log level                                                                        |
 | `logging.format`                          | string   | `json`                   | `MNEMONIC_LOGGING_FORMAT`                          | Log format                                                                       |
 | `observability.metrics.enabled`           | bool     | `true`                   | `MNEMONIC_OBSERVABILITY_METRICS_ENABLED`           | Enable metrics                                                                   |
@@ -485,6 +493,8 @@ func setDefaults(v *viper.Viper) {
     v.SetDefault("enrichment.retry_delay", "30s")
     v.SetDefault("enrichment.job_timeout", "5m")
     v.SetDefault("enrichment.related_to_min_similarity", 0.3)
+    v.SetDefault("enrichment.completed_retention", "168h")
+    v.SetDefault("enrichment.failed_retention", "720h")
 
     // Logging defaults
     v.SetDefault("logging.level", "info")
@@ -762,6 +772,8 @@ type EnrichmentConfig struct {
     RetryDelay             time.Duration `mapstructure:"retry_delay"`
     JobTimeout             time.Duration `mapstructure:"job_timeout"`
     RelatedToMinSimilarity float64       `mapstructure:"related_to_min_similarity"`
+    CompletedRetention     time.Duration `mapstructure:"completed_retention"`  // Default: 7d (168h)
+    FailedRetention        time.Duration `mapstructure:"failed_retention"`     // Default: 30d (720h)
 }
 
 type LoggingConfig struct {
@@ -895,6 +907,9 @@ classDiagram
         +int MaxAttempts
         +time.Duration RetryDelay
         +time.Duration JobTimeout
+        +float64 RelatedToMinSimilarity
+        +time.Duration CompletedRetention
+        +time.Duration FailedRetention
     }
 
     class LoggingConfig {

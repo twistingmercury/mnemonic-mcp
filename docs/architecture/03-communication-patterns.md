@@ -59,7 +59,6 @@ sequenceDiagram
     participant MCP as MCP Server
     participant OPENAI as OpenAI Embedding API
     participant PG as Postgres + PGVector
-    participant NEO as Neo4j
 
     User->>CC: Ask question requiring team knowledge
     CC->>CC: Determine need for pattern search
@@ -71,14 +70,13 @@ sequenceDiagram
     MCP->>PG: Semantic search (PGVector)
     PG-->>MCP: Top N patterns
 
-    MCP->>NEO: Fetch related patterns
-    NEO-->>MCP: Knowledge graph relationships
-
     MCP-->>CC: {patterns with context}
 
     CC->>CC: Incorporate team knowledge
     CC-->>User: Answer with team context
 ```
+
+> **Post-MVP enhancement:** A future version of `search_patterns` will blend PGVector similarity scores with Neo4j graph context for improved ranking. At that point, the sequence diagram above will include a Neo4j query step after the PGVector search.
 
 **Request Characteristics:**
 

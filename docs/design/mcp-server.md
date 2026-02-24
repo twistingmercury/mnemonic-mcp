@@ -44,7 +44,7 @@ All 3 tools are stateless: each invocation is a standalone request/response with
 
 | Tool                    | Purpose                                   | Databases Queried |
 | ----------------------- | ----------------------------------------- | ----------------- |
-| `search_patterns`       | Semantic search over team knowledge graph | PGVector + Neo4j  |
+| `search_patterns`       | Semantic search over team knowledge graph | PGVector (MVP); + Neo4j (post-MVP) |
 | `find_related_patterns` | Graph traversal from a given pattern      | Neo4j             |
 | `get_pattern`           | Single pattern retrieval by UUID          | Postgres + Neo4j  |
 
@@ -52,7 +52,7 @@ All 3 tools are stateless: each invocation is a standalone request/response with
 
 ### MCP Server Creation
 
-Create the MCP server with Mnemonic's implementation metadata. The version string comes from the existing `internal/version` package. Enable `SchemaCache` to avoid repeated reflection on tool input structs across invocations.
+Create the MCP server with Mnemonic's implementation metadata. The version string comes from the existing `internal/version` package. Pass a `SchemaCache` instance to avoid repeated reflection on tool input structs across invocations.
 
 ```go
 import (
@@ -64,11 +64,11 @@ server := mcp.NewServer(&mcp.Implementation{
     Name:    "mnemonic",
     Version: version.Version(),
 }, &mcp.ServerOptions{
-    SchemaCache: true,
+    SchemaCache: mcp.NewSchemaCache(),
 })
 ```
 
-The `SchemaCache` option tells the SDK to cache the JSON Schema it infers from handler input structs via reflection. Without it, the SDK re-reflects on every `tools/list` call. Since Mnemonic's tool schemas are static (registered once at startup), caching is safe and avoids redundant work.
+The `SchemaCache` field accepts a `*mcp.SchemaCache` pointer. `NewSchemaCache()` creates a new cache instance that stores JSON Schemas inferred from handler input structs via reflection. Without a cache, the SDK re-reflects on every `tools/list` call. Since Mnemonic's tool schemas are static (registered once at startup), caching is safe and avoids redundant work. The cache is concurrent-safe and unbounded, but for a fixed set of 3 tools the memory footprint is negligible.
 
 After creation, tools are registered on this server instance (see [Tool Registration](#tool-registration)).
 
@@ -87,6 +87,8 @@ handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 The factory function receives each incoming HTTP request and returns the server to handle it. Since Mnemonic uses a single shared server instance (stateless tools, no per-session state), the factory always returns the same server.
 
 Setting `Stateless: true` tells the SDK to skip session creation and tracking. Each request is handled independently without allocating session state. This matches the tool semantics (every invocation is a standalone request/response) and eliminates the session lifecycle overhead that would otherwise require `session_count` and `active_sessions` metrics.
+
+**Note:** The `MCPServerConfig.SessionTimeout` field (from the [configuration design](configuration.md)) is not used in stateless mode. It exists in the config struct for future use if session-based features (e.g., streaming subscriptions) are added post-MVP.
 
 ### HTTP Server Lifecycle
 
@@ -244,7 +246,7 @@ type ToolDependencies interface {
 }
 ```
 
-**`jsonschema` struct tag convention:** The SDK uses `google/jsonschema-go` for schema inference. The `jsonschema` tag value is interpreted as the field's **description** string in its entirety -- it does not support comma-separated directives like `required` or `description=`. Required/optional status is controlled by the `json` tag:
+**`jsonschema` struct tag convention:** The SDK uses `github.com/google/jsonschema-go` for schema inference. The `jsonschema` tag value is interpreted as the field's **description** string in its entirety -- it does not support comma-separated directives like `required` or `description=`. Required/optional status is controlled by the `json` tag:
 
 - Fields **without** `omitempty` on the `json` tag are **required** in the inferred schema.
 - Fields **with** `omitempty` on the `json` tag are **optional** in the inferred schema.
@@ -268,7 +270,7 @@ type SearchPatternsInput struct {
     Query     string    `json:"query"                jsonschema:"Natural language search query"`
     Limit     *int      `json:"limit,omitempty"      jsonschema:"Maximum number of results to return (default 10, max 50)"`
     Threshold *float64  `json:"threshold,omitempty"   jsonschema:"Minimum cosine similarity score 0.0-1.0 (default 0.7)"`
-    Tags      []string  `json:"tags,omitempty"        jsonschema:"Conjunctive (AND) filter by tag"`
+    Tags      []string  `json:"tags,omitempty"        jsonschema:"Conjunctive (AND) filter by tag. Pattern must contain ALL specified tags (SQL: tags @> $tags::jsonb)."`
     Agent     string    `json:"agent,omitempty"       jsonschema:"Filter results by agent association"`
 }
 ```
@@ -282,9 +284,17 @@ func handleSearchPatterns(deps ToolDependencies) func(ctx context.Context, req *
         // 1. Apply defaults: limit=10 if nil, threshold=0.7 if nil
         // 2. Validate constraints: limit 1-50, threshold 0.0-1.0
         // 3. Generate query embedding via OpenAI
-        // 4. PGVector cosine similarity search (filtered by tags, agent)
-        // 5. Format results as markdown
-        // 6. Return *mcp.CallToolResult with text content, nil, nil
+        // 4. If Agent is set, resolve to pattern IDs:
+        //    a. Look up the agent by name to get agent_id
+        //    b. Query pattern_agent_associations for (agent_id) -> []pattern_id
+        //    c. Pass the resulting PatternIDs to SimilarityOptions.PatternIDs
+        //       (this pre-filters the PGVector search to agent-scoped patterns)
+        // 5. PGVector cosine similarity search via FindSimilar():
+        //    - SimilarityOptions.Tags uses conjunctive (AND) filtering
+        //      (SQL: tags @> $tags::jsonb -- pattern must contain ALL specified tags)
+        //    - SimilarityOptions.PatternIDs restricts to agent-associated patterns (step 4)
+        // 6. Format results as markdown
+        // 7. Return *mcp.CallToolResult with text content, nil, nil
         // Post-MVP: add Neo4j graph score blending
         //
         // On error: return nil, nil, err (SDK sets isError: true)
@@ -293,6 +303,8 @@ func handleSearchPatterns(deps ToolDependencies) func(ctx context.Context, req *
 ```
 
 **Markdown response format:**
+
+> **Score format note:** `search_patterns` displays similarity as a percentage (e.g., "92% match") because it reflects a single vector similarity score that is intuitive as a percentage. `find_related_patterns` uses a decimal (e.g., "similarity: 0.85") because the score represents computed concept-overlap strength, where the raw value is more meaningful to the caller. `get_pattern` uses the same decimal format as `find_related_patterns` for consistency in its related patterns list.
 
 ```text
 Found N patterns matching 'query' (filtered by agent: X):
@@ -342,11 +354,12 @@ func handleFindRelatedPatterns(deps ToolDependencies) func(ctx context.Context, 
         // 2. Apply default: limit=5 if nil
         // 3. Validate constraints: limit 1-20
         // 4. Traverse RELATED_TO edges in Neo4j from the source pattern
-        // 5. For each related pattern, include relationship type, strength, shared concepts
-        // 6. Format results as markdown
-        // 7. Return *mcp.CallToolResult with text content, nil, nil
+        // 5. Order results by similarity descending
+        // 6. For each related pattern, include relationship type, similarity, shared concepts
+        // 7. Format results as markdown
+        // 8. Return *mcp.CallToolResult with text content, nil, nil
         //
-        // On not found: return nil, nil, ErrPatternNotFound
+        // On not found: return nil, nil, fmt.Errorf("%w: %s", ErrPatternNotFound, input.PatternID)
         // On error: return nil, nil, err
     }
 }
@@ -406,7 +419,7 @@ func handleGetPattern(deps ToolDependencies) func(ctx context.Context, req *mcp.
         // 4. Format as markdown with full content, metadata, relationships, concepts
         // 5. Return *mcp.CallToolResult with text content, nil, nil
         //
-        // On not found: return nil, nil, ErrPatternNotFound
+        // On not found: return nil, nil, fmt.Errorf("%w: %s", ErrPatternNotFound, input.ID)
         // On error: return nil, nil, err
     }
 }
@@ -437,6 +450,20 @@ Full pattern content here...
 ```
 
 When enrichment is pending, the "Related Patterns" and "Extracted Concepts" sections are omitted and the enrichment line reads `**Enrichment:** pending`.
+
+When enrichment has failed, the graph sections are also omitted and the enrichment line includes the error message:
+
+```text
+## pattern-name
+
+**ID:** 550e8400-e29b-41d4-a716-446655440001
+**Tags:** go, errors
+**Enrichment:** failed -- embedding generation timed out after 30s
+
+## Content
+
+Full pattern content here...
+```
 
 ## Error Handling
 
@@ -523,36 +550,61 @@ No custom implementation is needed for transport-level errors.
 
 ### Receiving Middleware
 
-The SDK supports `AddReceivingMiddleware` for cross-cutting concerns applied to every incoming JSON-RPC message before it reaches a tool handler. Use this for request-scoped tracing and metrics setup instead of duplicating instrumentation in each handler.
+The SDK supports `AddReceivingMiddleware` for cross-cutting concerns applied to every incoming JSON-RPC method call before it reaches the default handler. Use this for request-scoped tracing and metrics setup instead of duplicating instrumentation in each handler.
+
+The SDK's middleware types are:
 
 ```go
-server.AddReceivingMiddleware(func(ctx context.Context, msg *jsonrpc.Message, next mcp.RequestHandlerFunc) (mcp.Result, error) {
-    // Extract tool name from the message (if tools/call)
-    toolName := extractToolName(msg)
+// MethodHandler handles MCP messages.
+type MethodHandler func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error)
 
-    // Start trace span
-    ctx, span := tracer.Start(ctx, fmt.Sprintf("mcp.%s", toolName))
-    defer span.End()
+// Middleware wraps a MethodHandler.
+type Middleware func(mcp.MethodHandler) mcp.MethodHandler
+```
 
-    // Record start time for metrics
-    start := time.Now()
+`AddReceivingMiddleware` accepts one or more `Middleware` functions. Each wraps the inner `MethodHandler`, forming a chain. The `method` parameter is the JSON-RPC method string (e.g., `"tools/call"`, `"tools/list"`, `"initialize"`). To extract the specific tool name for a `tools/call` request, inspect the request parameters.
 
-    // Call next handler in chain
-    result, err := next(ctx, msg)
+```go
+server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
+    return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+        // Determine the span name. For tools/call, extract the tool name
+        // from the request params; for other methods, use the method string.
+        spanName := method
+        if method == "tools/call" {
+            if ctr, ok := req.GetParams().(*mcp.CallToolParamsRaw); ok {
+                spanName = fmt.Sprintf("mcp.%s", ctr.Name)
+            }
+        }
 
-    // Record metrics
-    duration := float64(time.Since(start).Milliseconds())
-    deps.Metrics().MCP.RecordToolInvocation(ctx, toolName, duration)
+        // Start trace span
+        ctx, span := tracer.Start(ctx, spanName)
+        defer span.End()
 
-    if err != nil {
-        span.SetStatus(codes.Error, err.Error())
+        // Record start time for metrics
+        start := time.Now()
+
+        // Call next handler in chain
+        result, err := next(ctx, method, req)
+
+        // Record metrics (only for tool invocations)
+        if method == "tools/call" {
+            duration := float64(time.Since(start).Milliseconds())
+            toolName := strings.TrimPrefix(spanName, "mcp.")
+            deps.Metrics().MCP.RecordToolInvocation(ctx, toolName, duration)
+        }
+
+        if err != nil {
+            span.SetStatus(codes.Error, err.Error())
+        }
+
+        return result, err
     }
-
-    return result, err
 })
 ```
 
 This centralizes tracing and metrics so individual tool handlers do not need boilerplate instrumentation code. Tool handlers still log domain-specific fields (query preview, pattern ID, result count) directly.
+
+**Note:** The `req.GetParams()` call returns the params as an `mcp.Params` interface. For `tools/call`, the concrete type is `*mcp.CallToolParamsRaw` which has a `Name` field containing the tool name. Middleware receives all method calls (not just tool calls), so the `method == "tools/call"` guard is needed to avoid casting errors on other methods like `initialize` or `tools/list`.
 
 ### Tracing
 
@@ -583,7 +635,7 @@ The relevant metrics:
 | `mnemonic.mcp.tool_invocations` | Counter   | Number of MCP tool invocations |
 | `mnemonic.mcp.tool_duration`    | Histogram | Tool invocation duration (ms)  |
 
-Session metrics (`session_count`, `active_sessions`) are not needed because the server runs in stateless mode (see [Streamable HTTP Handler](#streamable-http-handler)).
+Session metrics (`session_count`, `active_sessions`) are defined in the `internal/metrics/mcp.go` metrics registry but are not recorded in stateless mode. The instruments exist so they do not need to be added later if session-based features are introduced post-MVP, but in the current stateless configuration they remain at zero.
 
 ### Logging
 
@@ -608,6 +660,8 @@ Log events for MCP tool calls:
 ## Package Structure
 
 MCP server code lives in `internal/mcpserver/` (not `internal/mcp/`). The package name `mcpserver` avoids colliding with the SDK's `mcp` package, which would otherwise require import aliases in every file.
+
+Filesystem paths relative to the repository root:
 
 ```text
 src/mnemonic/internal/mcpserver/
@@ -636,7 +690,7 @@ src/mnemonic/internal/mcpserver/
 
 ### Explicit InputSchema for richer validation (deferred)
 
-The SDK infers `InputSchema` from Go struct tags via `google/jsonschema-go`. This inferred schema does not support `minimum`, `maximum`, `maxLength`, or `pattern` constraints that the [YAML tool specification](../../api/mcp/mnemonic-mcp-tools-v1.yaml) defines. In theory, providing an explicit `InputSchema` as `json.RawMessage` on the `Tool` struct would let the SDK validate these constraints before calling the handler.
+The SDK infers `InputSchema` from Go struct tags via `github.com/google/jsonschema-go`. This inferred schema does not support `minimum`, `maximum`, `maxLength`, or `pattern` constraints that the [YAML tool specification](../../api/mcp/mnemonic-mcp-tools-v1.yaml) defines. In theory, providing an explicit `InputSchema` as `json.RawMessage` on the `Tool` struct would let the SDK validate these constraints before calling the handler.
 
 This is deferred for MVP because:
 

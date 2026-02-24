@@ -1067,16 +1067,59 @@ MATCH (p:Pattern {id: $patternId})
 CREATE (c)-[:MENTIONED_IN]->(p);
 ```
 
-**Find Related Patterns:**
+**Compute RELATED_TO Edges:**
+
+Called by `EnrichmentService.ProcessJob` after concept extraction to compute and store pattern-to-pattern similarity edges. Existing RELATED_TO edges for the pattern are deleted first, then recomputed from shared concepts. Only edges meeting the minimum similarity threshold are created. RELATED_TO is symmetric; edges are stored in one direction and queried without direction. See [Pattern Processing - RELATED_TO Edge Computation](pattern-processing.md#related_to-edge-computation) for the similarity formula.
 
 ```cypher
-// Query: find patterns related to a given pattern through shared concepts
+// ComputeRelatedToEdges: delete old edges, recompute from shared concepts
+// Parameters: $patternId (UUID), $minSimilarity (float, e.g. 0.3)
+
+// Step 1: Delete existing RELATED_TO edges for this pattern
+MATCH (p:Pattern {id: $patternId})-[r:RELATED_TO]-()
+DELETE r
+
+// Step 2: Find other patterns sharing concepts, compute similarity, create edges
+WITH 1 AS dummy
 MATCH (p1:Pattern {id: $patternId})<-[:MENTIONED_IN]-(c:Concept)-[:MENTIONED_IN]->(p2:Pattern)
 WHERE p1 <> p2
-WITH p2, count(c) AS sharedConcepts
-ORDER BY sharedConcepts DESC
+WITH p1, p2, count(DISTINCT c) AS sharedCount
+
+// Count total concepts for each pattern
+OPTIONAL MATCH (c1:Concept)-[:MENTIONED_IN]->(p1)
+WITH p1, p2, sharedCount, count(DISTINCT c1) AS totalA
+OPTIONAL MATCH (c2:Concept)-[:MENTIONED_IN]->(p2)
+WITH p1, p2, sharedCount, totalA, count(DISTINCT c2) AS totalB
+
+// Compute similarity = sharedConcepts / max(totalConceptsA, totalConceptsB)
+WITH p1, p2, sharedCount,
+     CASE WHEN totalA > totalB THEN totalA ELSE totalB END AS maxTotal
+WITH p1, p2, sharedCount,
+     CASE WHEN maxTotal = 0 THEN 0.0
+          ELSE toFloat(sharedCount) / toFloat(maxTotal)
+     END AS similarity
+WHERE similarity >= $minSimilarity
+
+// Create RELATED_TO edge (one direction only; queries use undirected traversal)
+CREATE (p1)-[:RELATED_TO {similarity: similarity, updatedAt: datetime()}]->(p2)
+```
+
+**Find Related Patterns:**
+
+Uses pre-computed RELATED_TO edges (created during enrichment) and collects shared concept names. See [service-layer.md "Resolving the find_related_patterns Data Gap"](service-layer.md#resolving-the-find_related_patterns-data-gap) for the design decision to use pre-computed edges rather than recomputing similarity at query time.
+
+```cypher
+// Query: find patterns related to a given pattern using pre-computed RELATED_TO edges
+MATCH (p1:Pattern {id: $patternId})-[r:RELATED_TO]-(p2:Pattern)
+WITH p2, r.similarity AS similarity
+
+// Collect shared concept names
+OPTIONAL MATCH (p1:Pattern {id: $patternId})<-[:MENTIONED_IN]-(c:Concept)-[:MENTIONED_IN]->(p2)
+WITH p2, similarity, collect(c.name) AS conceptNames, count(c) AS sharedConcepts
+
+ORDER BY similarity DESC
 LIMIT $limit
-RETURN p2.id AS id, p2.name AS name, sharedConcepts;
+RETURN p2.id AS id, p2.name AS name, sharedConcepts, similarity, conceptNames
 ```
 
 **Find Patterns for Agent:**
@@ -1198,6 +1241,11 @@ type PatternRepository interface {
 
     // GetAgentAssociations retrieves all agent associations for a pattern.
     GetAgentAssociations(ctx context.Context, patternID uuid.UUID) ([]AgentAssociation, error)
+
+    // GetPatternIDsByAgent returns all pattern IDs associated with the given agent.
+    // Used by SearchService for agent-scoped similarity search pre-filtering.
+    // See: service-layer.md "Agent Filter for search_patterns"
+    GetPatternIDsByAgent(ctx context.Context, agentID uuid.UUID) ([]uuid.UUID, error)
 }
 
 // Pattern represents a context pattern (relational columns, not JSONB).
@@ -1234,7 +1282,17 @@ type AgentAssociation struct {
     AgentID   uuid.UUID `db:"agent_id"`
     Relevance float64   `db:"relevance"`
 }
+```
 
+**GetPatternIDsByAgent SQL:**
+
+```sql
+-- GetPatternIDsByAgent: returns all pattern IDs associated with a given agent.
+-- Uses idx_pattern_agent_assoc_agent index for efficient lookup.
+SELECT pattern_id FROM pattern_agent_associations WHERE agent_id = $1;
+```
+
+```go
 // Filter defines filtering options for pattern queries.
 // This type is package-specific to internal/repository/pattern.
 type Filter struct {
@@ -1424,7 +1482,16 @@ type GraphRepository interface {
     // SetPatternAgentRelevance sets the relevance relationships for a pattern.
     SetPatternAgentRelevance(ctx context.Context, patternID uuid.UUID, associations []AgentAssociation) error
 
+    // ComputeRelatedToEdges computes and creates RELATED_TO edges between
+    // the given pattern and other patterns sharing concepts. Existing
+    // RELATED_TO edges for this pattern are deleted first, then recomputed.
+    // Only edges with similarity >= minSimilarity are created.
+    // Called by EnrichmentService.ProcessJob after concept extraction.
+    // See: service-layer.md "RELATED_TO Edge Computation"
+    ComputeRelatedToEdges(ctx context.Context, patternID uuid.UUID, minSimilarity float64) error
+
     // FindRelatedPatterns finds patterns related through shared concepts.
+    // Uses pre-computed RELATED_TO edges and collects shared concept names.
     FindRelatedPatterns(ctx context.Context, patternID uuid.UUID, limit int) ([]RelatedPattern, error)
 
     // FindPatternsByAgent finds patterns relevant to an agent.
@@ -1451,10 +1518,23 @@ type Concept struct {
 }
 
 // RelatedPattern represents a pattern found through graph traversal.
+// Updated to include similarity score and shared concept names for the
+// MCP find_related_patterns tool.
+// See: service-layer.md "Resolving the find_related_patterns Data Gap"
 type RelatedPattern struct {
     ID             uuid.UUID
     Name           string
-    SharedConcepts int
+    SharedConcepts int      // Count of shared concepts (retained for backward compat)
+    Similarity     float64  // Pre-computed similarity score from RELATED_TO edge (0.0-1.0)
+    ConceptNames   []string // Names of the shared concepts
+}
+
+// AgentAssociation represents an agent relevance pair for graph sync.
+// Uses AgentName (not AgentID) because Neo4j Agent nodes are keyed by name.
+// See: service-layer.md "Enrichment Job Lifecycle" step 6
+type AgentAssociation struct {
+    AgentName string
+    Relevance float64
 }
 
 // PatternRelevance represents a pattern with its relevance to an agent.
