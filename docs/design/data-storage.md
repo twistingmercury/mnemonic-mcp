@@ -194,10 +194,13 @@ Skill files do not use the JSONB document model. They store file content directl
 
 | Column | Type | Purpose |
 |--------|------|---------|
-| `skill_id` | UUID | FK to parent skill |
+| `id` | UUID | PK, DEFAULT gen_random_uuid() |
+| `skill_id` | UUID | FK to parent skill (CASCADE DELETE) |
 | `path` | VARCHAR(1024) | File path within the skill directory |
 | `content` | TEXT | File content |
 | `crc64` | VARCHAR(20) | CRC-64 checksum for change detection |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now(); app updates on UPDATE |
 
 ### JSONB Indexing Strategy
 
@@ -464,9 +467,8 @@ create table if not exists pattern_agent_associations (
         check (relevance >= 0 and relevance <= 1)
 );
 
--- Indexes for foreign key lookups
-create index idx_pattern_agent_assoc_pattern
-    on pattern_agent_associations(pattern_id);
+-- Index for reverse FK lookup (agent_id is not the leading PK column).
+-- pattern_id lookup is covered by the composite PK index.
 create index idx_pattern_agent_assoc_agent
     on pattern_agent_associations(agent_id);
 
@@ -477,7 +479,6 @@ comment on table pattern_agent_associations is
 ```sql
 -- src/migrations/postgres/000004_create_pattern_agent_associations.down.sql
 drop index if exists idx_pattern_agent_assoc_agent;
-drop index if exists idx_pattern_agent_assoc_pattern;
 drop table if exists pattern_agent_associations;
 ```
 
@@ -1185,6 +1186,11 @@ type AgentRepository interface {
 
     // Delete removes an agent by name. Returns ErrNotFound if not found.
     Delete(ctx context.Context, name string) error
+
+    // DeleteByID removes an agent by UUID. Returns ErrNotFound if not found.
+    // The REST API routes DELETE by name; DeleteByID supports internal callers
+    // that resolve agents by UUID (e.g., cascade operations, programmatic cleanup).
+    DeleteByID(ctx context.Context, id uuid.UUID) error
 
     // List retrieves all agents with optional pagination.
     List(ctx context.Context, opts ListOptions) ([]*Agent, int64, error)

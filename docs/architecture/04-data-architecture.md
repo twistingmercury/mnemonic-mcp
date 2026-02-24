@@ -227,10 +227,9 @@ erDiagram
     SKILL_FILE {
         uuid id PK
         uuid skill_id FK "CASCADE on delete"
-        string file_type "script|reference|asset"
-        string filename "max 255"
-        jsonb document "file content and metadata"
-        bigint crc64 "CRC-64 checksum"
+        string path "max 1024"
+        text content
+        string crc64 "VARCHAR(20)"
         timestamptz created_at
         timestamptz updated_at
     }

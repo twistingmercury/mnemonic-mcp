@@ -466,7 +466,7 @@ Run this query periodically (e.g., every minute) to recover jobs from crashed wo
 
 | Pods   | Behavior                                       |
 | ------ | ---------------------------------------------- |
-| 1 pod  | Single worker processes all jobs sequentially  |
+| 1 pod  | Default 2 workers process jobs concurrently    |
 | 2 pods | Jobs distributed automatically; ~2x throughput |
 | N pods | Jobs distributed across N pods; ~Nx throughput |
 

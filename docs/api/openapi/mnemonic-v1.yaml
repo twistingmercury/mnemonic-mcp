@@ -71,10 +71,10 @@ components:
       name: name
       in: path
       required: true
-      description: Agent unique identifier (lowercase letters, numbers, and hyphens)
+      description: Agent unique identifier (lowercase letters, numbers, and single hyphens; no leading/trailing hyphens, no consecutive hyphens)
       schema:
         type: string
-        pattern: ^[a-z][a-z0-9-]*$
+        pattern: ^[a-z]([a-z0-9](-[a-z0-9])*)*$
         maxLength: 64
       example: go-software-engineer
 
@@ -268,8 +268,10 @@ components:
             - 550e8400-e29b-41d4-a716-446655440010
         name:
           type: string
-          description: Unique identifier (lowercase letters, numbers, and hyphens)
-          pattern: ^[a-z][a-z0-9-]*$
+          description: |
+            Unique identifier. Lowercase letters, numbers, and single hyphens.
+            No leading/trailing hyphens, no consecutive hyphens.
+          pattern: ^[a-z]([a-z0-9](-[a-z0-9])*)*$
           minLength: 1
           maxLength: 64
           examples:
@@ -343,7 +345,7 @@ components:
       properties:
         name:
           type: string
-          pattern: ^[a-z][a-z0-9-]*$
+          pattern: ^[a-z]([a-z0-9](-[a-z0-9])*)*$
           minLength: 1
           maxLength: 64
           examples:
@@ -389,7 +391,7 @@ components:
         name:
           type: string
           description: Must match the path parameter (or be omitted)
-          pattern: ^[a-z][a-z0-9-]*$
+          pattern: ^[a-z]([a-z0-9](-[a-z0-9])*)*$
           minLength: 1
           maxLength: 64
         description:
@@ -1216,7 +1218,7 @@ components:
             errors:
               - field: name
                 code: INVALID_FORMAT
-                message: "Name must match pattern ^[a-z][a-z0-9-]*$"
+                message: "Name must match pattern ^[a-z]([a-z0-9](-[a-z0-9])*)*$"
               - field: system_prompt
                 code: REQUIRED
                 message: System prompt is required
@@ -2555,7 +2557,7 @@ paths:
           $ref: "#/components/responses/InternalError"
 
   # ==================== Operations Endpoints ====================
-  /ops/health:
+  /health:
     get:
       tags:
         - Operations
@@ -2600,7 +2602,7 @@ paths:
                   neo4j:
                     status: unhealthy
 
-  /ops/version:
+  /version:
     get:
       tags:
         - Operations
@@ -2620,7 +2622,7 @@ paths:
                 build_time: "2026-02-15T10:00:00Z"
                 go_version: go1.23.0
 
-  /ops/metrics:
+  /metrics:
     get:
       tags:
         - Operations

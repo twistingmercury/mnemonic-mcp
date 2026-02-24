@@ -71,8 +71,8 @@ src/mnemonic/
 
 **Key Integration Points:**
 
-1. `cmd/main/main.go` - Telemetry initialization and shutdown
-2. `internal/server/server.go` - Middleware registration (Admin API and MCP listeners)
+1. `internal/server/server.go` - Telemetry initialization, shutdown, and middleware registration (Admin API and MCP listeners)
+2. `cmd/main/main.go` - Calls `server.ListenAndServe()` which internally initializes telemetry
 3. All handler packages - Span creation and logging
 
 ## otelx Package Integration
@@ -620,6 +620,37 @@ func (m *RequestMetrics) Middleware() gin.HandlerFunc {
         // Record metrics after request completes
         // Use context.Background() for post-request metric recording
         // because the request context may be cancelled after c.Next() completes
+        duration := float64(time.Since(start).Milliseconds())
+        attrs := []attribute.KeyValue{
+            attribute.String("http.method", c.Request.Method),
+            attribute.String("http.route", c.FullPath()),
+            attribute.String("http.status_code", strconv.Itoa(c.Writer.Status())),
+        }
+
+        m.requestCount.Add(context.Background(), 1, metric.WithAttributes(attrs...))
+        m.requestDuration.Record(context.Background(), duration, metric.WithAttributes(attrs...))
+    }
+}
+
+// MiddlewareWithSkipPaths returns Gin middleware that records request metrics,
+// skipping the specified paths (e.g., /health, /metrics) to reduce noise.
+func (m *RequestMetrics) MiddlewareWithSkipPaths(skipPaths []string) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // Skip metrics recording for excluded paths
+        for _, path := range skipPaths {
+            if c.Request.URL.Path == path {
+                c.Next()
+                return
+            }
+        }
+
+        start := time.Now()
+
+        m.requestInFlight.Add(c.Request.Context(), 1)
+        defer m.requestInFlight.Add(context.Background(), -1)
+
+        c.Next()
+
         duration := float64(time.Since(start).Milliseconds())
         attrs := []attribute.KeyValue{
             attribute.String("http.method", c.Request.Method),
@@ -1929,7 +1960,7 @@ src/mnemonic/internal/
 
 - [ ] Create `internal/config/config.go` with observability configuration
 - [ ] Create `internal/telemetry/telemetry.go` wrapping otelx
-- [ ] Update `cmd/main/main.go` to initialize telemetry
+- [ ] Verify `cmd/main/main.go` calls `server.ListenAndServe()`, which internally initializes telemetry
 - [ ] Add required dependencies to `go.mod`
 
 ### Middleware

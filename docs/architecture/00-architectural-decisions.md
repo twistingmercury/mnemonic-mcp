@@ -123,7 +123,7 @@ Agents, skills, and skill files are first-class entities in Mnemonic (see [ADR-0
 | Column       | Type            | Purpose                                                    |
 | ------------ | --------------- | ---------------------------------------------------------- |
 | `id`         | UUID PK         | Stable reference (entities may be renamed)                 |
-| `name`       | VARCHAR UNIQUE  | Human-readable identifier, URL-safe (`^[a-z][a-z0-9-]*$`) |
+| `name`       | VARCHAR UNIQUE  | Human-readable identifier, URL-safe (`^[a-z]([a-z0-9](-[a-z0-9])*)*$`) |
 | `definition` | JSONB NOT NULL  | Complete entity document (all fields)                      |
 | `crc64`      | BIGINT NOT NULL | CRC-64/ISO checksum for change detection                   |
 | `created_at` | TIMESTAMPTZ     | Row creation time                                          |
@@ -131,12 +131,14 @@ Agents, skills, and skill files are first-class entities in Mnemonic (see [ADR-0
 
 **Name conventions:**
 
-- Agents: max 64 chars, `^[a-z][a-z0-9-]*$`
-- Skills: max 64 chars, `^[a-z][a-z0-9-]*$`
+- Agents: max 64 chars, `^[a-z]([a-z0-9](-[a-z0-9])*)*$`
+- Skills: max 64 chars, `^[a-z]([a-z0-9](-[a-z0-9])*)*$`
+
+This pattern disallows consecutive hyphens and trailing hyphens, ensuring clean filesystem-compatible names.
 
 **CRC-64 change detection:** Computed in Go via `hash/crc64` with ISO polynomial. Stored as BIGINT. Enables efficient diff without comparing full JSONB documents.
 
-**Skill files** use a variation: `skill_id` FK with CASCADE delete, plus `file_type` (script/reference/asset) and `filename` columns for direct lookup. The file content and metadata live in a `document` JSONB column.
+**Skill files** use a variation: `skill_id` FK with CASCADE delete, plus `path` (VARCHAR(1024)) for file identification within the skill directory. The file body is stored in a `content` TEXT column with a `crc64` VARCHAR(20) checksum for change detection.
 
 ### Consequences
 

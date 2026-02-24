@@ -1095,7 +1095,7 @@ s.syncNeo4j(fmt.Sprintf("agent:%s", name), func() error {
 
 The service layer defines its own sentinel errors in a shared package. These are independent of repository-level errors and transport-level errors.
 
-**Note:** Authentication (401) and authorization (403) errors are handled by HTTP middleware before reaching service methods. No service-level sentinel errors exist for these cases. The middleware rejects unauthenticated or unauthorized requests and returns the appropriate HTTP status before any service method is invoked.
+**Note:** MVP has no authentication middleware. Post-MVP, authentication and authorization will be handled externally by Envoy and OPA before requests reach the application. Service methods do not define sentinel errors for 401/403.
 
 ```go
 // Package: internal/service/errors.go (or internal/service/errs/errs.go)
@@ -1631,7 +1631,7 @@ func (s *patternService) List(ctx context.Context, filter patternrepo.Filter, op
 
 [Table of Contents](#table-of-contents)
 
-All services are created in `cmd/server/main.go` (or a dedicated `wire.go` / `deps.go` file) during server startup. Dependencies are injected via constructor functions.
+All services are created in `cmd/main/main.go` (or a dedicated `wire.go` / `deps.go` file) during server startup. Dependencies are injected via constructor functions.
 
 ```go
 // Pseudocode for wiring in main.go

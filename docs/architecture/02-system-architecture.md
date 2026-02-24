@@ -87,7 +87,7 @@ graph TB
         subgraph "Admin REST API :8080"
             REST_HANDLER[HTTP Handler]
             REST_VALID[Request Validator]
-            ADMIN_SVC[Admin Service]
+            ADMIN_SVC[Admin Handler]
         end
 
         subgraph "MCP Server :8081"

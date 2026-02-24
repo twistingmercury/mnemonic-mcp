@@ -350,7 +350,7 @@ The otelx package handles the complexity of OpenTelemetry SDK setup, allowing Mn
 | `observability.health.path`               | string   | `/health`                | `MNEMONIC_OBSERVABILITY_HEALTH_PATH`               | Health check endpoint path                                                       |
 | `observability.tracing.enabled`           | bool     | `false`                  | `MNEMONIC_OBSERVABILITY_TRACING_ENABLED`           | Enable distributed tracing                                                       |
 | `observability.tracing.endpoint`          | string   | `""`                     | `MNEMONIC_OBSERVABILITY_TRACING_ENDPOINT`          | OTLP collector endpoint                                                          |
-| `observability.tracing.otlp_insecure`     | bool     | `false`                  | `MNEMONIC_OBSERVABILITY_TRACING_OTLP_INSECURE`     | Use insecure OTLP connection (local development only; production should use TLS) |
+| `observability.tracing.otlp_insecure`     | bool     | `true`                   | `MNEMONIC_OBSERVABILITY_TRACING_OTLP_INSECURE`     | Use insecure OTLP connection (local development only; production should use TLS) |
 
 > **Pending Implementation:** The following configuration fields are designed but not yet implemented in code: `enrichment.related_to_min_similarity`, `enrichment.completed_retention`, `enrichment.failed_retention`, and `observability.log_db_statements`. The Go struct definitions and Viper defaults include these fields, but the application code does not yet read or act on them. They will be wired during implementation of the enrichment worker and database instrumentation.
 
@@ -515,6 +515,7 @@ func setDefaults(v *viper.Viper) {
     v.SetDefault("observability.tracing.enabled", false)
     v.SetDefault("observability.tracing.sample_rate", 0.1)
     v.SetDefault("observability.tracing.otlp_insecure", true)
+    v.SetDefault("observability.log_db_statements", false)
 }
 ```
 
@@ -788,9 +789,10 @@ type LoggingConfig struct {
 }
 
 type ObservabilityConfig struct {
-    Metrics MetricsConfig `mapstructure:"metrics"`
-    Health  HealthConfig  `mapstructure:"health"`
-    Tracing TracingConfig `mapstructure:"tracing"`
+    Metrics         MetricsConfig `mapstructure:"metrics"`
+    Health          HealthConfig  `mapstructure:"health"`
+    Tracing         TracingConfig `mapstructure:"tracing"`
+    LogDBStatements bool          `mapstructure:"log_db_statements"`
 }
 
 type MetricsConfig struct {
@@ -927,6 +929,7 @@ classDiagram
         +MetricsConfig Metrics
         +HealthConfig Health
         +TracingConfig Tracing
+        +bool LogDBStatements
     }
 
     class MetricsConfig {
