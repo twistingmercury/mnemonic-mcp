@@ -14,7 +14,6 @@ import (
 //   - system_prompt: Full prompt text (up to 50KB)
 //   - model: sonnet, opus, haiku, or inherit
 //   - allowed_tools: Optional list of tool names
-//   - routing_keywords: Optional keywords for routing
 //
 // Authorization:
 //   - GET operations: Any authenticated user
@@ -236,12 +235,11 @@ func TestCreateAgent_Success(t *testing.T) {
 //
 // Expected behavior:
 //   - allowed_tools array is stored correctly
-//   - routing_keywords array is stored correctly
 func TestCreateAgent_AllFields(t *testing.T) {
 	t.Skip("not implemented")
 
 	// TODO: Implement test
-	// 1. POST /ace/agents with allowed_tools and routing_keywords
+	// 1. POST /ace/agents with allowed_tools
 	// 2. Assert 201 Created
 	// 3. GET the agent and verify all fields
 	// 4. Clean up
@@ -253,7 +251,6 @@ func TestCreateAgent_AllFields(t *testing.T) {
 // Expected behavior:
 //   - Only name, description, system_prompt, model required
 //   - allowed_tools defaults to empty array
-//   - routing_keywords defaults to empty array
 func TestCreateAgent_MinimalFields(t *testing.T) {
 	t.Skip("not implemented")
 
@@ -397,7 +394,7 @@ func TestUpdateAgent_FullReplacement(t *testing.T) {
 	t.Skip("not implemented")
 
 	// TODO: Implement test
-	// 1. Create agent with allowed_tools and routing_keywords
+	// 1. Create agent with allowed_tools
 	// 2. PUT without these optional fields
 	// 3. GET agent and verify optional fields are now empty/default
 	// 4. Clean up
@@ -505,23 +502,6 @@ func TestDeleteAgent_NotFound(t *testing.T) {
 	// TODO: Implement test
 	// 1. DELETE /ace/agents/non-existent-agent
 	// 2. Assert status code 404
-}
-
-// TestDeleteAgent_ReferencedByRoutingRules verifies conflict when agent in use.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1735 (DELETE /ace/agents/{name})
-//
-// Expected behavior:
-//   - Returns 409 Conflict
-//   - detail message indicates agent is referenced by routing rules
-func TestDeleteAgent_ReferencedByRoutingRules(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
-	// 1. Create an agent
-	// 2. Create a routing rule that references the agent
-	// 3. Try to DELETE the agent
-	// 4. Assert status code 409
-	// 5. Clean up: delete rule first, then agent
 }
 
 // TestDeleteAgent_Forbidden verifies non-admin cannot delete agents.

@@ -53,24 +53,6 @@ func TestTracingMiddlewareSkipsHealthPath(t *testing.T) {
 	assert.True(t, healthCalled)
 }
 
-func TestTracingMiddlewareSkipsOpsHealthPath(t *testing.T) {
-	router := gin.New()
-	router.Use(middleware.TracingMiddleware("test-service"))
-
-	opsHealthCalled := false
-	router.GET("/ops/health", func(c *gin.Context) {
-		opsHealthCalled = true
-		c.Status(http.StatusOK)
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/ops/health", nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.True(t, opsHealthCalled)
-}
-
 func TestTracingMiddlewareSkipsMetricsPath(t *testing.T) {
 	router := gin.New()
 	router.Use(middleware.TracingMiddleware("test-service"))

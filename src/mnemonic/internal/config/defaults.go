@@ -53,12 +53,6 @@ const (
 	DefaultRateLimitPerUserBurst      = 10
 )
 
-// Default values for routing configuration
-const (
-	DefaultRoutingCacheRefreshTTL     = 5 * time.Minute
-	DefaultRoutingCacheStartupTimeout = 30 * time.Second
-)
-
 // Default values for enrichment configuration
 const (
 	DefaultEnrichmentWorkerCount  = 2

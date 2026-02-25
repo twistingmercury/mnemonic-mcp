@@ -116,14 +116,19 @@ func testIntegrationPattern(suffix string) *pattern.Pattern {
 }
 
 // testIntegrationAgent creates a sample agent for integration testing with a unique name.
+// Uses the JSONB document model established in Phase 4.
 func testIntegrationAgent(suffix string) *agent.Agent {
+	definition := []byte(`{
+		"description": "Integration test agent: ` + suffix + `",
+		"system_prompt": "You are a test assistant for integration testing.",
+		"model": "sonnet",
+		"allowed_tools": [],
+		"version": "1.0.0"
+	}`)
 	return &agent.Agent{
-		Name:            testAgentPrefix + suffix,
-		Description:     "Integration test agent: " + suffix,
-		SystemPrompt:    "You are a test assistant for integration testing.",
-		Model:           "sonnet",
-		AllowedTools:    []string{},
-		RoutingKeywords: []string{},
+		Name:       testAgentPrefix + suffix,
+		Definition: definition,
+		CRC64:      "12345678901234",
 	}
 }
 
@@ -820,8 +825,8 @@ func TestIntegration_AgentAssociations(t *testing.T) {
 
 	t.Run("sets and gets agent associations", func(t *testing.T) {
 		associations := []pattern.AgentAssociation{
-			{AgentName: agent1.Name, Relevance: 0.9},
-			{AgentName: agent2.Name, Relevance: 0.7},
+			{AgentID: agent1.ID, Relevance: 0.9},
+			{AgentID: agent2.ID, Relevance: 0.7},
 		}
 
 		err := patternRepo.SetAgentAssociations(ctx, testPattern.ID, associations)
@@ -833,22 +838,22 @@ func TestIntegration_AgentAssociations(t *testing.T) {
 		require.Len(t, retrieved, 2)
 
 		// Should be ordered by relevance DESC
-		assert.Equal(t, agent1.Name, retrieved[0].AgentName)
+		assert.Equal(t, agent1.ID, retrieved[0].AgentID)
 		assert.InDelta(t, 0.9, retrieved[0].Relevance, 0.01)
-		assert.Equal(t, agent2.Name, retrieved[1].AgentName)
+		assert.Equal(t, agent2.ID, retrieved[1].AgentID)
 		assert.InDelta(t, 0.7, retrieved[1].Relevance, 0.01)
 	})
 
 	t.Run("replaces existing associations", func(t *testing.T) {
 		// Set initial associations
 		initial := []pattern.AgentAssociation{
-			{AgentName: agent1.Name, Relevance: 0.9},
+			{AgentID: agent1.ID, Relevance: 0.9},
 		}
 		require.NoError(t, patternRepo.SetAgentAssociations(ctx, testPattern.ID, initial))
 
 		// Replace with new associations
 		replacement := []pattern.AgentAssociation{
-			{AgentName: agent2.Name, Relevance: 0.5},
+			{AgentID: agent2.ID, Relevance: 0.5},
 		}
 		err := patternRepo.SetAgentAssociations(ctx, testPattern.ID, replacement)
 		require.NoError(t, err)
@@ -857,13 +862,13 @@ func TestIntegration_AgentAssociations(t *testing.T) {
 		retrieved, err := patternRepo.GetAgentAssociations(ctx, testPattern.ID)
 		require.NoError(t, err)
 		require.Len(t, retrieved, 1)
-		assert.Equal(t, agent2.Name, retrieved[0].AgentName)
+		assert.Equal(t, agent2.ID, retrieved[0].AgentID)
 	})
 
 	t.Run("clears associations with empty slice", func(t *testing.T) {
 		// Set some associations first
 		associations := []pattern.AgentAssociation{
-			{AgentName: agent1.Name, Relevance: 0.9},
+			{AgentID: agent1.ID, Relevance: 0.9},
 		}
 		require.NoError(t, patternRepo.SetAgentAssociations(ctx, testPattern.ID, associations))
 
@@ -879,7 +884,7 @@ func TestIntegration_AgentAssociations(t *testing.T) {
 
 	t.Run("returns ErrNotFound for nonexistent pattern", func(t *testing.T) {
 		associations := []pattern.AgentAssociation{
-			{AgentName: agent1.Name, Relevance: 0.9},
+			{AgentID: agent1.ID, Relevance: 0.9},
 		}
 		err := patternRepo.SetAgentAssociations(ctx, uuid.New(), associations)
 		assert.ErrorIs(t, err, pattern.ErrNotFound)

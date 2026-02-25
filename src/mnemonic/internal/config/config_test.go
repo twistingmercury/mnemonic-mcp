@@ -67,10 +67,6 @@ func TestDefaultValues(t *testing.T) {
 	assert.Equal(t, config.DefaultRateLimitPerUserRPM, cfg.RateLimit.PerUser.RequestsPerMinute)
 	assert.Equal(t, config.DefaultRateLimitPerUserBurst, cfg.RateLimit.PerUser.BurstSize)
 
-	// Routing defaults
-	assert.Equal(t, config.DefaultRoutingCacheRefreshTTL, cfg.Routing.Cache.RefreshTTL)
-	assert.Equal(t, config.DefaultRoutingCacheStartupTimeout, cfg.Routing.Cache.StartupTimeout)
-
 	// Enrichment defaults
 	assert.Equal(t, config.DefaultEnrichmentWorkerCount, cfg.Enrichment.WorkerCount)
 	assert.Equal(t, config.DefaultEnrichmentPollInterval, cfg.Enrichment.PollInterval)
@@ -642,40 +638,6 @@ func TestValidation_RateLimitDisabled(t *testing.T) {
 	// Should not have rate limit errors when disabled
 	for _, err := range errs {
 		assert.NotContains(t, err.Field, "rate_limit")
-	}
-}
-
-// TestValidation_RoutingConfig tests routing configuration validation.
-func TestValidation_RoutingConfig(t *testing.T) {
-	tests := []struct {
-		name        string
-		modify      func(cfg *config.MnemonicConfig)
-		expectError string
-	}{
-		{
-			name: "negative cache.refresh_ttl",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Routing.Cache.RefreshTTL = -1 * time.Second
-			},
-			expectError: "routing.cache.refresh_ttl",
-		},
-		{
-			name: "negative cache.startup_timeout",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Routing.Cache.StartupTimeout = -1 * time.Second
-			},
-			expectError: "routing.cache.startup_timeout",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := validConfig()
-			tt.modify(cfg)
-			errs := cfg.Validate()
-			require.NotEmpty(t, errs, "expected validation errors")
-			assert.Contains(t, errs.Error(), tt.expectError)
-		})
 	}
 }
 
@@ -1416,12 +1378,6 @@ func validConfig() *config.MnemonicConfig {
 			PerUser: config.PerUserRateLimit{
 				RequestsPerMinute: 60,
 				BurstSize:         10,
-			},
-		},
-		Routing: config.RoutingConfig{
-			Cache: config.RoutingCacheConfig{
-				RefreshTTL:     5 * time.Minute,
-				StartupTimeout: 30 * time.Second,
 			},
 		},
 		Enrichment: config.EnrichmentConfig{

@@ -37,32 +37,29 @@ type Agent struct {
 	Description     string   `json:"description"`
 	SystemPrompt    string   `json:"system_prompt"`
 	Model           string   `json:"model"`
-	AllowedTools    []string `json:"allowed_tools,omitempty"`
-	RoutingKeywords []string `json:"routing_keywords,omitempty"`
-	CreatedAt       string   `json:"created_at,omitempty"`
-	UpdatedAt       string   `json:"updated_at,omitempty"`
+	AllowedTools []string `json:"allowed_tools,omitempty"`
+	CreatedAt    string   `json:"created_at,omitempty"`
+	UpdatedAt    string   `json:"updated_at,omitempty"`
 }
 
 // AgentCreate represents request body for creating a new agent.
 // OpenAPI: api/openapi/mnemonic-v1.yaml:390 (AgentCreate)
 type AgentCreate struct {
-	Name            string   `json:"name"`
-	Description     string   `json:"description"`
-	SystemPrompt    string   `json:"system_prompt"`
-	Model           string   `json:"model"`
-	AllowedTools    []string `json:"allowed_tools,omitempty"`
-	RoutingKeywords []string `json:"routing_keywords,omitempty"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	SystemPrompt string   `json:"system_prompt"`
+	Model        string   `json:"model"`
+	AllowedTools []string `json:"allowed_tools,omitempty"`
 }
 
 // AgentUpdate represents request body for updating an agent.
 // OpenAPI: api/openapi/mnemonic-v1.yaml:447 (AgentUpdate)
 type AgentUpdate struct {
-	Name            string   `json:"name"`
-	Description     string   `json:"description"`
-	SystemPrompt    string   `json:"system_prompt"`
-	Model           string   `json:"model"`
-	AllowedTools    []string `json:"allowed_tools,omitempty"`
-	RoutingKeywords []string `json:"routing_keywords,omitempty"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	SystemPrompt string   `json:"system_prompt"`
+	Model        string   `json:"model"`
+	AllowedTools []string `json:"allowed_tools,omitempty"`
 }
 
 // AgentSummary represents agent summary without system_prompt.
@@ -141,129 +138,6 @@ type PatternSummary struct {
 type PatternList struct {
 	Data       []PatternSummary `json:"data"`
 	Pagination Pagination       `json:"pagination"`
-}
-
-// KeywordMatchConfig represents configuration for keyword-based matching.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:964 (KeywordMatchConfig)
-type KeywordMatchConfig struct {
-	Keywords  []string `json:"keywords"`
-	MatchMode string   `json:"match_mode"`
-}
-
-// RegexMatchConfig represents configuration for regex-based matching.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:993 (RegexMatchConfig)
-type RegexMatchConfig struct {
-	Pattern string `json:"pattern"`
-	Flags   string `json:"flags,omitempty"`
-}
-
-// PatternMatchConfig represents configuration for semantic pattern matching.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1010 (PatternMatchConfig)
-type PatternMatchConfig struct {
-	PatternIDs []string `json:"pattern_ids"`
-}
-
-// RoutingRule represents routing rule definition.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1028 (RoutingRule)
-type RoutingRule struct {
-	ID          string      `json:"id,omitempty"`
-	Name        string      `json:"name"`
-	Priority    int         `json:"priority"`
-	AgentName   string      `json:"agent_name"`
-	MatchType   string      `json:"match_type"`
-	MatchConfig interface{} `json:"match_config"`
-	Enabled     bool        `json:"enabled"`
-	CreatedAt   string      `json:"created_at,omitempty"`
-	UpdatedAt   string      `json:"updated_at,omitempty"`
-}
-
-// RoutingRuleCreate represents request body for creating a routing rule.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1094 (RoutingRuleCreate)
-type RoutingRuleCreate struct {
-	Name        string      `json:"name"`
-	Priority    int         `json:"priority"`
-	AgentName   string      `json:"agent_name"`
-	MatchType   string      `json:"match_type"`
-	MatchConfig interface{} `json:"match_config"`
-	Enabled     bool        `json:"enabled"`
-}
-
-// RoutingRuleUpdate represents request body for updating a routing rule.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1132 (RoutingRuleUpdate)
-type RoutingRuleUpdate struct {
-	Name        string      `json:"name"`
-	Priority    int         `json:"priority"`
-	AgentName   string      `json:"agent_name"`
-	MatchType   string      `json:"match_type"`
-	MatchConfig interface{} `json:"match_config"`
-	Enabled     bool        `json:"enabled"`
-}
-
-// RoutingRuleList represents paginated list of routing rules.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1163 (RoutingRuleList)
-type RoutingRuleList struct {
-	Data       []RoutingRule `json:"data"`
-	Pagination Pagination    `json:"pagination"`
-}
-
-// RouteContext represents optional context for routing decisions.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:767 (RouteContext)
-type RouteContext struct {
-	WorkingDirectory string   `json:"working_directory,omitempty"`
-	FileTypes        []string `json:"file_types,omitempty"`
-	RecentAgents     []string `json:"recent_agents,omitempty"`
-}
-
-// RouteOptions represents options for routing behavior.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:792 (RouteOptions)
-type RouteOptions struct {
-	IncludePatterns           bool    `json:"include_patterns,omitempty"`
-	MaxPatterns               int     `json:"max_patterns,omitempty"`
-	PatternRelevanceThreshold float64 `json:"pattern_relevance_threshold,omitempty"`
-}
-
-// RouteRequest represents request body for routing a prompt.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:814 (RouteRequest)
-type RouteRequest struct {
-	Prompt  string        `json:"prompt"`
-	Context *RouteContext `json:"context,omitempty"`
-	Options *RouteOptions `json:"options,omitempty"`
-}
-
-// RoutingDecision represents routing decision details.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:832 (RoutingDecision)
-type RoutingDecision struct {
-	AgentName       string   `json:"agent_name"`
-	Confidence      float64  `json:"confidence"`
-	Method          string   `json:"method"`
-	MatchedKeywords []string `json:"matched_keywords,omitempty"`
-	Reasoning       string   `json:"reasoning"`
-}
-
-// RoutePatternResult represents pattern included in routing response.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:878 (RoutePatternResult)
-type RoutePatternResult struct {
-	Name           string   `json:"name"`
-	Content        string   `json:"content"`
-	RelevanceScore float64  `json:"relevance_score"`
-	Tags           []string `json:"tags,omitempty"`
-}
-
-// RouteMetadata represents timing and debugging information.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:910 (RouteMetadata)
-type RouteMetadata struct {
-	RoutingDurationMs          int `json:"routing_duration_ms,omitempty"`
-	PatternRetrievalDurationMs int `json:"pattern_retrieval_duration_ms,omitempty"`
-	TotalPatternsConsidered    int `json:"total_patterns_considered,omitempty"`
-}
-
-// RouteResponse represents complete routing response.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:930 (RouteResponse)
-type RouteResponse struct {
-	Routing  RoutingDecision      `json:"routing"`
-	Agent    Agent                `json:"agent"`
-	Patterns []RoutePatternResult `json:"patterns,omitempty"`
-	Metadata *RouteMetadata       `json:"metadata,omitempty"`
 }
 
 // HealthResponse represents health check response.

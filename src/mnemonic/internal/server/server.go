@@ -115,7 +115,7 @@ func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMet
 
 	// otelx logging middleware with trace correlation
 	router.Use(otelxgin.LoggingMiddleware(tel.Otelx(),
-		otelxgin.WithSkipPaths("/health", "/ops/health", "/metrics"),
+		otelxgin.WithSkipPaths("/health", "/metrics"),
 		otelxgin.WithRequestHeaders("X-Request-ID", "X-Correlation-ID"),
 	))
 

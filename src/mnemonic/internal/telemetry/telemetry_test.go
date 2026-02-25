@@ -57,12 +57,6 @@ func createTestConfig() *config.MnemonicConfig {
 				BurstSize:         10,
 			},
 		},
-		Routing: config.RoutingConfig{
-			Cache: config.RoutingCacheConfig{
-				RefreshTTL:     5 * time.Minute,
-				StartupTimeout: 30 * time.Second,
-			},
-		},
 		Enrichment: config.EnrichmentConfig{
 			WorkerCount:  2,
 			PollInterval: 5 * time.Second,
@@ -226,13 +220,6 @@ func TestMetricsRegistryCreatedAndAccessible(t *testing.T) {
 	assert.NotNil(t, registry, "MetricsRegistry should not be nil")
 
 	// Verify the registry has its sub-registries initialized
-	assert.NotNil(t, registry.Routing, "Routing metrics should be initialized")
 	assert.NotNil(t, registry.Patterns, "Patterns metrics should be initialized")
 	assert.NotNil(t, registry.Database, "Database metrics should be initialized")
-
-	// Verify metrics can be recorded (smoke test - no panic)
-	registry.Routing.RecordCacheHit(context.Background())
-	registry.Routing.RecordCacheMiss(context.Background())
-	registry.Routing.RecordRoutingDecision(context.Background(), "test-agent")
-	registry.Routing.RecordRuleMatch(context.Background(), "exact")
 }

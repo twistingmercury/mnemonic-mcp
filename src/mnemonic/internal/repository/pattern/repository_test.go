@@ -1085,6 +1085,9 @@ func TestRepository_SetAgentAssociations(t *testing.T) {
 	t.Parallel()
 
 	patternID := uuid.New()
+	agentIDA := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	agentIDB := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+	nonexistentAgentID := uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
 
 	tests := []struct {
 		name         string
@@ -1097,8 +1100,8 @@ func TestRepository_SetAgentAssociations(t *testing.T) {
 			name:      "set associations for existing pattern",
 			patternID: patternID,
 			associations: []pattern.AgentAssociation{
-				{AgentName: "agent-a", Relevance: 0.9},
-				{AgentName: "agent-b", Relevance: 0.7},
+				{AgentID: agentIDA, Relevance: 0.9},
+				{AgentID: agentIDB, Relevance: 0.7},
 			},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				// Exists check
@@ -1107,17 +1110,17 @@ func TestRepository_SetAgentAssociations(t *testing.T) {
 					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
 				// Begin transaction
 				mock.ExpectBegin()
-				// Validate agent names exist
-				mock.ExpectQuery("SELECT name FROM agents WHERE name IN").
-					WithArgs("agent-a", "agent-b").
-					WillReturnRows(pgxmock.NewRows([]string{"name"}).AddRow("agent-a").AddRow("agent-b"))
+				// Validate agent IDs exist
+				mock.ExpectQuery("SELECT id FROM agents WHERE id IN").
+					WithArgs(agentIDA, agentIDB).
+					WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(agentIDA).AddRow(agentIDB))
 				// Delete existing
 				mock.ExpectExec("DELETE FROM pattern_agent_associations").
 					WithArgs(patternID).
 					WillReturnResult(pgxmock.NewResult("DELETE", 0))
 				// Batch insert both associations in a single query
 				mock.ExpectExec("INSERT INTO pattern_agent_associations").
-					WithArgs(patternID, "agent-a", 0.9, patternID, "agent-b", 0.7).
+					WithArgs(patternID, agentIDA, 0.9, patternID, agentIDB, 0.7).
 					WillReturnResult(pgxmock.NewResult("INSERT", 2))
 				// Commit transaction
 				mock.ExpectCommit()
@@ -1149,7 +1152,7 @@ func TestRepository_SetAgentAssociations(t *testing.T) {
 			name:      "pattern not found",
 			patternID: uuid.New(),
 			associations: []pattern.AgentAssociation{
-				{AgentName: "agent-a", Relevance: 0.9},
+				{AgentID: agentIDA, Relevance: 0.9},
 			},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("SELECT EXISTS").
@@ -1159,11 +1162,11 @@ func TestRepository_SetAgentAssociations(t *testing.T) {
 			wantErr: pattern.ErrNotFound,
 		},
 		{
-			name:      "invalid agent name returns ErrAgentNotFound",
+			name:      "invalid agent ID returns ErrAgentNotFound",
 			patternID: patternID,
 			associations: []pattern.AgentAssociation{
-				{AgentName: "valid-agent", Relevance: 0.9},
-				{AgentName: "nonexistent-agent", Relevance: 0.7},
+				{AgentID: agentIDA, Relevance: 0.9},
+				{AgentID: nonexistentAgentID, Relevance: 0.7},
 			},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				// Exists check
@@ -1172,10 +1175,10 @@ func TestRepository_SetAgentAssociations(t *testing.T) {
 					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
 				// Begin transaction
 				mock.ExpectBegin()
-				// Validate agent names - only valid-agent exists
-				mock.ExpectQuery("SELECT name FROM agents WHERE name IN").
-					WithArgs("valid-agent", "nonexistent-agent").
-					WillReturnRows(pgxmock.NewRows([]string{"name"}).AddRow("valid-agent"))
+				// Validate agent IDs - only agentIDA exists
+				mock.ExpectQuery("SELECT id FROM agents WHERE id IN").
+					WithArgs(agentIDA, nonexistentAgentID).
+					WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(agentIDA))
 				// Transaction should be rolled back (handled by defer)
 				mock.ExpectRollback()
 			},
@@ -1211,6 +1214,8 @@ func TestRepository_GetAgentAssociations(t *testing.T) {
 	t.Parallel()
 
 	patternID := uuid.New()
+	agentIDA := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	agentIDB := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 
 	tests := []struct {
 		name         string
@@ -1224,19 +1229,19 @@ func TestRepository_GetAgentAssociations(t *testing.T) {
 			name:      "get associations",
 			patternID: patternID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{"agent_name", "relevance"}).
-					AddRow("agent-a", 0.95).
-					AddRow("agent-b", 0.75)
-				mock.ExpectQuery("SELECT agent_name, relevance FROM pattern_agent_associations").
+				rows := pgxmock.NewRows([]string{"agent_id", "relevance"}).
+					AddRow(agentIDA, 0.95).
+					AddRow(agentIDB, 0.75)
+				mock.ExpectQuery("SELECT agent_id, relevance FROM pattern_agent_associations").
 					WithArgs(patternID).
 					WillReturnRows(rows)
 			},
 			wantCount: 2,
 			checkResults: func(t *testing.T, assocs []pattern.AgentAssociation) {
 				// Should be ordered by relevance DESC
-				assert.Equal(t, "agent-a", assocs[0].AgentName)
+				assert.Equal(t, agentIDA, assocs[0].AgentID)
 				assert.InDelta(t, 0.95, assocs[0].Relevance, 0.001)
-				assert.Equal(t, "agent-b", assocs[1].AgentName)
+				assert.Equal(t, agentIDB, assocs[1].AgentID)
 				assert.InDelta(t, 0.75, assocs[1].Relevance, 0.001)
 			},
 		},
@@ -1244,8 +1249,8 @@ func TestRepository_GetAgentAssociations(t *testing.T) {
 			name:      "no associations returns empty slice",
 			patternID: patternID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{"agent_name", "relevance"})
-				mock.ExpectQuery("SELECT agent_name, relevance FROM pattern_agent_associations").
+				rows := pgxmock.NewRows([]string{"agent_id", "relevance"})
+				mock.ExpectQuery("SELECT agent_id, relevance FROM pattern_agent_associations").
 					WithArgs(patternID).
 					WillReturnRows(rows)
 			},
@@ -1275,6 +1280,81 @@ func TestRepository_GetAgentAssociations(t *testing.T) {
 				if tt.checkResults != nil {
 					tt.checkResults(t, assocs)
 				}
+			}
+
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestRepository_GetPatternIDsByAgent(t *testing.T) {
+	t.Parallel()
+
+	agentID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	patternIDA := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	patternIDB := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+
+	tests := []struct {
+		name      string
+		agentID   uuid.UUID
+		setupMock func(mock pgxmock.PgxPoolIface)
+		wantIDs   []uuid.UUID
+		wantErr   error
+	}{
+		{
+			name:    "returns pattern IDs for agent",
+			agentID: agentID,
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				rows := pgxmock.NewRows([]string{"pattern_id"}).
+					AddRow(patternIDA).
+					AddRow(patternIDB)
+				mock.ExpectQuery("SELECT pattern_id FROM pattern_agent_associations WHERE agent_id").
+					WithArgs(agentID).
+					WillReturnRows(rows)
+			},
+			wantIDs: []uuid.UUID{patternIDA, patternIDB},
+		},
+		{
+			name:    "returns nil for agent with no associations",
+			agentID: agentID,
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				rows := pgxmock.NewRows([]string{"pattern_id"})
+				mock.ExpectQuery("SELECT pattern_id FROM pattern_agent_associations WHERE agent_id").
+					WithArgs(agentID).
+					WillReturnRows(rows)
+			},
+			wantIDs: nil,
+		},
+		{
+			name:    "returns error on database failure",
+			agentID: agentID,
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT pattern_id FROM pattern_agent_associations WHERE agent_id").
+					WithArgs(agentID).
+					WillReturnError(errors.New("connection failed"))
+			},
+			wantErr: errors.New("connection failed"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mock, err := pgxmock.NewPool()
+			require.NoError(t, err)
+			defer mock.Close()
+
+			tt.setupMock(mock)
+
+			repo := pattern.NewRepository(mock)
+			ids, err := repo.GetPatternIDsByAgent(context.Background(), tt.agentID)
+
+			if tt.wantErr != nil {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.wantIDs, ids)
 			}
 
 			assert.NoError(t, mock.ExpectationsWereMet())

@@ -6,5 +6,4 @@
 // Documentation:
 //   - Architecture: docs/architecture/08-data-architecture.md (Data Model Design > Patterns, PGVector Configuration, Neo4j Graph Model)
 //   - Design: docs/design/data-storage.md (Repository Interfaces > PatternRepository, PGVector Configuration)
-//   - Design: docs/design/routing-engine.md (Pattern Matcher (Semantic))
 package pattern
