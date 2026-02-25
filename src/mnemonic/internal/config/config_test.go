@@ -73,6 +73,9 @@ func TestDefaultValues(t *testing.T) {
 	assert.Equal(t, config.DefaultEnrichmentMaxAttempts, cfg.Enrichment.MaxAttempts)
 	assert.Equal(t, config.DefaultEnrichmentRetryDelay, cfg.Enrichment.RetryDelay)
 	assert.Equal(t, config.DefaultEnrichmentJobTimeout, cfg.Enrichment.JobTimeout)
+	assert.Equal(t, config.DefaultEnrichmentCompletedRetention, cfg.Enrichment.CompletedRetention)
+	assert.Equal(t, config.DefaultEnrichmentFailedRetention, cfg.Enrichment.FailedRetention)
+	assert.Equal(t, config.DefaultEnrichmentRelatedToMinSimilarity, cfg.Enrichment.RelatedToMinSimilarity)
 
 	// Logging defaults
 	assert.Equal(t, config.DefaultLoggingLevel, cfg.Logging.Level)
@@ -682,6 +685,48 @@ func TestValidation_EnrichmentConfig(t *testing.T) {
 				cfg.Enrichment.JobTimeout = 0
 			},
 			expectError: "enrichment.job_timeout",
+		},
+		{
+			name: "zero completed_retention",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Enrichment.CompletedRetention = 0
+			},
+			expectError: "enrichment.completed_retention",
+		},
+		{
+			name: "negative completed_retention",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Enrichment.CompletedRetention = -1 * time.Hour
+			},
+			expectError: "enrichment.completed_retention",
+		},
+		{
+			name: "zero failed_retention",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Enrichment.FailedRetention = 0
+			},
+			expectError: "enrichment.failed_retention",
+		},
+		{
+			name: "negative failed_retention",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Enrichment.FailedRetention = -1 * time.Hour
+			},
+			expectError: "enrichment.failed_retention",
+		},
+		{
+			name: "negative related_to_min_similarity",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Enrichment.RelatedToMinSimilarity = -0.1
+			},
+			expectError: "enrichment.related_to_min_similarity",
+		},
+		{
+			name: "related_to_min_similarity over 1",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Enrichment.RelatedToMinSimilarity = 1.5
+			},
+			expectError: "enrichment.related_to_min_similarity",
 		},
 	}
 
@@ -1381,11 +1426,14 @@ func validConfig() *config.MnemonicConfig {
 			},
 		},
 		Enrichment: config.EnrichmentConfig{
-			WorkerCount:  2,
-			PollInterval: 5 * time.Second,
-			MaxAttempts:  3,
-			RetryDelay:   30 * time.Second,
-			JobTimeout:   5 * time.Minute,
+			WorkerCount:            2,
+			PollInterval:           5 * time.Second,
+			MaxAttempts:            3,
+			RetryDelay:             30 * time.Second,
+			JobTimeout:             5 * time.Minute,
+			CompletedRetention:     168 * time.Hour,
+			FailedRetention:        720 * time.Hour,
+			RelatedToMinSimilarity: 0.3,
 		},
 		Logging: config.LoggingConfig{
 			Level:         "info",

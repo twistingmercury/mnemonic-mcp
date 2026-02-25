@@ -95,11 +95,14 @@ type PerUserRateLimit struct {
 
 // EnrichmentConfig contains enrichment worker settings.
 type EnrichmentConfig struct {
-	WorkerCount  int           `mapstructure:"worker_count"`
-	PollInterval time.Duration `mapstructure:"poll_interval"`
-	MaxAttempts  int           `mapstructure:"max_attempts"`
-	RetryDelay   time.Duration `mapstructure:"retry_delay"`
-	JobTimeout   time.Duration `mapstructure:"job_timeout"`
+	WorkerCount            int           `mapstructure:"worker_count"`
+	PollInterval           time.Duration `mapstructure:"poll_interval"`
+	MaxAttempts            int           `mapstructure:"max_attempts"`
+	RetryDelay             time.Duration `mapstructure:"retry_delay"`
+	JobTimeout             time.Duration `mapstructure:"job_timeout"`
+	CompletedRetention     time.Duration `mapstructure:"completed_retention"`
+	FailedRetention        time.Duration `mapstructure:"failed_retention"`
+	RelatedToMinSimilarity float64       `mapstructure:"related_to_min_similarity"`
 }
 
 // LoggingConfig contains logging settings.
@@ -286,6 +289,9 @@ func SetDefaults(v *viper.Viper) {
 	v.SetDefault("enrichment.max_attempts", DefaultEnrichmentMaxAttempts)
 	v.SetDefault("enrichment.retry_delay", DefaultEnrichmentRetryDelay)
 	v.SetDefault("enrichment.job_timeout", DefaultEnrichmentJobTimeout)
+	v.SetDefault("enrichment.completed_retention", DefaultEnrichmentCompletedRetention)
+	v.SetDefault("enrichment.failed_retention", DefaultEnrichmentFailedRetention)
+	v.SetDefault("enrichment.related_to_min_similarity", DefaultEnrichmentRelatedToMinSimilarity)
 
 	// Logging defaults
 	v.SetDefault("logging.level", DefaultLoggingLevel)
@@ -642,6 +648,27 @@ func (c *EnrichmentConfig) validate() ValidationErrors {
 		errs = append(errs, ValidationError{
 			Field:   "enrichment.job_timeout",
 			Message: "must be a positive duration",
+		})
+	}
+
+	if c.CompletedRetention <= 0 {
+		errs = append(errs, ValidationError{
+			Field:   "enrichment.completed_retention",
+			Message: "must be a positive duration",
+		})
+	}
+
+	if c.FailedRetention <= 0 {
+		errs = append(errs, ValidationError{
+			Field:   "enrichment.failed_retention",
+			Message: "must be a positive duration",
+		})
+	}
+
+	if c.RelatedToMinSimilarity < 0 || c.RelatedToMinSimilarity > 1 {
+		errs = append(errs, ValidationError{
+			Field:   "enrichment.related_to_min_similarity",
+			Message: fmt.Sprintf("must be between 0 and 1, got %f", c.RelatedToMinSimilarity),
 		})
 	}
 

@@ -56,7 +56,17 @@ type Repository interface {
 	// SetPatternAgentRelevance replaces all RELEVANT_FOR relationships for a pattern.
 	SetPatternAgentRelevance(ctx context.Context, patternID uuid.UUID, associations []AgentAssociation) error
 
-	// FindRelatedPatterns finds patterns that share concepts with the given pattern.
+	// ComputeRelatedToEdges deletes existing RELATED_TO edges for the given pattern
+	// and recomputes them based on shared concepts. Only edges with similarity >= minSimilarity
+	// are created. The similarity is computed as: shared_concepts / max(total_concepts_a, total_concepts_b).
+	// Called by EnrichmentService.ProcessJob after concept extraction.
+	ComputeRelatedToEdges(ctx context.Context, patternID uuid.UUID, minSimilarity float64) error
+
+	// GetPatternConcepts returns all concepts linked to a pattern via MENTIONED_IN relationships.
+	GetPatternConcepts(ctx context.Context, patternID uuid.UUID) ([]Concept, error)
+
+	// FindRelatedPatterns finds patterns related to the given pattern using pre-computed RELATED_TO edges.
+	// Results include similarity scores and shared concept names.
 	FindRelatedPatterns(ctx context.Context, patternID uuid.UUID, limit int) ([]RelatedPattern, error)
 
 	// FindPatternsByAgent finds patterns relevant to the specified agent, ordered by relevance.
@@ -426,7 +436,133 @@ func (r *neo4jRepository) SetPatternAgentRelevance(ctx context.Context, patternI
 	return nil
 }
 
-// FindRelatedPatterns finds patterns that share concepts with the given pattern.
+// ComputeRelatedToEdges deletes existing RELATED_TO edges for the given pattern
+// and recomputes them based on shared concepts.
+func (r *neo4jRepository) ComputeRelatedToEdges(ctx context.Context, patternID uuid.UUID, minSimilarity float64) (err error) {
+	if patternID == uuid.Nil {
+		return errors.New("patternID must not be nil UUID")
+	}
+
+	session := r.factory(ctx)
+	defer func() {
+		if closeErr := session.Close(ctx); closeErr != nil && err == nil {
+			err = fmt.Errorf("closing session: %w", closeErr)
+		}
+	}()
+
+	_, err = session.ExecuteWrite(ctx, func(runner CypherRunner) (any, error) {
+		// Step 1: Delete existing RELATED_TO edges for this pattern.
+		_, err := runner.Run(ctx,
+			`MATCH (p:Pattern {id: $patternId})-[r:RELATED_TO]-()
+			 DELETE r`,
+			map[string]any{"patternId": patternID.String()},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("deleting existing RELATED_TO edges: %w", err)
+		}
+
+		// Step 2: Find patterns sharing concepts, compute similarity, create edges.
+		_, err = runner.Run(ctx,
+			`MATCH (p1:Pattern {id: $patternId})<-[:MENTIONED_IN]-(c:Concept)-[:MENTIONED_IN]->(p2:Pattern)
+			 WHERE p1 <> p2
+			 WITH p1, p2, count(DISTINCT c) AS sharedCount
+			 OPTIONAL MATCH (c1:Concept)-[:MENTIONED_IN]->(p1)
+			 WITH p1, p2, sharedCount, count(DISTINCT c1) AS totalA
+			 OPTIONAL MATCH (c2:Concept)-[:MENTIONED_IN]->(p2)
+			 WITH p1, p2, sharedCount, totalA, count(DISTINCT c2) AS totalB
+			 WITH p1, p2, sharedCount,
+			      CASE WHEN totalA > totalB THEN totalA ELSE totalB END AS maxTotal
+			 WITH p1, p2, sharedCount,
+			      CASE WHEN maxTotal = 0 THEN 0.0
+			           ELSE toFloat(sharedCount) / toFloat(maxTotal)
+			      END AS similarity
+			 WHERE similarity >= $minSimilarity
+			 CREATE (p1)-[:RELATED_TO {similarity: similarity, updatedAt: datetime()}]->(p2)`,
+			map[string]any{
+				"patternId":     patternID.String(),
+				"minSimilarity": minSimilarity,
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("computing RELATED_TO edges: %w", err)
+		}
+
+		return nil, nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("computing related-to edges for pattern %s: %w", patternID, err)
+	}
+	return nil
+}
+
+// GetPatternConcepts returns all concepts linked to a pattern via MENTIONED_IN relationships.
+func (r *neo4jRepository) GetPatternConcepts(ctx context.Context, patternID uuid.UUID) (_ []Concept, err error) {
+	if patternID == uuid.Nil {
+		return nil, errors.New("patternID must not be nil UUID")
+	}
+
+	session := r.factory(ctx)
+	defer func() {
+		if closeErr := session.Close(ctx); closeErr != nil && err == nil {
+			err = fmt.Errorf("closing session: %w", closeErr)
+		}
+	}()
+
+	result, err := session.ExecuteRead(ctx, func(runner CypherRunner) (any, error) {
+		res, err := runner.Run(ctx,
+			`MATCH (c:Concept)-[:MENTIONED_IN]->(p:Pattern {id: $patternId})
+			 RETURN c.name AS name, c.type AS type
+			 ORDER BY c.name`,
+			map[string]any{"patternId": patternID.String()},
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		records, err := res.Collect(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		concepts := make([]Concept, 0, len(records))
+		for _, record := range records {
+			nameVal, ok := record.Get("name")
+			if !ok {
+				return nil, fmt.Errorf("missing 'name' field in record")
+			}
+			nameStr, ok := nameVal.(string)
+			if !ok {
+				return nil, fmt.Errorf("unexpected type for 'name': %T", nameVal)
+			}
+
+			typeVal, ok := record.Get("type")
+			if !ok {
+				return nil, fmt.Errorf("missing 'type' field in record")
+			}
+			typeStr, ok := typeVal.(string)
+			if !ok {
+				return nil, fmt.Errorf("unexpected type for 'type': %T", typeVal)
+			}
+
+			concepts = append(concepts, Concept{
+				Name: nameStr,
+				Type: typeStr,
+			})
+		}
+
+		return concepts, nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("getting concepts for pattern %s: %w", patternID, err)
+	}
+
+	return result.([]Concept), nil
+}
+
+// FindRelatedPatterns finds patterns related to the given pattern using pre-computed RELATED_TO edges.
+// Results include similarity scores and shared concept names.
 func (r *neo4jRepository) FindRelatedPatterns(ctx context.Context, patternID uuid.UUID, limit int) (_ []RelatedPattern, err error) {
 	if patternID == uuid.Nil {
 		return nil, errors.New("patternID must not be nil UUID")
@@ -441,12 +577,13 @@ func (r *neo4jRepository) FindRelatedPatterns(ctx context.Context, patternID uui
 
 	result, err := session.ExecuteRead(ctx, func(runner CypherRunner) (any, error) {
 		res, err := runner.Run(ctx,
-			`MATCH (p1:Pattern {id: $patternId})<-[:MENTIONED_IN]-(c:Concept)-[:MENTIONED_IN]->(p2:Pattern)
-			 WHERE p1 <> p2
-			 WITH p2, count(c) AS sharedConcepts
-			 ORDER BY sharedConcepts DESC
+			`MATCH (p1:Pattern {id: $patternId})-[r:RELATED_TO]-(p2:Pattern)
+			 WITH p1, p2, r.similarity AS similarity
+			 OPTIONAL MATCH (p1)<-[:MENTIONED_IN]-(c:Concept)-[:MENTIONED_IN]->(p2)
+			 WITH p2, similarity, collect(c.name) AS conceptNames, count(c) AS sharedConcepts
+			 ORDER BY similarity DESC
 			 LIMIT $limit
-			 RETURN p2.id AS id, p2.name AS name, sharedConcepts`,
+			 RETURN p2.id AS id, p2.name AS name, sharedConcepts, similarity, conceptNames`,
 			map[string]any{
 				"patternId": patternID.String(),
 				"limit":     limit,
@@ -490,6 +627,32 @@ func (r *neo4jRepository) FindRelatedPatterns(ctx context.Context, patternID uui
 				return nil, fmt.Errorf("unexpected type for 'sharedConcepts': %T", sharedVal)
 			}
 
+			similarityVal, ok := record.Get("similarity")
+			if !ok {
+				return nil, fmt.Errorf("missing 'similarity' field in record")
+			}
+			similarityFloat, ok := similarityVal.(float64)
+			if !ok {
+				return nil, fmt.Errorf("unexpected type for 'similarity': %T", similarityVal)
+			}
+
+			conceptNamesVal, ok := record.Get("conceptNames")
+			if !ok {
+				return nil, fmt.Errorf("missing 'conceptNames' field in record")
+			}
+			conceptNamesRaw, ok := conceptNamesVal.([]any)
+			if !ok {
+				return nil, fmt.Errorf("unexpected type for 'conceptNames': %T", conceptNamesVal)
+			}
+			conceptNames := make([]string, 0, len(conceptNamesRaw))
+			for _, v := range conceptNamesRaw {
+				s, ok := v.(string)
+				if !ok {
+					return nil, fmt.Errorf("unexpected type for concept name element: %T", v)
+				}
+				conceptNames = append(conceptNames, s)
+			}
+
 			parsedID, err := uuid.Parse(idStr)
 			if err != nil {
 				return nil, fmt.Errorf("parsing pattern ID %q: %w", idStr, err)
@@ -499,6 +662,8 @@ func (r *neo4jRepository) FindRelatedPatterns(ctx context.Context, patternID uui
 				ID:             parsedID,
 				Name:           nameStr,
 				SharedConcepts: int(sharedInt),
+				Similarity:     similarityFloat,
+				ConceptNames:   conceptNames,
 			})
 		}
 

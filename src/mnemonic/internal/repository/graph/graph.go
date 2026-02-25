@@ -33,6 +33,13 @@ type RelatedPattern struct {
 
 	// SharedConcepts is the number of concepts shared between the source and this pattern.
 	SharedConcepts int
+
+	// Similarity is the pre-computed similarity score from the RELATED_TO edge (0.0-1.0).
+	// Computed as: sharedConcepts / max(totalConceptsA, totalConceptsB).
+	Similarity float64
+
+	// ConceptNames contains the names of the shared concepts between the two patterns.
+	ConceptNames []string
 }
 
 // PatternRelevance represents a pattern associated with an agent and its relevance score.

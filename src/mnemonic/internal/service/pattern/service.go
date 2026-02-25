@@ -1,0 +1,466 @@
+// Package pattern provides the business logic layer for pattern lifecycle management.
+// It coordinates between the PostgreSQL pattern, enrichment job, and agent repositories,
+// and the Neo4j graph repository, handling agent name resolution, enrichment job
+// creation, and best-effort graph synchronization.
+package pattern
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/rs/zerolog"
+	"github.com/twistingmercury/mnemonic/internal/repository"
+	agentrepo "github.com/twistingmercury/mnemonic/internal/repository/agent"
+	enrichmentrepo "github.com/twistingmercury/mnemonic/internal/repository/enrichmentjob"
+	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
+	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
+	"github.com/twistingmercury/mnemonic/internal/service"
+)
+
+// Service defines the operations for managing pattern lifecycle.
+// Agent associations use agent names as the external identifier; the service
+// resolves names to UUIDs internally via the agent repository.
+type Service interface {
+	// Create stores a new pattern in Postgres, creates an enrichment job,
+	// and best-effort syncs agent associations to Neo4j.
+	// Returns service.ErrNotFound if any referenced agent name does not exist.
+	// Returns service.ErrConflict if the pattern name already exists.
+	Create(ctx context.Context, input CreateInput) (*patternrepo.Pattern, error)
+
+	// Get retrieves a pattern by ID. Returns service.ErrNotFound if not found.
+	Get(ctx context.Context, id uuid.UUID) (*patternrepo.Pattern, error)
+
+	// GetWithGraph retrieves a pattern and, if enriched, its graph context
+	// (related patterns and concepts). Neo4j failures degrade gracefully,
+	// returning (pattern, nil, nil) instead of an error.
+	GetWithGraph(ctx context.Context, id uuid.UUID) (*patternrepo.Pattern, *GraphContext, error)
+
+	// Update modifies an existing pattern, creates a new enrichment job,
+	// and best-effort syncs to Neo4j.
+	Update(ctx context.Context, id uuid.UUID, input UpdateInput) (*patternrepo.Pattern, error)
+
+	// Delete removes a pattern from Postgres (CASCADE handles associations and
+	// jobs) and best-effort cleans up Neo4j.
+	Delete(ctx context.Context, id uuid.UUID) error
+
+	// List retrieves patterns with filtering and pagination.
+	List(ctx context.Context, filter patternrepo.Filter, opts ListOptions) ([]*patternrepo.Pattern, int64, error)
+
+	// SetAgentAssociations replaces all agent associations for a pattern.
+	// Agent names are resolved to UUIDs; returns service.ErrNotFound if any
+	// agent name does not exist.
+	SetAgentAssociations(ctx context.Context, patternID uuid.UUID, associations []AssociationInput) error
+
+	// GetAgentAssociations retrieves all agent associations for a pattern.
+	GetAgentAssociations(ctx context.Context, patternID uuid.UUID) ([]patternrepo.AgentAssociation, error)
+
+	// FindRelated finds patterns related to the given pattern via the Neo4j
+	// knowledge graph. Returns service.ErrNotFound if the pattern does not exist.
+	FindRelated(ctx context.Context, patternID uuid.UUID, limit int) ([]RelatedPatternResult, error)
+}
+
+// CreateInput contains fields for creating a pattern.
+type CreateInput struct {
+	Name              string
+	Description       *string
+	Content           string
+	Tags              []string
+	AgentAssociations []AssociationInput
+}
+
+// UpdateInput contains fields for updating a pattern.
+type UpdateInput struct {
+	Name              string
+	Description       *string
+	Content           string
+	Tags              []string
+	AgentAssociations []AssociationInput
+}
+
+// AssociationInput represents an agent association specified by agent name.
+type AssociationInput struct {
+	AgentName string
+	Relevance float64
+}
+
+// GraphContext holds the knowledge graph context for a pattern.
+type GraphContext struct {
+	RelatedPatterns []RelatedPatternResult
+	Concepts        []ConceptResult
+}
+
+// RelatedPatternResult represents a pattern discovered through shared concepts.
+type RelatedPatternResult struct {
+	ID             uuid.UUID
+	Name           string
+	Relationship   string
+	Similarity     float64
+	SharedConcepts []string
+}
+
+// ConceptResult represents a concept linked to a pattern.
+type ConceptResult struct {
+	Name string
+	Type string
+}
+
+// ListOptions defines service-layer pagination parameters.
+type ListOptions struct {
+	Offset int
+	Limit  int
+}
+
+// patternService implements the Service interface.
+type patternService struct {
+	patternRepo    patternrepo.Repository
+	enrichmentRepo enrichmentrepo.Repository
+	graphRepo      graphrepo.Repository
+	agentRepo      agentrepo.Repository
+	pool           repository.TxBeginner
+	logger         zerolog.Logger
+}
+
+// New creates a new pattern Service backed by the given repositories.
+func New(
+	patternRepo patternrepo.Repository,
+	enrichmentRepo enrichmentrepo.Repository,
+	graphRepo graphrepo.Repository,
+	agentRepo agentrepo.Repository,
+	pool repository.TxBeginner,
+	logger zerolog.Logger,
+) Service {
+	return &patternService{
+		patternRepo:    patternRepo,
+		enrichmentRepo: enrichmentRepo,
+		graphRepo:      graphRepo,
+		agentRepo:      agentRepo,
+		pool:           pool,
+		logger:         logger,
+	}
+}
+
+// Create stores a new pattern, sets agent associations, creates an enrichment
+// job, and best-effort syncs to Neo4j.
+func (s *patternService) Create(ctx context.Context, input CreateInput) (*patternrepo.Pattern, error) {
+	// Resolve agent names to UUIDs before any mutations.
+	resolvedAssocs, graphAssocs, err := s.resolveAgentAssociations(ctx, input.AgentAssociations)
+	if err != nil {
+		return nil, err
+	}
+
+	pattern := patternrepo.Pattern{
+		Name:        input.Name,
+		Description: input.Description,
+		Content:     input.Content,
+		Tags:        input.Tags,
+	}
+
+	if err := s.patternRepo.Create(ctx, &pattern); err != nil {
+		if errors.Is(err, patternrepo.ErrNameExists) {
+			return nil, fmt.Errorf("%w: pattern %q", service.ErrConflict, input.Name)
+		}
+		return nil, fmt.Errorf("create pattern: %w", err)
+	}
+
+	// Set agent associations if provided.
+	if len(resolvedAssocs) > 0 {
+		if err := s.patternRepo.SetAgentAssociations(ctx, pattern.ID, resolvedAssocs); err != nil {
+			return nil, fmt.Errorf("create pattern: setting associations: %w", err)
+		}
+	}
+
+	// Create enrichment job for async processing.
+	job := enrichmentrepo.Job{
+		PatternID: pattern.ID,
+		Status:    string(enrichmentrepo.StatusPending),
+	}
+	if err := s.enrichmentRepo.Create(ctx, &job); err != nil {
+		return nil, fmt.Errorf("create pattern: creating enrichment job: %w", err)
+	}
+
+	// Best-effort Neo4j sync for agent associations.
+	if len(graphAssocs) > 0 {
+		s.syncNeo4j("pattern:agent-relevance:"+pattern.ID.String(), func() error {
+			return s.graphRepo.SetPatternAgentRelevance(ctx, pattern.ID, graphAssocs)
+		})
+	}
+
+	return &pattern, nil
+}
+
+// Get retrieves a pattern by ID.
+func (s *patternService) Get(ctx context.Context, id uuid.UUID) (*patternrepo.Pattern, error) {
+	pattern, err := s.patternRepo.Get(ctx, id)
+	if err != nil {
+		if errors.Is(err, patternrepo.ErrNotFound) {
+			return nil, fmt.Errorf("%w: pattern %s", service.ErrNotFound, id)
+		}
+		return nil, fmt.Errorf("get pattern: %w", err)
+	}
+	return pattern, nil
+}
+
+// GetWithGraph retrieves a pattern and its graph context. If the pattern is not
+// enriched or Neo4j is unavailable, the graph context is nil.
+func (s *patternService) GetWithGraph(ctx context.Context, id uuid.UUID) (*patternrepo.Pattern, *GraphContext, error) {
+	pattern, err := s.patternRepo.Get(ctx, id)
+	if err != nil {
+		if errors.Is(err, patternrepo.ErrNotFound) {
+			return nil, nil, fmt.Errorf("%w: pattern %s", service.ErrNotFound, id)
+		}
+		return nil, nil, fmt.Errorf("get pattern with graph: %w", err)
+	}
+
+	if pattern.EnrichmentStatus != "enriched" {
+		return pattern, nil, nil
+	}
+
+	// Fetch graph context; degrade gracefully on Neo4j failure.
+	graphCtx, err := s.fetchGraphContext(ctx, id)
+	if err != nil {
+		s.logger.Warn().
+			Err(err).
+			Str("pattern_id", id.String()).
+			Msg("failed to fetch graph context, returning without graph")
+		return pattern, nil, nil
+	}
+
+	return pattern, graphCtx, nil
+}
+
+// Update modifies an existing pattern, triggers re-enrichment, and best-effort
+// syncs to Neo4j.
+func (s *patternService) Update(ctx context.Context, id uuid.UUID, input UpdateInput) (*patternrepo.Pattern, error) {
+	// Verify pattern exists.
+	existing, err := s.patternRepo.Get(ctx, id)
+	if err != nil {
+		if errors.Is(err, patternrepo.ErrNotFound) {
+			return nil, fmt.Errorf("%w: pattern %s", service.ErrNotFound, id)
+		}
+		return nil, fmt.Errorf("update pattern: %w", err)
+	}
+
+	// Resolve agent names to UUIDs.
+	resolvedAssocs, graphAssocs, err := s.resolveAgentAssociations(ctx, input.AgentAssociations)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build updated pattern preserving the ID.
+	existing.Name = input.Name
+	existing.Description = input.Description
+	existing.Content = input.Content
+	existing.Tags = input.Tags
+
+	if err := s.patternRepo.Update(ctx, existing); err != nil {
+		if errors.Is(err, patternrepo.ErrNameExists) {
+			return nil, fmt.Errorf("%w: pattern %q", service.ErrConflict, input.Name)
+		}
+		return nil, fmt.Errorf("update pattern: %w", err)
+	}
+
+	// Set agent associations if provided.
+	if len(resolvedAssocs) > 0 {
+		if err := s.patternRepo.SetAgentAssociations(ctx, existing.ID, resolvedAssocs); err != nil {
+			return nil, fmt.Errorf("update pattern: setting associations: %w", err)
+		}
+	}
+
+	// Create new enrichment job (update always triggers re-enrichment for MVP).
+	job := enrichmentrepo.Job{
+		PatternID: existing.ID,
+		Status:    string(enrichmentrepo.StatusPending),
+	}
+	if err := s.enrichmentRepo.Create(ctx, &job); err != nil {
+		return nil, fmt.Errorf("update pattern: creating enrichment job: %w", err)
+	}
+
+	// Best-effort Neo4j sync for agent associations.
+	if len(graphAssocs) > 0 {
+		s.syncNeo4j("pattern:agent-relevance:"+existing.ID.String(), func() error {
+			return s.graphRepo.SetPatternAgentRelevance(ctx, existing.ID, graphAssocs)
+		})
+	}
+
+	return existing, nil
+}
+
+// Delete removes a pattern from Postgres and best-effort cleans up Neo4j.
+func (s *patternService) Delete(ctx context.Context, id uuid.UUID) error {
+	if err := s.patternRepo.Delete(ctx, id); err != nil {
+		if errors.Is(err, patternrepo.ErrNotFound) {
+			return fmt.Errorf("%w: pattern %s", service.ErrNotFound, id)
+		}
+		return fmt.Errorf("delete pattern: %w", err)
+	}
+
+	// Best-effort Neo4j cleanup.
+	s.syncNeo4j("pattern:delete:"+id.String(), func() error {
+		return s.graphRepo.DeletePattern(ctx, id)
+	})
+	s.syncNeo4j("pattern:cleanup-orphans", func() error {
+		_, err := s.graphRepo.CleanupOrphanedConcepts(ctx)
+		return err
+	})
+
+	return nil
+}
+
+// List retrieves patterns with filtering and pagination.
+func (s *patternService) List(ctx context.Context, filter patternrepo.Filter, opts ListOptions) ([]*patternrepo.Pattern, int64, error) {
+	patterns, total, err := s.patternRepo.List(ctx, filter, repository.ListOptions{
+		Offset: opts.Offset,
+		Limit:  opts.Limit,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("list patterns: %w", err)
+	}
+	return patterns, total, nil
+}
+
+// SetAgentAssociations replaces all agent associations for a pattern.
+func (s *patternService) SetAgentAssociations(ctx context.Context, patternID uuid.UUID, associations []AssociationInput) error {
+	resolvedAssocs, graphAssocs, err := s.resolveAgentAssociations(ctx, associations)
+	if err != nil {
+		return err
+	}
+
+	if err := s.patternRepo.SetAgentAssociations(ctx, patternID, resolvedAssocs); err != nil {
+		if errors.Is(err, patternrepo.ErrNotFound) {
+			return fmt.Errorf("%w: pattern %s", service.ErrNotFound, patternID)
+		}
+		return fmt.Errorf("set agent associations: %w", err)
+	}
+
+	// Best-effort Neo4j sync.
+	s.syncNeo4j("pattern:agent-relevance:"+patternID.String(), func() error {
+		return s.graphRepo.SetPatternAgentRelevance(ctx, patternID, graphAssocs)
+	})
+
+	return nil
+}
+
+// GetAgentAssociations retrieves all agent associations for a pattern.
+func (s *patternService) GetAgentAssociations(ctx context.Context, patternID uuid.UUID) ([]patternrepo.AgentAssociation, error) {
+	assocs, err := s.patternRepo.GetAgentAssociations(ctx, patternID)
+	if err != nil {
+		return nil, fmt.Errorf("get agent associations: %w", err)
+	}
+	return assocs, nil
+}
+
+// FindRelated finds patterns related to the given pattern via the knowledge graph.
+func (s *patternService) FindRelated(ctx context.Context, patternID uuid.UUID, limit int) ([]RelatedPatternResult, error) {
+	// Verify pattern exists.
+	exists, err := s.patternRepo.Exists(ctx, patternID)
+	if err != nil {
+		return nil, fmt.Errorf("find related: %w", err)
+	}
+	if !exists {
+		return nil, fmt.Errorf("%w: pattern %s", service.ErrNotFound, patternID)
+	}
+
+	related, err := s.graphRepo.FindRelatedPatterns(ctx, patternID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("find related: %w", err)
+	}
+
+	results := make([]RelatedPatternResult, len(related))
+	for i, r := range related {
+		results[i] = RelatedPatternResult{
+			ID:             r.ID,
+			Name:           r.Name,
+			Relationship:   "RELATED_TO",
+			Similarity:     r.Similarity,
+			SharedConcepts: r.ConceptNames,
+		}
+	}
+
+	return results, nil
+}
+
+// resolveAgentAssociations converts agent names to UUIDs and builds both the
+// Postgres and Neo4j association slices. Returns service.ErrNotFound if any
+// agent name cannot be resolved.
+func (s *patternService) resolveAgentAssociations(
+	ctx context.Context,
+	inputs []AssociationInput,
+) ([]patternrepo.AgentAssociation, []graphrepo.AgentAssociation, error) {
+	if len(inputs) == 0 {
+		return nil, nil, nil
+	}
+
+	pgAssocs := make([]patternrepo.AgentAssociation, len(inputs))
+	graphAssocs := make([]graphrepo.AgentAssociation, len(inputs))
+
+	for i, input := range inputs {
+		agent, err := s.agentRepo.Get(ctx, input.AgentName)
+		if err != nil {
+			if errors.Is(err, agentrepo.ErrNotFound) {
+				return nil, nil, fmt.Errorf("%w: agent %q", service.ErrNotFound, input.AgentName)
+			}
+			return nil, nil, fmt.Errorf("resolving agent %q: %w", input.AgentName, err)
+		}
+
+		pgAssocs[i] = patternrepo.AgentAssociation{
+			AgentID:   agent.ID,
+			Relevance: input.Relevance,
+		}
+		graphAssocs[i] = graphrepo.AgentAssociation{
+			AgentName: input.AgentName,
+			Relevance: input.Relevance,
+		}
+	}
+
+	return pgAssocs, graphAssocs, nil
+}
+
+// fetchGraphContext retrieves related patterns and concepts from Neo4j.
+func (s *patternService) fetchGraphContext(ctx context.Context, patternID uuid.UUID) (*GraphContext, error) {
+	related, err := s.graphRepo.FindRelatedPatterns(ctx, patternID, 10)
+	if err != nil {
+		return nil, fmt.Errorf("fetching related patterns: %w", err)
+	}
+
+	concepts, err := s.graphRepo.GetPatternConcepts(ctx, patternID)
+	if err != nil {
+		return nil, fmt.Errorf("fetching concepts: %w", err)
+	}
+
+	relatedResults := make([]RelatedPatternResult, len(related))
+	for i, r := range related {
+		relatedResults[i] = RelatedPatternResult{
+			ID:             r.ID,
+			Name:           r.Name,
+			Relationship:   "RELATED_TO",
+			Similarity:     r.Similarity,
+			SharedConcepts: r.ConceptNames,
+		}
+	}
+
+	conceptResults := make([]ConceptResult, len(concepts))
+	for i, c := range concepts {
+		conceptResults[i] = ConceptResult{
+			Name: c.Name,
+			Type: c.Type,
+		}
+	}
+
+	return &GraphContext{
+		RelatedPatterns: relatedResults,
+		Concepts:        conceptResults,
+	}, nil
+}
+
+// syncNeo4j runs fn as a best-effort Neo4j operation.
+// Errors are logged but not returned to the caller.
+func (s *patternService) syncNeo4j(entityDesc string, fn func() error) {
+	if err := fn(); err != nil {
+		s.logger.Warn().
+			Err(err).
+			Str("entity", entityDesc).
+			Msg("neo4j sync failed")
+	}
+}
