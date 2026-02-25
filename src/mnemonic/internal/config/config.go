@@ -13,12 +13,21 @@ import (
 // MnemonicConfig is the top-level configuration structure for the Mnemonic server.
 type MnemonicConfig struct {
 	Server        ServerConfig        `mapstructure:"server"`
+	MCP           MCPConfig           `mapstructure:"mcp"`
 	Database      DatabaseConfig      `mapstructure:"database"`
 	OpenAI        OpenAIConfig        `mapstructure:"openai"`
 	RateLimit     RateLimitConfig     `mapstructure:"rate_limit"`
 	Enrichment    EnrichmentConfig    `mapstructure:"enrichment"`
 	Logging       LoggingConfig       `mapstructure:"logging"`
 	Observability ObservabilityConfig `mapstructure:"observability"`
+}
+
+// MCPConfig contains MCP server settings.
+type MCPConfig struct {
+	Port         int           `mapstructure:"port"`
+	ReadTimeout  time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout time.Duration `mapstructure:"write_timeout"`
+	IdleTimeout  time.Duration `mapstructure:"idle_timeout"`
 }
 
 // ServerConfig contains HTTP server settings.
@@ -248,6 +257,12 @@ func SetDefaults(v *viper.Viper) {
 	v.SetDefault("server.tls.cert_file", "")
 	v.SetDefault("server.tls.key_file", "")
 
+	// MCP server defaults
+	v.SetDefault("mcp.port", DefaultMCPPort)
+	v.SetDefault("mcp.read_timeout", DefaultMCPReadTimeout)
+	v.SetDefault("mcp.write_timeout", DefaultMCPWriteTimeout)
+	v.SetDefault("mcp.idle_timeout", DefaultMCPIdleTimeout)
+
 	// PostgreSQL defaults
 	v.SetDefault("database.postgres.host", DefaultPostgresHost)
 	v.SetDefault("database.postgres.port", DefaultPostgresPort)
@@ -361,6 +376,9 @@ func (c *MnemonicConfig) Validate() ValidationErrors {
 	// Server validation
 	errs = append(errs, c.Server.validate()...)
 
+	// MCP validation
+	errs = append(errs, c.MCP.validate()...)
+
 	// Database validation
 	errs = append(errs, c.Database.validate()...)
 
@@ -383,6 +401,12 @@ func (c *MnemonicConfig) Validate() ValidationErrors {
 	if c.Observability.Metrics.Enabled && c.Server.Port == c.Observability.Metrics.Port {
 		errs = append(errs, ValidationError{
 			Field:   "observability.metrics.port",
+			Message: fmt.Sprintf("must be different from server.port (%d) to avoid port conflict", c.Server.Port),
+		})
+	}
+	if c.Server.Port == c.MCP.Port {
+		errs = append(errs, ValidationError{
+			Field:   "mcp.port",
 			Message: fmt.Sprintf("must be different from server.port (%d) to avoid port conflict", c.Server.Port),
 		})
 	}
@@ -452,6 +476,40 @@ func (c *ServerConfig) validate() ValidationErrors {
 				Message: fmt.Sprintf("cannot access file: %v", err),
 			})
 		}
+	}
+
+	return errs
+}
+
+func (c *MCPConfig) validate() ValidationErrors {
+	var errs ValidationErrors
+
+	if c.Port < 1 || c.Port > 65535 {
+		errs = append(errs, ValidationError{
+			Field:   "mcp.port",
+			Message: fmt.Sprintf("must be between 1 and 65535, got %d", c.Port),
+		})
+	}
+
+	if c.ReadTimeout <= 0 {
+		errs = append(errs, ValidationError{
+			Field:   "mcp.read_timeout",
+			Message: "must be a positive duration",
+		})
+	}
+
+	if c.WriteTimeout <= 0 {
+		errs = append(errs, ValidationError{
+			Field:   "mcp.write_timeout",
+			Message: "must be a positive duration",
+		})
+	}
+
+	if c.IdleTimeout <= 0 {
+		errs = append(errs, ValidationError{
+			Field:   "mcp.idle_timeout",
+			Message: "must be a positive duration",
+		})
 	}
 
 	return errs
@@ -760,6 +818,12 @@ func (c *ObservabilityConfig) validate() ValidationErrors {
 // Address returns the server address in host:port format.
 func (c *ServerConfig) Address() string {
 	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+}
+
+// Address returns the MCP server address in host:port format.
+// The MCP server binds to the same host as the admin API.
+func (c *MCPConfig) Address(host string) string {
+	return fmt.Sprintf("%s:%d", host, c.Port)
 }
 
 // ConnectionString returns the PostgreSQL connection string.

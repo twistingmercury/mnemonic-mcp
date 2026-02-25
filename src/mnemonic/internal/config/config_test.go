@@ -35,6 +35,12 @@ func TestDefaultValues(t *testing.T) {
 	assert.Equal(t, config.DefaultServerShutdownTimeout, cfg.Server.ShutdownTimeout)
 	assert.Equal(t, config.DefaultServerTLSEnabled, cfg.Server.TLS.Enabled)
 
+	// MCP defaults
+	assert.Equal(t, config.DefaultMCPPort, cfg.MCP.Port)
+	assert.Equal(t, config.DefaultMCPReadTimeout, cfg.MCP.ReadTimeout)
+	assert.Equal(t, config.DefaultMCPWriteTimeout, cfg.MCP.WriteTimeout)
+	assert.Equal(t, config.DefaultMCPIdleTimeout, cfg.MCP.IdleTimeout)
+
 	// PostgreSQL defaults
 	assert.Equal(t, config.DefaultPostgresHost, cfg.Database.Postgres.Host)
 	assert.Equal(t, config.DefaultPostgresPort, cfg.Database.Postgres.Port)
@@ -1385,6 +1391,12 @@ func validConfig() *config.MnemonicConfig {
 				CertFile: "",
 				KeyFile:  "",
 			},
+		},
+		MCP: config.MCPConfig{
+			Port:         8081,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			IdleTimeout:  120 * time.Second,
 		},
 		Database: config.DatabaseConfig{
 			Postgres: config.PostgresConfig{
