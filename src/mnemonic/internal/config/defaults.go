@@ -53,19 +53,16 @@ const (
 	DefaultRateLimitPerUserBurst      = 10
 )
 
-// Default values for routing configuration
-const (
-	DefaultRoutingCacheRefreshTTL     = 5 * time.Minute
-	DefaultRoutingCacheStartupTimeout = 30 * time.Second
-)
-
 // Default values for enrichment configuration
 const (
-	DefaultEnrichmentWorkerCount  = 2
-	DefaultEnrichmentPollInterval = 5 * time.Second
-	DefaultEnrichmentMaxAttempts  = 3
-	DefaultEnrichmentRetryDelay   = 30 * time.Second
-	DefaultEnrichmentJobTimeout   = 5 * time.Minute
+	DefaultEnrichmentWorkerCount            = 2
+	DefaultEnrichmentPollInterval           = 5 * time.Second
+	DefaultEnrichmentMaxAttempts            = 3
+	DefaultEnrichmentRetryDelay             = 30 * time.Second
+	DefaultEnrichmentJobTimeout             = 5 * time.Minute
+	DefaultEnrichmentCompletedRetention     = 168 * time.Hour // 7 days
+	DefaultEnrichmentFailedRetention        = 720 * time.Hour // 30 days
+	DefaultEnrichmentRelatedToMinSimilarity = 0.3
 )
 
 // Default values for logging configuration

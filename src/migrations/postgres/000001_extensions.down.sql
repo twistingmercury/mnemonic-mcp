@@ -1,0 +1,8 @@
+-- src/migrations/postgres/000001_extensions.down.sql
+-- Reverses: Enables required PostgreSQL extensions.
+--
+-- Copyright 2025, Mnemonic Authors
+--
+-- Extensions are not dropped to avoid breaking other schemas that may use them.
+-- If you need to drop extensions, uncomment the following line:
+-- drop extension if exists vector;

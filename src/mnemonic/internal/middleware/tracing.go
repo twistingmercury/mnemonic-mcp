@@ -12,7 +12,6 @@ import (
 // This includes health check and metrics endpoints.
 var DefaultSkipPaths = []string{
 	"/health",
-	"/ops/health",
 	"/metrics",
 }
 

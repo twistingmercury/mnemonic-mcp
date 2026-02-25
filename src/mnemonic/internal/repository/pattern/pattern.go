@@ -93,8 +93,8 @@ type Match struct {
 
 // AgentAssociation represents a pattern-agent relationship with relevance score.
 type AgentAssociation struct {
-	// AgentName is the name of the associated agent.
-	AgentName string `db:"agent_name"`
+	// AgentID is the UUID of the associated agent.
+	AgentID uuid.UUID `db:"agent_id"`
 
 	// Relevance is the relevance score from 0.0 (minimally relevant) to 1.0 (highly relevant).
 	Relevance float64 `db:"relevance"`

@@ -6,25 +6,25 @@ on:
       - main
       - develop
     paths:
-      - 'src/mnemonic/internal/**'
-      - 'src/mnemonic/cmd/**'
-      - 'src/mnemonic/go.mod'
-      - 'src/mnemonic/go.sum'
-      - 'src/mnemonic/build/**'
-      - 'src/mnemonic/tests/**'
-      - '.github/workflows/mnemonic-ci.yaml'
+      - "src/mnemonic/internal/**"
+      - "src/mnemonic/cmd/**"
+      - "src/mnemonic/go.mod"
+      - "src/mnemonic/go.sum"
+      - "src/mnemonic/build/**"
+      - "src/mnemonic/tests/**"
+      - ".github/workflows/mnemonic-ci.yaml"
   pull_request:
     branches:
       - main
       - develop
     paths:
-      - 'src/mnemonic/internal/**'
-      - 'src/mnemonic/cmd/**'
-      - 'src/mnemonic/go.mod'
-      - 'src/mnemonic/go.sum'
-      - 'src/mnemonic/build/**'
-      - 'src/mnemonic/tests/**'
-      - '.github/workflows/mnemonic-ci.yaml'
+      - "src/mnemonic/internal/**"
+      - "src/mnemonic/cmd/**"
+      - "src/mnemonic/go.mod"
+      - "src/mnemonic/go.sum"
+      - "src/mnemonic/build/**"
+      - "src/mnemonic/tests/**"
+      - ".github/workflows/mnemonic-ci.yaml"
   workflow_dispatch:
 
 jobs:
@@ -45,7 +45,7 @@ jobs:
 
       - name: Run build script
         env:
-          LOCAL_BUILD: 1
+          LOCAL_BUILD: 0
         run: ./build/build.sh
 
       - name: Save Docker image

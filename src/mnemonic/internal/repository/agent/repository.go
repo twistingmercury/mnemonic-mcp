@@ -2,29 +2,39 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twistingmercury/mnemonic/internal/repository"
 )
 
 // Repository defines data access operations for agents.
+// Agents are stored as JSONB documents with name as the unique lookup key.
 type Repository interface {
-	// Create stores a new agent. Returns ErrExists if name already exists.
+	// Create stores a new agent. The application computes crc64 from the
+	// serialized definition before calling this method.
+	// Returns ErrExists if name already exists.
 	Create(ctx context.Context, agent *Agent) error
 
 	// Get retrieves an agent by name. Returns ErrNotFound if not found.
 	Get(ctx context.Context, name string) (*Agent, error)
 
-	// Update modifies an existing agent. Returns ErrNotFound if not found.
+	// GetByID retrieves an agent by UUID. Returns ErrNotFound if not found.
+	GetByID(ctx context.Context, id uuid.UUID) (*Agent, error)
+
+	// Update modifies an existing agent. The application computes crc64
+	// from the serialized definition and sets updated_at before calling
+	// this method. Returns ErrNotFound if not found.
 	Update(ctx context.Context, agent *Agent) error
 
-	// Delete removes an agent by name. Returns ErrInUse if referenced by routing rules.
+	// Delete removes an agent by name. Returns ErrNotFound if not found.
 	Delete(ctx context.Context, name string) error
+
+	// DeleteByID removes an agent by UUID. Returns ErrNotFound if not found.
+	DeleteByID(ctx context.Context, id uuid.UUID) error
 
 	// List retrieves all agents with optional pagination.
 	// Returns the agents, total count, and any error.
@@ -32,6 +42,9 @@ type Repository interface {
 
 	// Exists checks if an agent with the given name exists.
 	Exists(ctx context.Context, name string) (bool, error)
+
+	// GetManifest returns name and crc64 for all agents (used by sync protocol).
+	GetManifest(ctx context.Context) ([]ManifestEntry, error)
 }
 
 // pgxRepository is a PostgreSQL implementation of Repository using pgx.
@@ -45,73 +58,44 @@ func NewRepository(db repository.DBTX) Repository {
 }
 
 // Create stores a new agent in the database.
+// The database generates the UUID and sets created_at/updated_at via defaults.
 func (r *pgxRepository) Create(ctx context.Context, agent *Agent) error {
-	allowedToolsJSON, err := json.Marshal(agent.AllowedTools)
-	if err != nil {
-		return fmt.Errorf("marshaling allowed_tools: %w", err)
-	}
-
-	routingKeywordsJSON, err := json.Marshal(agent.RoutingKeywords)
-	if err != nil {
-		return fmt.Errorf("marshaling routing_keywords: %w", err)
-	}
-
-	now := time.Now()
 	query := `
-		INSERT INTO agents (
-			name, description, system_prompt, model,
-			allowed_tools, routing_keywords, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO agents (name, definition, crc64)
+		VALUES ($1, $2, $3)
+		RETURNING id, created_at, updated_at
 	`
 
-	_, err = r.db.Exec(ctx, query,
+	err := r.db.QueryRow(ctx, query,
 		agent.Name,
-		agent.Description,
-		agent.SystemPrompt,
-		agent.Model,
-		allowedToolsJSON,
-		routingKeywordsJSON,
-		now,
-		now,
-	)
+		agent.Definition,
+		agent.CRC64,
+	).Scan(&agent.ID, &agent.CreatedAt, &agent.UpdatedAt)
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			switch pgErr.Code {
-			case repository.PgErrCodeUniqueViolation:
-				return ErrExists
-			case repository.PgErrCodeCheckViolation:
-				// Return the constraint violation message for better debugging
-				return err
-			}
+		if errors.As(err, &pgErr) && pgErr.Code == repository.PgErrCodeUniqueViolation {
+			return ErrExists
 		}
 		return err
 	}
 
-	agent.CreatedAt = now
-	agent.UpdatedAt = now
 	return nil
 }
 
 // Get retrieves an agent by name from the database.
 func (r *pgxRepository) Get(ctx context.Context, name string) (*Agent, error) {
 	query := `
-		SELECT name, description, system_prompt, model,
-			   allowed_tools, routing_keywords, created_at, updated_at
+		SELECT id, name, definition, crc64, created_at, updated_at
 		FROM agents
 		WHERE name = $1
 	`
 
 	var agent Agent
-	var allowedToolsJSON, routingKeywordsJSON []byte
-
 	err := r.db.QueryRow(ctx, query, name).Scan(
+		&agent.ID,
 		&agent.Name,
-		&agent.Description,
-		&agent.SystemPrompt,
-		&agent.Model,
-		&allowedToolsJSON,
-		&routingKeywordsJSON,
+		&agent.Definition,
+		&agent.CRC64,
 		&agent.CreatedAt,
 		&agent.UpdatedAt,
 	)
@@ -122,54 +106,53 @@ func (r *pgxRepository) Get(ctx context.Context, name string) (*Agent, error) {
 		return nil, err
 	}
 
-	if err := json.Unmarshal(allowedToolsJSON, &agent.AllowedTools); err != nil {
-		return nil, fmt.Errorf("unmarshaling allowed_tools: %w", err)
-	}
-	if err := json.Unmarshal(routingKeywordsJSON, &agent.RoutingKeywords); err != nil {
-		return nil, fmt.Errorf("unmarshaling routing_keywords: %w", err)
+	return &agent, nil
+}
+
+// GetByID retrieves an agent by UUID from the database.
+func (r *pgxRepository) GetByID(ctx context.Context, id uuid.UUID) (*Agent, error) {
+	query := `
+		SELECT id, name, definition, crc64, created_at, updated_at
+		FROM agents
+		WHERE id = $1
+	`
+
+	var agent Agent
+	err := r.db.QueryRow(ctx, query, id).Scan(
+		&agent.ID,
+		&agent.Name,
+		&agent.Definition,
+		&agent.CRC64,
+		&agent.CreatedAt,
+		&agent.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
 	}
 
 	return &agent, nil
 }
 
 // Update modifies an existing agent in the database.
+// The application must set agent.UpdatedAt before calling this method.
 func (r *pgxRepository) Update(ctx context.Context, agent *Agent) error {
-	allowedToolsJSON, err := json.Marshal(agent.AllowedTools)
-	if err != nil {
-		return fmt.Errorf("marshaling allowed_tools: %w", err)
-	}
-
-	routingKeywordsJSON, err := json.Marshal(agent.RoutingKeywords)
-	if err != nil {
-		return fmt.Errorf("marshaling routing_keywords: %w", err)
-	}
-
 	now := time.Now()
 	query := `
-		UPDATE agents SET
-			description = $2,
-			system_prompt = $3,
-			model = $4,
-			allowed_tools = $5,
-			routing_keywords = $6,
-			updated_at = $7
+		UPDATE agents
+		SET definition = $2, crc64 = $3, updated_at = $4
 		WHERE name = $1
 	`
 
 	result, err := r.db.Exec(ctx, query,
 		agent.Name,
-		agent.Description,
-		agent.SystemPrompt,
-		agent.Model,
-		allowedToolsJSON,
-		routingKeywordsJSON,
+		agent.Definition,
+		agent.CRC64,
 		now,
 	)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == repository.PgErrCodeCheckViolation {
-			return err
-		}
 		return err
 	}
 
@@ -187,10 +170,22 @@ func (r *pgxRepository) Delete(ctx context.Context, name string) error {
 
 	result, err := r.db.Exec(ctx, query, name)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == repository.PgErrCodeForeignKeyViolation {
-			return ErrInUse
-		}
+		return err
+	}
+
+	if result.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+// DeleteByID removes an agent by UUID from the database.
+func (r *pgxRepository) DeleteByID(ctx context.Context, id uuid.UUID) error {
+	query := `DELETE FROM agents WHERE id = $1`
+
+	result, err := r.db.Exec(ctx, query, id)
+	if err != nil {
 		return err
 	}
 
@@ -203,11 +198,9 @@ func (r *pgxRepository) Delete(ctx context.Context, name string) error {
 
 // List retrieves all agents with optional pagination.
 func (r *pgxRepository) List(ctx context.Context, opts repository.ListOptions) ([]*Agent, int64, error) {
-	// Build query with window function for total count in a single query
 	query := `
-		SELECT name, description, system_prompt, model,
-			   allowed_tools, routing_keywords, created_at, updated_at,
-			   COUNT(*) OVER() as total_count
+		SELECT id, name, definition, crc64, created_at, updated_at,
+		       COUNT(*) OVER() AS total_count
 		FROM agents
 		ORDER BY name ASC
 	`
@@ -221,7 +214,6 @@ func (r *pgxRepository) List(ctx context.Context, opts repository.ListOptions) (
 			args = append(args, opts.Offset)
 		}
 	} else if opts.Offset > 0 {
-		// If only offset is specified without limit, we still need to handle it
 		query += " OFFSET $1"
 		args = append(args, opts.Offset)
 	}
@@ -236,32 +228,20 @@ func (r *pgxRepository) List(ctx context.Context, opts repository.ListOptions) (
 	var totalCount int64
 
 	for rows.Next() {
-		var agent Agent
-		var allowedToolsJSON, routingKeywordsJSON []byte
-
+		var a Agent
 		err := rows.Scan(
-			&agent.Name,
-			&agent.Description,
-			&agent.SystemPrompt,
-			&agent.Model,
-			&allowedToolsJSON,
-			&routingKeywordsJSON,
-			&agent.CreatedAt,
-			&agent.UpdatedAt,
+			&a.ID,
+			&a.Name,
+			&a.Definition,
+			&a.CRC64,
+			&a.CreatedAt,
+			&a.UpdatedAt,
 			&totalCount,
 		)
 		if err != nil {
 			return nil, 0, err
 		}
-
-		if err := json.Unmarshal(allowedToolsJSON, &agent.AllowedTools); err != nil {
-			return nil, 0, fmt.Errorf("unmarshaling allowed_tools: %w", err)
-		}
-		if err := json.Unmarshal(routingKeywordsJSON, &agent.RoutingKeywords); err != nil {
-			return nil, 0, fmt.Errorf("unmarshaling routing_keywords: %w", err)
-		}
-
-		agents = append(agents, &agent)
+		agents = append(agents, &a)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -282,4 +262,31 @@ func (r *pgxRepository) Exists(ctx context.Context, name string) (bool, error) {
 	}
 
 	return exists, nil
+}
+
+// GetManifest returns name and crc64 for all agents, ordered by name.
+// Used by the sync protocol to determine which agents have changed.
+func (r *pgxRepository) GetManifest(ctx context.Context) ([]ManifestEntry, error) {
+	query := `SELECT name, crc64 FROM agents ORDER BY name ASC`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	entries := make([]ManifestEntry, 0)
+	for rows.Next() {
+		var entry ManifestEntry
+		if err := rows.Scan(&entry.Name, &entry.CRC64); err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return entries, nil
 }

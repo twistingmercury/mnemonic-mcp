@@ -1,9 +1,13 @@
 // Package agent provides the PostgreSQL repository implementation for agent
-// persistence. It implements CRUD operations, pagination, and existence checks
-// for agent definitions, with JSONB handling for allowed tools and routing
-// keywords.
+// persistence. Agents are stored using the JSONB document model: only the
+// fields required for database-level operations (name, crc64, timestamps) are
+// top-level columns, with the full agent specification in a single JSONB
+// definition column.
+//
+// The repository implements CRUD operations, pagination, existence checks,
+// and a manifest endpoint for the sync protocol.
 //
 // Documentation:
-//   - Architecture: docs/architecture/08-data-architecture.md (Data Model Design > Agents, Data Flow Patterns > Write Paths)
+//   - Architecture: docs/architecture/04-data-architecture.md
 //   - Design: docs/design/data-storage.md (Repository Interfaces > AgentRepository)
 package agent

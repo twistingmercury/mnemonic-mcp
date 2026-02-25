@@ -1,19 +1,27 @@
 # Data Storage Implementation
 
-[Back to Architecture Overview](../../architecture/00-overview.md) | [Back to Project README](../../../README.md)
+[Back to Architecture Overview](../../architecture/README.md) | [Back to Project README](../../../README.md)
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [JSONB Document Model](#jsonb-document-model)
+  - [Design Rationale](#design-rationale)
+  - [Common Table Shape](#common-table-shape)
+  - [CRC64 Change Detection](#crc64-change-detection)
+  - [JSONB Contents by Entity](#jsonb-contents-by-entity)
+  - [JSONB Indexing Strategy](#jsonb-indexing-strategy)
+  - [Application-Layer Validation](#application-layer-validation)
 - [PostgreSQL Migrations](#postgresql-migrations)
   - [Migration File Structure](#migration-file-structure)
-  - [Migration 001: Extensions and Functions](#migration-001-extensions-and-functions)
+  - [Migration 001: Extensions](#migration-001-extensions)
   - [Migration 002: Agents Table](#migration-002-agents-table)
   - [Migration 003: Patterns Table](#migration-003-patterns-table)
   - [Migration 004: Pattern-Agent Associations](#migration-004-pattern-agent-associations)
-  - [Migration 005: Routing Rules Table](#migration-005-routing-rules-table)
-  - [Migration 006: Enrichment Jobs Table](#migration-006-enrichment-jobs-table)
-  - [Migration 007: Performance Indexes](#migration-007-performance-indexes)
+  - [Migration 005: Enrichment Jobs Table](#migration-005-enrichment-jobs-table)
+  - [Migration 006: Performance Indexes](#migration-006-performance-indexes)
+  - [Migration 007: Create Skills Table](#migration-007-create-skills-table)
+  - [Migration 008: Create Skill Files Table](#migration-008-create-skill-files-table)
 - [PGVector Configuration](#pgvector-configuration)
   - [Index Selection Guidelines](#index-selection-guidelines)
   - [Similarity Search Queries](#similarity-search-queries)
@@ -27,7 +35,8 @@
 - [Repository Interfaces](#repository-interfaces)
   - [AgentRepository](#agentrepository)
   - [PatternRepository](#patternrepository)
-  - [RoutingRule Repository](#routingrule-repository)
+  - [SkillRepository](#skillrepository)
+  - [SkillFileRepository](#skillfilerepository)
   - [EnrichmentJob Repository](#enrichmentjob-repository)
   - [GraphRepository](#graphrepository)
 - [Connection Configuration](#connection-configuration)
@@ -40,18 +49,27 @@
 
 [Table of Contents](#table-of-contents)
 
-> **Architecture Reference:** [Data Architecture](../../architecture/08-data-architecture.md) | [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic)
+> **Architecture Reference:** [Data Architecture](../../architecture/04-data-architecture.md) | [System Architecture - Mnemonic](../../architecture/02-system-architecture.md#mnemonic)
 
-This document provides implementation details for the Mnemonic data storage layer. It translates the architectural specifications from [Data Architecture](../../architecture/08-data-architecture.md) into concrete SQL migrations, Cypher queries, and Go interface definitions.
+This document provides implementation details for the Mnemonic data storage layer. It translates the architectural specifications from [Data Architecture](../../architecture/04-data-architecture.md) into concrete SQL migrations, Cypher queries, and Go interface definitions.
 
 **Implementation Scope:**
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
-| Relational Storage | PostgreSQL 15+ | Agents, patterns, rules, jobs |
+| Relational Storage | PostgreSQL 15+ | Document tables (JSONB), patterns, jobs |
 | Vector Storage | PGVector extension | Pattern embeddings for semantic search |
 | Graph Storage | Neo4j 5.x | Knowledge graph relationships |
-| Migrations | golang-migrate | Schema versioning and deployment |
+| Migrations | golang-migrate CLI | Schema versioning and deployment (run externally, not embedded in Mnemonic) |
+
+**JSONB Document Model:**
+
+- `agents`, `skills` use JSONB document model with `crc64` change detection
+- `skill_files` stores skill child files with path and content columns
+- `patterns` use relational columns (enrichment workflow, pgvector embeddings, graph context)
+- `pattern_agent_associations` is a join table for agent-scoped pattern filtering
+- `enrichment_jobs` is a background processing queue
+- Neo4j is required for the knowledge graph
 
 **Deployment Independence:**
 
@@ -61,152 +79,301 @@ Database migrations and application code are versioned and deployed independentl
 - Schema changes without rebuilding application containers
 - Forward-compatible migrations for zero-downtime deployments
 
+## JSONB Document Model
+
+[Table of Contents](#table-of-contents)
+
+### Design Rationale
+
+Agents, skills, and skill files are markdown documents synced to disk. Their field sets evolve as the Claude Code Agent Skills spec evolves. Storing each field as an individual relational column creates migration churn every time a field is added, renamed, or removed.
+
+The JSONB document model stores the full document as a single JSONB column. Only the fields required for database-level operations (lookup key, change detection, audit timestamps) are promoted to top-level columns. Everything else lives inside the JSONB document.
+
+**Benefits:**
+
+- **No migration churn.** Adding a field to the agent spec requires only an application change, not a database migration.
+- **Spec alignment.** The JSONB column mirrors what the API returns and what the sync protocol transmits. No impedance mismatch between storage and wire format.
+- **Simpler repository code.** One `definition JSONB` column replaces five or more individual columns. Reads and writes are straightforward marshal/unmarshal operations.
+
+**Trade-offs:**
+
+- **No column-level constraints on JSONB contents.** Field validation (max lengths, required fields, allowed values) is enforced by the application, not by CHECK constraints on individual columns.
+- **GIN indexes required for JSONB queries.** Querying inside the document (tag filtering, field searches) requires GIN indexes instead of simple btree indexes.
+
+### Common Table Shape
+
+All document tables (agents, skills) share the same column structure:
+
+| Column | Type | Constraints | Purpose |
+|--------|------|-------------|---------|
+| `id` | UUID | PK, DEFAULT gen_random_uuid() | Internal identifier |
+| `name` | VARCHAR(255) | UNIQUE NOT NULL | Lookup key; the one field always queried by |
+| `definition` | JSONB | NOT NULL | Complete document (all entity fields) |
+| `crc64` | VARCHAR(20) | NOT NULL | CRC-64 checksum of serialized JSONB, for change detection |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | DB sets on INSERT |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | App updates on UPDATE |
+
+The `skill_files` table stores child files for skills with `skill_id` and `path` as the composite lookup key, plus `content` as TEXT for the file body.
+
+### CRC64 Change Detection
+
+Each document table includes a `crc64` column storing a CRC-64 checksum of the JSONB content.
+
+**Computation:**
+
+- Computed server-side (in the Go application) on every INSERT and UPDATE.
+- Input: the serialized JSONB content in canonical form (deterministic key ordering, no extra whitespace). Go's `encoding/json` produces deterministic output for the same struct, but the application should use a canonical serialization function to guarantee consistency.
+- Algorithm: CRC-64 with ISO polynomial (matching Go's `hash/crc64` package with `crc64.MakeTable(crc64.ISO)`).
+- Output: a 64-bit unsigned integer, stored as PostgreSQL VARCHAR(20) (decimal string representation). Go converts the uint64 to its decimal string form for storage and parses it back on read.
+
+**Usage in the sync protocol:**
+
+- The Admin REST API returns per-entity CRC64 values in list responses.
+- The sync client compares local CRC64 values against the manifest to determine which entities have changed.
+- A collection-level version hash can be derived from individual CRC64 values (e.g., XOR of all entity CRC64s for a given collection).
+
+**Why CRC-64 and not SHA-256:**
+
+CRC-64 is fast, fits in a single VARCHAR(20) column, and provides sufficient collision resistance for change detection (not security). The sync protocol uses it to answer "has this document changed?" not "is this document authentic?"
+
+### JSONB Contents by Entity
+
+#### Agents definition JSONB
+
+The `definition` column stores the complete agent specification:
+
+```json
+{
+  "description": "Implements Go code: functions, packages, tests",
+  "system_prompt": "You are an expert Go engineer...",
+  "model": "sonnet",
+  "allowed_tools": ["Read", "Write", "Edit", "Bash"],
+  "version": "1.2.0"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `description` | string | yes | Short summary of the agent's purpose |
+| `system_prompt` | string | yes | Full system prompt content |
+| `model` | string | yes | Claude model: sonnet, opus, haiku |
+| `allowed_tools` | string[] | yes | MCP tool names this agent can use |
+| `version` | string | yes | Semantic version of the definition |
+
+#### Skills definition JSONB
+
+Aligned with the [Claude Code Agent Skills spec](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/skills) frontmatter fields:
+
+```json
+{
+  "description": "Synchronize agents and skills from Mnemonic",
+  "content": "---\nname: mnemonic-sync\n---\n\nYou are synchronizing...",
+  "tags": ["sync", "infrastructure"],
+  "license": "MIT",
+  "compatibility": "Claude Code 1.0+",
+  "metadata": {"author": "team-platform"},
+  "allowed_tools": ["Read", "Write", "Bash"],
+  "version": "1.0.0"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `description` | string | yes | Short summary of the skill |
+| `content` | string | yes | Full skill markdown content |
+| `tags` | string[] | no | Categorization tags |
+| `license` | string | no | License identifier (e.g., MIT) |
+| `compatibility` | string | no | Compatible Claude Code versions |
+| `metadata` | object | no | Arbitrary key-value metadata |
+| `allowed_tools` | string[] | no | MCP tool names this skill can use |
+| `version` | string | yes | Semantic version of the definition |
+
+#### Skill files
+
+Skill files do not use the JSONB document model. They store file content directly in a TEXT column with a `path` column for identification within the skill directory. The `crc64` column provides change detection on the file content.
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | UUID | PK, DEFAULT gen_random_uuid() |
+| `skill_id` | UUID | FK to parent skill (CASCADE DELETE) |
+| `path` | VARCHAR(1024) | File path within the skill directory |
+| `content` | TEXT | File content |
+| `crc64` | VARCHAR(20) | CRC-64 checksum for change detection |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now(); app updates on UPDATE |
+
+### JSONB Indexing Strategy
+
+Document tables use GIN indexes on the `definition` column to support queries that filter by JSONB contents.
+
+**Primary use case: tag filtering.**
+
+Skills support tag-based filtering. The GIN index enables efficient `@>` (contains) queries:
+
+```sql
+-- Find skills tagged with "sync"
+SELECT id, name, definition
+FROM skills
+WHERE definition @> '{"tags": ["sync"]}'::jsonb;
+```
+
+**Index definitions** (created in respective table migrations):
+
+```sql
+-- GIN index on definition column for tag filtering
+CREATE INDEX idx_skills_definition ON skills USING GIN (definition);
+```
+
+**Path-specific GIN indexes** (alternative, more selective):
+
+```sql
+-- Index only the tags path within definition
+CREATE INDEX idx_skills_definition_tags ON skills USING GIN ((definition -> 'tags'));
+```
+
+The path-specific indexes are smaller and faster for tag-only queries. Use full-column GIN indexes if queries need to filter on other JSONB fields.
+
+### Application-Layer Validation
+
+Because JSONB contents are not constrained at the database level, the application enforces all field validation:
+
+| Entity | Field | Constraint | Enforced By |
+|--------|-------|-----------|-------------|
+| Agent | name | max 255 chars, unique | DB (VARCHAR + UNIQUE) |
+| Agent | name | `^[a-z][a-z0-9-]*$` format | Application |
+| Agent | definition.description | max 500 chars | Application |
+| Agent | definition.system_prompt | max 50KB | Application |
+| Agent | definition.model | one of: sonnet, opus, haiku | Application |
+| Agent | definition.allowed_tools | must be string array | Application |
+| Agent | definition.version | required, semver format | Application |
+| Skill | name | max 255 chars, unique | DB (VARCHAR + UNIQUE) |
+| Skill | name | `^[a-z][a-z0-9-]*$` format | Application |
+| Skill | definition.description | max 1024 chars | Application |
+| Skill | definition.content | max 512KB | Application |
+| Skill | definition.version | required, semver format | Application |
+| Skill File | path | max 1024 chars | DB (VARCHAR) |
+| Skill File | content | max 1MB | Application |
+
+The database enforces only structural constraints (primary keys, uniqueness, foreign keys). Name format validation and content-level validation belong to the application.
+
+**Future Consideration:**
+
+For database-level JSONB schema validation, consider the [pg_jsonschema](https://github.com/supabase/pg_jsonschema) PostgreSQL extension. This extension enables CHECK constraints that validate JSONB documents against JSON Schema specifications, providing an alternative to application-only validation.
+
 ## PostgreSQL Migrations
 
 [Table of Contents](#table-of-contents)
 
-> **Architecture Reference:** [Data Architecture - Migration Strategy](../../architecture/08-data-architecture.md#migration-strategy)
+> **Architecture Reference:** [Data Architecture - Migration Strategy](../../architecture/04-data-architecture.md#migration-strategy)
 
 ### Migration File Structure
 
-All PostgreSQL migrations follow the golang-migrate convention:
+All PostgreSQL migrations follow the golang-migrate flat file convention. Migrations are run by the golang-migrate CLI as a deployment step; Mnemonic does not run or manage migrations at runtime.
 
 ```text
-src/mnemonic/
-└── migrations/
-    └── postgres/
-        ├── 001_extensions_and_functions.up.sql
-        ├── 001_extensions_and_functions.down.sql
-        ├── 002_create_agents.up.sql
-        ├── 002_create_agents.down.sql
-        ├── 003_create_patterns.up.sql
-        ├── 003_create_patterns.down.sql
-        ├── 004_create_pattern_agent_associations.up.sql
-        ├── 004_create_pattern_agent_associations.down.sql
-        ├── 005_create_routing_rules.up.sql
-        ├── 005_create_routing_rules.down.sql
-        ├── 006_create_enrichment_jobs.up.sql
-        ├── 006_create_enrichment_jobs.down.sql
-        ├── 007_create_performance_indexes.up.sql
-        └── 007_create_performance_indexes.down.sql
+src/migrations/
+├── postgres/
+│   ├── 000001_extensions.up.sql
+│   ├── 000001_extensions.down.sql
+│   ├── 000002_create_agents.up.sql
+│   ├── 000002_create_agents.down.sql
+│   ├── 000003_create_patterns.up.sql
+│   ├── 000003_create_patterns.down.sql
+│   ├── 000004_create_pattern_agent_associations.up.sql
+│   ├── 000004_create_pattern_agent_associations.down.sql
+│   ├── 000005_create_enrichment_jobs.up.sql
+│   ├── 000005_create_enrichment_jobs.down.sql
+│   ├── 000006_create_performance_indexes.up.sql
+│   ├── 000006_create_performance_indexes.down.sql
+│   ├── 000007_create_skills.up.sql
+│   ├── 000007_create_skills.down.sql
+│   ├── 000008_create_skill_files.up.sql
+│   └── 000008_create_skill_files.down.sql
+└── neo4j/
+    ├── 001_create_constraints.cypher
+    ├── 002_create_existence_constraints.cypher
+    └── 003_create_indexes.cypher
 ```
+
+golang-migrate requires a single flat directory with paired `.up.sql` and `.down.sql` files. The 6-digit zero-padded prefix (e.g., `000001`) matches the output of `migrate create -ext sql -dir src/migrations/postgres -seq <name>`. The `-path` flag points to this directory.
+
+Neo4j migrations are not managed by golang-migrate. They are numbered `.cypher` files applied manually via `cypher-shell` (see [Manual Constraint Creation](#startup-constraint-validation)).
 
 **Running Migrations:**
 
 ```bash
 # Apply all pending migrations
-migrate -path src/mnemonic/migrations/postgres -database "$DATABASE_URL" up
+migrate -path src/migrations/postgres -database "$DATABASE_URL" up
 
 # Rollback last migration
-migrate -path src/mnemonic/migrations/postgres -database "$DATABASE_URL" down 1
+migrate -path src/migrations/postgres -database "$DATABASE_URL" down 1
 
 # Check current version
-migrate -path src/mnemonic/migrations/postgres -database "$DATABASE_URL" version
+migrate -path src/migrations/postgres -database "$DATABASE_URL" version
 ```
 
-### Migration 001: Extensions and Functions
+### Migration 001: Extensions
 
-**Purpose:** Enable required PostgreSQL extensions and create reusable utility functions.
+**Purpose:** Enable required PostgreSQL extensions.
 
 ```sql
--- src/mnemonic/migrations/postgres/001_extensions_and_functions.up.sql
--- Enables required extensions and creates utility functions
+-- src/migrations/postgres/000001_extensions.up.sql
+-- Enables required PostgreSQL extensions.
 -- Part of Mnemonic MVP
 
--- Enable UUID generation (if not using gen_random_uuid)
-create extension if not exists "uuid-ossp";
-
--- Enable vector operations for embeddings
+-- Enable vector operations for embeddings (pgvector extension)
 create extension if not exists vector;
-
--- Reusable trigger function for automatic updated_at timestamps
-create or replace function update_updated_at()
-returns trigger as $$
-begin
-    new.updated_at = now();
-    return new;
-end;
-$$ language plpgsql;
-
-comment on function update_updated_at() is
-    'Trigger function to automatically update updated_at timestamp on row modification';
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/001_extensions_and_functions.down.sql
--- Reverses: Enables required extensions and creates utility functions
--- WARNING: Dropping extensions may fail if objects depend on them
-
-drop function if exists update_updated_at() cascade;
-
--- Extensions are not dropped to avoid breaking other schemas
+-- src/migrations/postgres/000001_extensions.down.sql
+-- Extensions are not dropped to avoid breaking other schemas that may use them.
+-- If you need to drop extensions, uncomment the following line:
 -- drop extension if exists vector;
--- drop extension if exists "uuid-ossp";
 ```
+
+**Note:** Per the storage-only database philosophy, no trigger functions are created. `updated_at` management is the application's responsibility. The application sets `updated_at = now()` on every UPDATE.
 
 ### Migration 002: Agents Table
 
-**Purpose:** Create the agents table for storing agent definitions.
+**Purpose:** Create the agents table using the JSONB document model with CRC64 change detection.
 
 ```sql
--- src/mnemonic/migrations/postgres/002_create_agents.up.sql
--- Creates the agents table for storing agent definitions
+-- src/migrations/postgres/000002_create_agents.up.sql
+-- Creates the agents table with JSONB document model.
 -- Part of Mnemonic MVP
 
 create table if not exists agents (
-    -- Primary key: lowercase-with-hyphens format, URL-safe
-    name varchar(64) primary key,
+    -- UUID primary key
+    id uuid primary key default gen_random_uuid(),
 
-    -- Agent metadata
-    description varchar(500) not null,
+    -- Unique lookup key: lowercase-with-hyphens format, URL-safe
+    name varchar(255) unique not null,
 
-    -- System prompt content (up to 50KB)
-    system_prompt text not null,
+    -- Complete agent definition as JSONB document
+    definition jsonb not null,
 
-    -- Model preference: sonnet, opus, haiku, or inherit from caller
-    model varchar(20) not null default 'inherit',
-
-    -- Allowed MCP tools (JSON array of tool names)
-    allowed_tools jsonb not null default '[]'::jsonb,
-
-    -- Keywords for fast routing (denormalized from routing_rules)
-    routing_keywords jsonb not null default '[]'::jsonb,
+    -- CRC-64 checksum of serialized definition for change detection
+    crc64 varchar(20) not null,
 
     -- Audit timestamps
     created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now(),
-
-    -- Constraints
-    constraint agents_name_format
-        check (name ~ '^[a-z][a-z0-9-]*$'),
-    constraint agents_model_valid
-        check (model in ('sonnet', 'opus', 'haiku', 'inherit')),
-    constraint agents_system_prompt_length
-        check (length(system_prompt) <= 51200),
-    constraint agents_allowed_tools_array
-        check (jsonb_typeof(allowed_tools) = 'array'),
-    constraint agents_routing_keywords_array
-        check (jsonb_typeof(routing_keywords) = 'array')
+    updated_at timestamptz not null default now()
 );
 
--- Trigger for automatic updated_at
-create trigger trg_agents_updated_at
-    before update on agents
-    for each row execute function update_updated_at();
+-- GIN index on definition for JSONB queries
+create index idx_agents_definition on agents using gin (definition);
 
--- Table documentation
-comment on table agents is 'Agent definitions for the routing system';
-comment on column agents.name is 'Unique identifier, lowercase-with-hyphens format';
-comment on column agents.model is 'Claude model preference: sonnet, opus, haiku, or inherit';
-comment on column agents.allowed_tools is 'JSON array of MCP tool names this agent can use';
-comment on column agents.routing_keywords is 'Denormalized keywords for fast routing lookups';
+comment on table agents is 'Agent definitions stored as JSONB documents for team tooling synchronization';
+comment on column agents.id is 'UUID primary key';
+comment on column agents.name is 'Unique lookup key, lowercase-with-hyphens format';
+comment on column agents.definition is 'Complete agent definition as JSONB document';
+comment on column agents.crc64 is 'CRC-64 checksum of serialized definition for change detection';
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/002_create_agents.down.sql
--- Reverses: Creates the agents table for storing agent definitions
-
-drop trigger if exists trg_agents_updated_at on agents;
+-- src/migrations/postgres/000002_create_agents.down.sql
+drop index if exists idx_agents_definition;
 drop table if exists agents;
 ```
 
@@ -214,9 +381,11 @@ drop table if exists agents;
 
 **Purpose:** Create the patterns table with PGVector embedding column for semantic search.
 
+**Note:** Patterns use relational columns (not the JSONB document model) because they have enrichment status, graph context, and pgvector embeddings that require individual columns. Performance indexes (IVFFlat, GIN, full-text) are created separately in migration 006.
+
 ```sql
--- src/mnemonic/migrations/postgres/003_create_patterns.up.sql
--- Creates the patterns table with vector embeddings
+-- src/migrations/postgres/000003_create_patterns.up.sql
+-- Creates the patterns table with PGVector embedding support.
 -- Part of Mnemonic MVP
 
 create table if not exists patterns (
@@ -224,7 +393,7 @@ create table if not exists patterns (
     id uuid primary key default gen_random_uuid(),
 
     -- Pattern metadata
-    name varchar(128) not null,
+    name varchar(255) not null,
     description varchar(500),
 
     -- Pattern content (up to 10KB)
@@ -255,23 +424,13 @@ create table if not exists patterns (
         check (enrichment_status in ('pending', 'enriched', 'failed'))
 );
 
--- Trigger for automatic updated_at
-create trigger trg_patterns_updated_at
-    before update on patterns
-    for each row execute function update_updated_at();
-
--- Table documentation
 comment on table patterns is 'Reusable context patterns for prompt enrichment';
 comment on column patterns.embedding is 'Vector embedding (1536d) for semantic similarity search';
 comment on column patterns.enrichment_status is 'Processing state: pending, enriched, or failed';
-comment on column patterns.tags is 'JSON array of categorization tags';
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/003_create_patterns.down.sql
--- Reverses: Creates the patterns table with vector embeddings
-
-drop trigger if exists trg_patterns_updated_at on patterns;
+-- src/migrations/postgres/000003_create_patterns.down.sql
 drop table if exists patterns;
 ```
 
@@ -279,15 +438,17 @@ drop table if exists patterns;
 
 **Purpose:** Create the many-to-many association table between patterns and agents with relevance scores.
 
+**Note:** The `agent_id` column references `agents(id)` (UUID), not the agent name. This follows the post-pivot schema where agents have a UUID primary key.
+
 ```sql
--- src/mnemonic/migrations/postgres/004_create_pattern_agent_associations.up.sql
--- Creates the pattern-agent association table
+-- src/migrations/postgres/000004_create_pattern_agent_associations.up.sql
+-- Creates the pattern-agent association table for many-to-many relationships.
 -- Part of Mnemonic MVP
 
 create table if not exists pattern_agent_associations (
     -- Composite primary key
     pattern_id uuid not null,
-    agent_name varchar(64) not null,
+    agent_id uuid not null,
 
     -- Relevance score (0.0 to 1.0)
     relevance double precision not null,
@@ -296,129 +457,38 @@ create table if not exists pattern_agent_associations (
     constraint fk_pattern_agent_assoc_pattern
         foreign key (pattern_id) references patterns(id) on delete cascade,
     constraint fk_pattern_agent_assoc_agent
-        foreign key (agent_name) references agents(name) on delete cascade,
+        foreign key (agent_id) references agents(id) on delete cascade,
 
     -- Primary key
-    primary key (pattern_id, agent_name),
+    primary key (pattern_id, agent_id),
 
     -- Constraints
     constraint pattern_agent_assoc_relevance_range
         check (relevance >= 0 and relevance <= 1)
 );
 
--- Indexes for foreign key lookups
-create index idx_pattern_agent_assoc_pattern
-    on pattern_agent_associations(pattern_id);
+-- Index for reverse FK lookup (agent_id is not the leading PK column).
+-- pattern_id lookup is covered by the composite PK index.
 create index idx_pattern_agent_assoc_agent
-    on pattern_agent_associations(agent_name);
+    on pattern_agent_associations(agent_id);
 
--- Table documentation
 comment on table pattern_agent_associations is
     'Many-to-many relationship between patterns and agents with relevance scores';
-comment on column pattern_agent_associations.relevance is
-    'Relevance score from 0.0 (not relevant) to 1.0 (highly relevant)';
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/004_create_pattern_agent_associations.down.sql
--- Reverses: Creates the pattern-agent association table
-
+-- src/migrations/postgres/000004_create_pattern_agent_associations.down.sql
 drop index if exists idx_pattern_agent_assoc_agent;
-drop index if exists idx_pattern_agent_assoc_pattern;
 drop table if exists pattern_agent_associations;
 ```
 
-### Migration 005: Routing Rules Table
-
-**Purpose:** Create the routing rules table for prompt-to-agent matching.
-
-```sql
--- src/mnemonic/migrations/postgres/005_create_routing_rules.up.sql
--- Creates the routing rules table
--- Part of Mnemonic MVP
-
-create table if not exists routing_rules (
-    -- UUID primary key (rules may be renamed)
-    id uuid primary key default gen_random_uuid(),
-
-    -- Rule metadata
-    name varchar(128) not null,
-
-    -- Priority for evaluation order (0-1000, higher evaluated first)
-    priority integer not null,
-
-    -- Target agent for this rule
-    agent_name varchar(64) not null,
-
-    -- Match type determines match_config interpretation
-    match_type varchar(20) not null,
-
-    -- Type-specific match configuration (JSONB)
-    match_config jsonb not null,
-
-    -- Rule enabled/disabled state
-    enabled boolean not null default true,
-
-    -- Audit timestamps
-    created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now(),
-
-    -- Foreign key to agents
-    constraint fk_routing_rules_agent
-        foreign key (agent_name) references agents(name) on delete restrict,
-
-    -- Constraints
-    constraint routing_rules_name_unique unique (name),
-    constraint routing_rules_priority_range
-        check (priority >= 0 and priority <= 1000),
-    constraint routing_rules_match_type_valid
-        check (match_type in ('keyword', 'regex', 'pattern', 'default')),
-
-    -- Match config validation based on match_type
-    constraint routing_rules_match_config_valid check (
-        (match_type = 'keyword' and
-            match_config ? 'keywords' and
-            match_config ? 'match_mode') or
-        (match_type = 'regex' and
-            match_config ? 'pattern') or
-        (match_type = 'pattern' and
-            match_config ? 'pattern_ids') or
-        (match_type = 'default')
-    )
-);
-
--- Trigger for automatic updated_at
-create trigger trg_routing_rules_updated_at
-    before update on routing_rules
-    for each row execute function update_updated_at();
-
--- Index for agent lookups
-create index idx_routing_rules_agent
-    on routing_rules(agent_name);
-
--- Table documentation
-comment on table routing_rules is 'Rules for matching prompts to agents';
-comment on column routing_rules.priority is 'Evaluation priority (0-1000), higher values evaluated first';
-comment on column routing_rules.match_type is 'Match algorithm: keyword, regex, pattern (semantic), or default';
-comment on column routing_rules.match_config is 'Type-specific configuration as JSONB';
-```
-
-```sql
--- src/mnemonic/migrations/postgres/005_create_routing_rules.down.sql
--- Reverses: Creates the routing rules table
-
-drop trigger if exists trg_routing_rules_updated_at on routing_rules;
-drop index if exists idx_routing_rules_agent;
-drop table if exists routing_rules;
-```
-
-### Migration 006: Enrichment Jobs Table
+### Migration 005: Enrichment Jobs Table
 
 **Purpose:** Create the enrichment jobs queue table for background pattern processing.
 
 ```sql
--- src/mnemonic/migrations/postgres/006_create_enrichment_jobs.up.sql
--- Creates the enrichment jobs queue table
+-- src/migrations/postgres/000005_create_enrichment_jobs.up.sql
+-- Creates the enrichment jobs queue table for background pattern processing.
 -- Part of Mnemonic MVP
 
 create table if not exists enrichment_jobs (
@@ -460,78 +530,77 @@ create table if not exists enrichment_jobs (
         check (max_attempts >= 1)
 );
 
--- Trigger for automatic updated_at
-create trigger trg_enrichment_jobs_updated_at
-    before update on enrichment_jobs
-    for each row execute function update_updated_at();
-
 -- Index for pattern lookups
 create index idx_enrichment_jobs_pattern
     on enrichment_jobs(pattern_id);
 
--- Table documentation
+-- Prevent duplicate pending or processing jobs for the same pattern
+create unique index idx_enrichment_jobs_unique_pending
+    on enrichment_jobs(pattern_id)
+    where status in ('pending', 'processing');
+
 comment on table enrichment_jobs is 'Background processing queue for pattern enrichment';
 comment on column enrichment_jobs.status is 'Job state: pending, processing, completed, or failed';
 comment on column enrichment_jobs.scheduled_for is 'When the job should be processed (supports delayed retry)';
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/006_create_enrichment_jobs.down.sql
--- Reverses: Creates the enrichment jobs queue table
-
-drop trigger if exists trg_enrichment_jobs_updated_at on enrichment_jobs;
+-- src/migrations/postgres/000005_create_enrichment_jobs.down.sql
+drop index if exists idx_enrichment_jobs_unique_pending;
 drop index if exists idx_enrichment_jobs_pattern;
 drop table if exists enrichment_jobs;
 ```
 
-### Migration 007: Performance Indexes
+### Migration 006: Performance Indexes
 
 **Purpose:** Create performance-optimized indexes for common query patterns.
 
 ```sql
--- src/mnemonic/migrations/postgres/007_create_performance_indexes.up.sql
--- Creates performance indexes for common query patterns
+-- src/migrations/postgres/000006_create_performance_indexes.up.sql
+-- Creates performance-optimized indexes for common query patterns.
 -- Part of Mnemonic MVP
 
--- Routing rules: enabled rules by priority (most common query)
-create index idx_routing_rules_enabled_priority
-    on routing_rules(priority desc, id)
-    where enabled = true;
+-- =============================================================================
+-- PATTERNS INDEXES
+-- =============================================================================
 
--- Patterns: enriched patterns only (for similarity search filtering)
+-- Partial index for filtering to only enriched patterns
+-- Used when selecting patterns eligible for similarity search
 create index idx_patterns_enriched
     on patterns(id)
     where enrichment_status = 'enriched';
 
--- Patterns: vector similarity search (IVFFlat for MVP scale)
+-- Vector similarity search (IVFFlat for MVP scale)
 -- lists = 100 suitable for 1,000-10,000 patterns
 create index idx_patterns_embedding
     on patterns using ivfflat (embedding vector_cosine_ops)
     with (lists = 100);
 
--- Enrichment jobs: pending jobs by scheduled time (worker polling)
-create index idx_enrichment_jobs_pending
-    on enrichment_jobs(scheduled_for)
-    where status = 'pending';
-
--- Enrichment jobs: processing jobs for timeout detection
-create index idx_enrichment_jobs_processing
-    on enrichment_jobs(started_at)
-    where status = 'processing';
-
--- Patterns: GIN index for tag filtering
+-- GIN index for tag filtering using JSONB containment operator (@>)
 create index idx_patterns_tags
     on patterns using gin (tags);
 
--- Patterns: full-text search on name and description
+-- Full-text search on name and description
 create index idx_patterns_search
     on patterns using gin (
         to_tsvector('english', name || ' ' || coalesce(description, ''))
     );
 
+-- =============================================================================
+-- ENRICHMENT JOBS INDEXES
+-- =============================================================================
+
+-- Pending jobs by scheduled time (worker polling)
+create index idx_enrichment_jobs_pending
+    on enrichment_jobs(scheduled_for)
+    where status = 'pending';
+
+-- Processing jobs for timeout detection
+create index idx_enrichment_jobs_processing
+    on enrichment_jobs(started_at)
+    where status = 'processing';
+
 -- Index documentation
-comment on index idx_routing_rules_enabled_priority is
-    'Optimizes routing rule lookup by priority order';
 comment on index idx_patterns_embedding is
     'IVFFlat index for vector similarity search (100 lists for MVP scale)';
 comment on index idx_enrichment_jobs_pending is
@@ -539,23 +608,111 @@ comment on index idx_enrichment_jobs_pending is
 ```
 
 ```sql
--- src/mnemonic/migrations/postgres/007_create_performance_indexes.down.sql
--- Reverses: Creates performance indexes for common query patterns
-
-drop index if exists idx_patterns_search;
-drop index if exists idx_patterns_tags;
+-- src/migrations/postgres/000006_create_performance_indexes.down.sql
 drop index if exists idx_enrichment_jobs_processing;
 drop index if exists idx_enrichment_jobs_pending;
+drop index if exists idx_patterns_search;
+drop index if exists idx_patterns_tags;
 drop index if exists idx_patterns_embedding;
 drop index if exists idx_patterns_enriched;
-drop index if exists idx_routing_rules_enabled_priority;
+```
+
+### Migration 007: Create Skills Table
+
+**Purpose:** Create the skills table using the JSONB document model.
+
+```sql
+-- src/migrations/postgres/000007_create_skills.up.sql
+-- Creates the skills table with JSONB document model.
+-- Part of Mnemonic MVP
+
+create table if not exists skills (
+    -- UUID primary key
+    id uuid primary key default gen_random_uuid(),
+
+    -- Unique lookup key: matches Claude Code skill directory name
+    name varchar(255) unique not null,
+
+    -- Complete skill definition as JSONB document
+    definition jsonb not null,
+
+    -- CRC-64 checksum of serialized definition for change detection
+    crc64 varchar(20) not null,
+
+    -- Audit timestamps
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+-- GIN index on definition for tag filtering and JSONB queries
+create index idx_skills_definition on skills using gin (definition);
+
+comment on table skills is 'Skill definitions stored as JSONB documents for team tooling synchronization';
+comment on column skills.name is 'Unique lookup key, lowercase-with-hyphens (matches Claude Code skill directory name)';
+comment on column skills.definition is 'Complete skill definition as JSONB document (Agent Skills spec aligned)';
+comment on column skills.crc64 is 'CRC-64 checksum of serialized definition for change detection';
+```
+
+```sql
+-- src/migrations/postgres/000007_create_skills.down.sql
+drop index if exists idx_skills_definition;
+drop table if exists skills;
+```
+
+### Migration 008: Create Skill Files Table
+
+**Purpose:** Create the skill_files table for files associated with skills.
+
+```sql
+-- src/migrations/postgres/000008_create_skill_files.up.sql
+-- Creates the skill_files table for files associated with skills.
+-- Part of Mnemonic MVP
+
+create table if not exists skill_files (
+    -- UUID primary key
+    id uuid primary key default gen_random_uuid(),
+
+    -- Parent skill reference, cascade delete
+    skill_id uuid not null references skills(id) on delete cascade,
+
+    -- File path within the skill directory
+    path varchar(1024) not null,
+
+    -- File content
+    content text not null,
+
+    -- CRC-64 checksum of content for change detection
+    crc64 varchar(20) not null,
+
+    -- Audit timestamps
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+
+    -- Unique constraint: one file per path per skill
+    constraint skill_files_unique_path unique (skill_id, path)
+);
+
+-- Index for skill_id lookups (foreign key)
+create index idx_skill_files_skill_id on skill_files(skill_id);
+
+comment on table skill_files is 'Child files (scripts, references, assets) for skill definitions';
+comment on column skill_files.skill_id is 'Parent skill reference, cascade delete';
+comment on column skill_files.path is 'File path within the skill directory';
+comment on column skill_files.content is 'File content';
+comment on column skill_files.crc64 is 'CRC-64 checksum of content for change detection';
+```
+
+```sql
+-- src/migrations/postgres/000008_create_skill_files.down.sql
+drop index if exists idx_skill_files_skill_id;
+drop table if exists skill_files;
 ```
 
 ## PGVector Configuration
 
 [Table of Contents](#table-of-contents)
 
-> **Architecture Reference:** [Data Architecture - PGVector Configuration](../../architecture/08-data-architecture.md#pgvector-configuration)
+> **Architecture Reference:** [Data Architecture - PGVector Configuration](../../architecture/04-data-architecture.md#pgvector-configuration)
 
 ### Index Selection Guidelines
 
@@ -676,7 +833,7 @@ analyze patterns;
 
 [Table of Contents](#table-of-contents)
 
-> **Architecture Reference:** [Data Architecture - Neo4j Graph Model](../../architecture/08-data-architecture.md#neo4j-graph-model)
+> **Architecture Reference:** [Data Architecture - Neo4j Graph Model](../../architecture/04-data-architecture.md#neo4j-graph-model)
 
 ### Schema Constraints
 
@@ -687,7 +844,7 @@ Create these constraints during initial Neo4j setup.
 These constraints are compatible with all Neo4j editions and are created by `001_create_constraints.cypher`:
 
 ```cypher
-// src/mnemonic/migrations/neo4j/001_create_constraints.cypher
+// src/migrations/neo4j/001_create_constraints.cypher
 // Creates uniqueness constraints for node labels
 // Part of Mnemonic MVP
 
@@ -709,7 +866,7 @@ FOR (c:Concept) REQUIRE c.name IS UNIQUE;
 These constraints require Neo4j Enterprise Edition and are created by `002_create_existence_constraints.cypher`. Community Edition users should skip this migration. The application layer enforces property completeness regardless of whether these database-level constraints are present.
 
 ```cypher
-// src/mnemonic/migrations/neo4j/002_create_existence_constraints.cypher
+// src/migrations/neo4j/002_create_existence_constraints.cypher
 // Requires Neo4j Enterprise Edition
 // Part of Mnemonic MVP
 
@@ -726,7 +883,7 @@ FOR (c:Concept) REQUIRE c.name IS NOT NULL;
 
 ### Startup Constraint Validation
 
-Mnemonic validates Neo4j schema constraints at startup to ensure the database is properly configured. This validation is advisory only - Mnemonic will not fail startup if constraints are missing, since Neo4j is used in a best-effort capacity.
+Neo4j is required. Mnemonic fails to start if Neo4j is unreachable. Missing constraints are not fatal -- Mnemonic validates constraints at startup and logs warnings, allowing operators to remediate without blocking service startup.
 
 **Validation Behavior:**
 
@@ -734,7 +891,7 @@ Mnemonic validates Neo4j schema constraints at startup to ensure the database is
 |-------------------|-------------------|
 | All constraints exist | Log info message, continue startup |
 | One or more missing | Log warning with missing constraint names, continue startup |
-| Connection failure | Log warning, continue startup (Neo4j operations will fail gracefully) |
+| Connection failure | Fatal error, Mnemonic refuses to start |
 
 **Constraints Checked:**
 
@@ -753,33 +910,22 @@ The constraints checked depend on the Neo4j edition:
 - `agent_name_exists` - Existence of Agent.name
 - `concept_name_exists` - Existence of Concept.name
 
-**Example Log Output (Community Edition):**
-
-```text
-# All constraints present (Community Edition)
-INFO  neo4j schema validation complete: all 3 constraints present
-
-# Missing constraints
-WARN  neo4j schema validation: missing constraints: pattern_id_unique, concept_name_unique
-WARN  create missing constraints using: src/mnemonic/migrations/neo4j/001_create_constraints.cypher
-```
-
 **Manual Constraint Creation:**
 
 If constraints are missing, run the appropriate migration scripts manually:
 
 ```bash
 # Using cypher-shell (Community + Enterprise)
-cypher-shell -u neo4j -p <password> -f src/mnemonic/migrations/neo4j/001_create_constraints.cypher
+cypher-shell -u neo4j -p <password> -f src/migrations/neo4j/001_create_constraints.cypher
 
 # Enterprise Edition only (optional)
-cypher-shell -u neo4j -p <password> -f src/mnemonic/migrations/neo4j/002_create_existence_constraints.cypher
+cypher-shell -u neo4j -p <password> -f src/migrations/neo4j/002_create_existence_constraints.cypher
 ```
 
 ### Index Configuration
 
 ```cypher
-// src/mnemonic/migrations/neo4j/003_create_indexes.cypher
+// src/migrations/neo4j/003_create_indexes.cypher
 // Creates indexes for common query patterns
 // Part of Mnemonic MVP
 
@@ -867,7 +1013,7 @@ ON CREATE SET r.createdAt = datetime()
 RETURN r;
 ```
 
-**RELATES_TO (Pattern to Pattern):**
+**RELATED_TO (Pattern to Pattern):**
 
 ```cypher
 // Create pattern-pattern similarity relationship
@@ -875,7 +1021,7 @@ RETURN r;
 MATCH (p1:Pattern {id: $patternId1})
 MATCH (p2:Pattern {id: $patternId2})
 WHERE p1 <> p2
-MERGE (p1)-[r:RELATES_TO]->(p2)
+MERGE (p1)-[r:RELATED_TO]->(p2)
 SET r.similarity = $similarity,
     r.updatedAt = datetime()
 RETURN r;
@@ -934,16 +1080,59 @@ MATCH (p:Pattern {id: $patternId})
 CREATE (c)-[:MENTIONED_IN]->(p);
 ```
 
-**Find Related Patterns:**
+**Compute RELATED_TO Edges:**
+
+Called by `EnrichmentService.ProcessJob` after concept extraction to compute and store pattern-to-pattern similarity edges. Existing RELATED_TO edges for the pattern are deleted first, then recomputed from shared concepts. Only edges meeting the minimum similarity threshold are created. RELATED_TO is symmetric; edges are stored in one direction and queried without direction. See [Pattern Processing - RELATED_TO Edge Computation](pattern-processing.md#related_to-edge-computation) for the similarity formula.
 
 ```cypher
-// Query: find patterns related to a given pattern through shared concepts
+// ComputeRelatedToEdges: delete old edges, recompute from shared concepts
+// Parameters: $patternId (UUID), $minSimilarity (float, e.g. 0.3)
+
+// Step 1: Delete existing RELATED_TO edges for this pattern
+MATCH (p:Pattern {id: $patternId})-[r:RELATED_TO]-()
+DELETE r
+
+// Step 2: Find other patterns sharing concepts, compute similarity, create edges
+WITH 1 AS dummy
 MATCH (p1:Pattern {id: $patternId})<-[:MENTIONED_IN]-(c:Concept)-[:MENTIONED_IN]->(p2:Pattern)
 WHERE p1 <> p2
-WITH p2, count(c) AS sharedConcepts
-ORDER BY sharedConcepts DESC
+WITH p1, p2, count(DISTINCT c) AS sharedCount
+
+// Count total concepts for each pattern
+OPTIONAL MATCH (c1:Concept)-[:MENTIONED_IN]->(p1)
+WITH p1, p2, sharedCount, count(DISTINCT c1) AS totalA
+OPTIONAL MATCH (c2:Concept)-[:MENTIONED_IN]->(p2)
+WITH p1, p2, sharedCount, totalA, count(DISTINCT c2) AS totalB
+
+// Compute similarity = sharedConcepts / max(totalConceptsA, totalConceptsB)
+WITH p1, p2, sharedCount,
+     CASE WHEN totalA > totalB THEN totalA ELSE totalB END AS maxTotal
+WITH p1, p2, sharedCount,
+     CASE WHEN maxTotal = 0 THEN 0.0
+          ELSE toFloat(sharedCount) / toFloat(maxTotal)
+     END AS similarity
+WHERE similarity >= $minSimilarity
+
+// Create RELATED_TO edge (one direction only; queries use undirected traversal)
+CREATE (p1)-[:RELATED_TO {similarity: similarity, updatedAt: datetime()}]->(p2)
+```
+
+**Find Related Patterns:**
+
+Uses pre-computed RELATED_TO edges (created during enrichment) and collects shared concept names. See [service-layer.md "Resolving the find_related_patterns Data Gap"](service-layer.md#resolving-the-find_related_patterns-data-gap) for the design decision to use pre-computed edges rather than recomputing similarity at query time.
+
+```cypher
+// Query: find patterns related to a given pattern using pre-computed RELATED_TO edges
+MATCH (p1:Pattern {id: $patternId})-[r:RELATED_TO]-(p2:Pattern)
+WITH p2, r.similarity AS similarity
+
+// Collect shared concept names
+OPTIONAL MATCH (p1:Pattern {id: $patternId})<-[:MENTIONED_IN]-(c:Concept)-[:MENTIONED_IN]->(p2)
+WITH p2, similarity, collect(c.name) AS conceptNames, count(c) AS sharedConcepts
+
+ORDER BY similarity DESC
 LIMIT $limit
-RETURN p2.id AS id, p2.name AS name, sharedConcepts;
+RETURN p2.id AS id, p2.name AS name, sharedConcepts, similarity, conceptNames
 ```
 
 **Find Patterns for Agent:**
@@ -970,43 +1159,63 @@ RETURN count(c) AS deletedCount;
 
 [Table of Contents](#table-of-contents)
 
-> **Note:** These are interface definitions only. Implementation is handled by the go-software-agent.
+> **Note:** These are interface definitions only. Implementation is handled by the go-software-engineer.
 
 ### AgentRepository
 
 ```go
 // AgentRepository defines data access operations for agents.
-// Implementation: internal/repository/agent_repository.go
+// Agents are stored as JSONB documents with name as the unique lookup key.
+// Implementation: internal/repository/agent/repository.go
 type AgentRepository interface {
-    // Create stores a new agent. Returns ErrExists if name already exists.
+    // Create stores a new agent. The application computes crc64 from the
+    // serialized definition before calling this method.
+    // Returns ErrExists if name already exists.
     Create(ctx context.Context, agent *Agent) error
 
     // Get retrieves an agent by name. Returns ErrNotFound if not found.
     Get(ctx context.Context, name string) (*Agent, error)
 
-    // Update modifies an existing agent. Returns ErrNotFound if not found.
+    // GetByID retrieves an agent by UUID. Returns ErrNotFound if not found.
+    GetByID(ctx context.Context, id uuid.UUID) (*Agent, error)
+
+    // Update modifies an existing agent. The application computes crc64
+    // from the serialized definition and sets updated_at before calling
+    // this method. Returns ErrNotFound if not found.
     Update(ctx context.Context, agent *Agent) error
 
-    // Delete removes an agent by name. Returns ErrInUse if referenced by rules.
+    // Delete removes an agent by name. Returns ErrNotFound if not found.
     Delete(ctx context.Context, name string) error
+
+    // DeleteByID removes an agent by UUID. Returns ErrNotFound if not found.
+    // The REST API routes DELETE by name; DeleteByID supports internal callers
+    // that resolve agents by UUID (e.g., cascade operations, programmatic cleanup).
+    DeleteByID(ctx context.Context, id uuid.UUID) error
 
     // List retrieves all agents with optional pagination.
     List(ctx context.Context, opts ListOptions) ([]*Agent, int64, error)
 
     // Exists checks if an agent with the given name exists.
     Exists(ctx context.Context, name string) (bool, error)
+
+    // GetManifest returns name and crc64 for all agents (used by sync protocol).
+    GetManifest(ctx context.Context) ([]ManifestEntry, error)
 }
 
-// Agent represents an agent definition.
+// Agent represents an agent definition stored as a JSONB document.
 type Agent struct {
-    Name            string    `db:"name"`
-    Description     string    `db:"description"`
-    SystemPrompt    string    `db:"system_prompt"`
-    Model           string    `db:"model"`
-    AllowedTools    []string  `db:"-"` // Unmarshaled from JSONB
-    RoutingKeywords []string  `db:"-"` // Unmarshaled from JSONB
-    CreatedAt       time.Time `db:"created_at"`
-    UpdatedAt       time.Time `db:"updated_at"`
+    ID         uuid.UUID       `db:"id"`
+    Name       string          `db:"name"`
+    Definition json.RawMessage `db:"definition"` // JSONB document
+    CRC64      string          `db:"crc64"`       // CRC-64 checksum (decimal string)
+    CreatedAt  time.Time       `db:"created_at"`
+    UpdatedAt  time.Time       `db:"updated_at"`
+}
+
+// ManifestEntry represents a single entity in the sync manifest.
+type ManifestEntry struct {
+    Name  string `db:"name"`
+    CRC64 string `db:"crc64"`
 }
 ```
 
@@ -1014,7 +1223,8 @@ type Agent struct {
 
 ```go
 // PatternRepository defines data access operations for patterns.
-// Implementation: internal/repository/pattern_repository.go
+// Patterns use relational columns (NOT the JSONB document model).
+// Implementation: internal/repository/pattern/repository.go
 type PatternRepository interface {
     // Create stores a new pattern. Returns ErrNameExists if name exists.
     Create(ctx context.Context, pattern *Pattern) error
@@ -1025,7 +1235,8 @@ type PatternRepository interface {
     // GetByName retrieves a pattern by name. Returns ErrNotFound if not found.
     GetByName(ctx context.Context, name string) (*Pattern, error)
 
-    // Update modifies an existing pattern. Returns ErrNotFound if not found.
+    // Update modifies an existing pattern. The application sets updated_at
+    // before calling this method. Returns ErrNotFound if not found.
     Update(ctx context.Context, pattern *Pattern) error
 
     // Delete removes a pattern by ID. Returns ErrNotFound if not found.
@@ -1048,9 +1259,14 @@ type PatternRepository interface {
 
     // GetAgentAssociations retrieves all agent associations for a pattern.
     GetAgentAssociations(ctx context.Context, patternID uuid.UUID) ([]AgentAssociation, error)
+
+    // GetPatternIDsByAgent returns all pattern IDs associated with the given agent.
+    // Used by SearchService for agent-scoped similarity search pre-filtering.
+    // See: service-layer.md "Agent Filter for search_patterns"
+    GetPatternIDsByAgent(ctx context.Context, agentID uuid.UUID) ([]uuid.UUID, error)
 }
 
-// Pattern represents a context pattern.
+// Pattern represents a context pattern (relational columns, not JSONB).
 type Pattern struct {
     ID               uuid.UUID  `db:"id"`
     Name             string     `db:"name"`
@@ -1065,19 +1281,12 @@ type Pattern struct {
     UpdatedAt        time.Time  `db:"updated_at"`
 }
 
-// Filter defines filtering options for pattern queries.
-type Filter struct {
-    Tags            []string // Filter by any of these tags
-    EnrichmentStatus string  // Filter by enrichment status
-    SearchQuery     string   // Full-text search in name/description
-}
-
 // SimilarityOptions defines options for similarity search.
 type SimilarityOptions struct {
-    MinSimilarity float64      // Minimum similarity threshold (0.0-1.0)
-    MaxResults    int          // Maximum number of results
-    Tags          []string     // Optional tag filter
-    PatternIDs    []uuid.UUID  // Optional filter to specific pattern IDs
+    MinSimilarity float64     // Minimum similarity threshold (0.0-1.0)
+    MaxResults    int         // Maximum number of results
+    Tags          []string    // Optional tag filter
+    PatternIDs    []uuid.UUID // Optional filter to specific pattern IDs
 }
 
 // Match represents a similarity search result.
@@ -1088,98 +1297,114 @@ type Match struct {
 
 // AgentAssociation represents a pattern-agent relationship.
 type AgentAssociation struct {
-    AgentName string  `db:"agent_name"`
-    Relevance float64 `db:"relevance"`
+    AgentID   uuid.UUID `db:"agent_id"`
+    Relevance float64   `db:"relevance"`
 }
 ```
 
-### RoutingRule Repository
+**GetPatternIDsByAgent SQL:**
+
+```sql
+-- GetPatternIDsByAgent: returns all pattern IDs associated with a given agent.
+-- Uses idx_pattern_agent_assoc_agent index for efficient lookup.
+SELECT pattern_id FROM pattern_agent_associations WHERE agent_id = $1;
+```
 
 ```go
-// RoutingRuleRepository defines data access operations for routing rules.
-// Implementation: internal/repository/routing_rule_repository.go
-type RoutingRuleRepository interface {
-    // Create stores a new routing rule. Returns ErrNameExists if name exists.
-    Create(ctx context.Context, rule *Rule) error
+// Filter defines filtering options for pattern queries.
+// This type is package-specific to internal/repository/pattern.
+type Filter struct {
+    Tags             []string // Filter by any of these tags
+    EnrichmentStatus string   // Filter by enrichment status
+    SearchQuery      string   // Full-text search in name/description
+}
+```
 
-    // Get retrieves a routing rule by ID. Returns ErrNotFound if not found.
-    Get(ctx context.Context, id uuid.UUID) (*Rule, error)
+### SkillRepository
 
-    // GetByName retrieves a routing rule by name. Returns ErrNotFound if not found.
-    GetByName(ctx context.Context, name string) (*Rule, error)
+```go
+// SkillRepository defines data access operations for skills.
+// Skills are stored as JSONB documents with name as the unique lookup key.
+// Implementation: internal/repository/skill/repository.go
+type SkillRepository interface {
+    // Create stores a new skill. The application computes crc64 from the
+    // serialized definition before calling this method.
+    // Returns ErrExists if name already exists.
+    Create(ctx context.Context, skill *Skill) error
 
-    // Update modifies an existing routing rule. Returns ErrNotFound if not found.
-    Update(ctx context.Context, rule *Rule) error
+    // Get retrieves a skill by ID. Returns ErrNotFound if not found.
+    Get(ctx context.Context, id uuid.UUID) (*Skill, error)
 
-    // Delete removes a routing rule by ID. Returns ErrNotFound if not found.
+    // GetByName retrieves a skill by name. Returns ErrNotFound if not found.
+    GetByName(ctx context.Context, name string) (*Skill, error)
+
+    // Update modifies an existing skill. Returns ErrNotFound if not found.
+    Update(ctx context.Context, skill *Skill) error
+
+    // Delete removes a skill by ID. Returns ErrNotFound if not found.
     Delete(ctx context.Context, id uuid.UUID) error
 
-    // List retrieves routing rules with filtering and pagination.
-    List(ctx context.Context, filter Filter, opts ListOptions) ([]*Rule, int64, error)
+    // List retrieves skills with optional pagination.
+    List(ctx context.Context, opts ListOptions) ([]*Skill, int64, error)
 
-    // ListEnabled retrieves all enabled rules ordered by priority (descending).
-    // This is the primary method used by the routing engine.
-    ListEnabled(ctx context.Context) ([]*Rule, error)
-
-    // SetEnabled updates the enabled state of a rule.
-    SetEnabled(ctx context.Context, id uuid.UUID, enabled bool) error
-
-    // Exists checks if a routing rule with the given ID exists.
+    // Exists checks if a skill with the given ID exists.
     Exists(ctx context.Context, id uuid.UUID) (bool, error)
+
+    // GetManifest returns name and crc64 for all skills (used by sync protocol).
+    GetManifest(ctx context.Context) ([]ManifestEntry, error)
 }
 
-// Rule represents a routing rule definition.
-type Rule struct {
-    ID          uuid.UUID   `db:"id"`
-    Name        string      `db:"name"`
-    Priority    int         `db:"priority"`
-    AgentName   string      `db:"agent_name"`
-    MatchType   string      `db:"match_type"`
-    MatchConfig MatchConfig `db:"-"` // Unmarshaled from JSONB
-    Enabled     bool        `db:"enabled"`
-    CreatedAt   time.Time   `db:"created_at"`
-    UpdatedAt   time.Time   `db:"updated_at"`
+// Skill represents a skill definition stored as a JSONB document.
+type Skill struct {
+    ID         uuid.UUID       `db:"id"`
+    Name       string          `db:"name"`
+    Definition json.RawMessage `db:"definition"` // JSONB document
+    CRC64      string          `db:"crc64"`       // CRC-64 checksum (decimal string)
+    CreatedAt  time.Time       `db:"created_at"`
+    UpdatedAt  time.Time       `db:"updated_at"`
+}
+```
+
+### SkillFileRepository
+
+```go
+// SkillFileRepository defines data access operations for skill child files.
+// Skill files are keyed by (skill_id, path).
+// Implementation: internal/repository/skillfile/repository.go
+type SkillFileRepository interface {
+    // Create stores a new skill file. Returns ErrExists if the
+    // (skill_id, path) combination already exists.
+    Create(ctx context.Context, file *SkillFile) error
+
+    // Get retrieves a skill file by ID. Returns ErrNotFound if not found.
+    Get(ctx context.Context, id uuid.UUID) (*SkillFile, error)
+
+    // GetByPath retrieves a skill file by skill ID and path.
+    // Returns ErrNotFound if not found.
+    GetByPath(ctx context.Context, skillID uuid.UUID, path string) (*SkillFile, error)
+
+    // Update modifies an existing skill file. Returns ErrNotFound if not found.
+    Update(ctx context.Context, file *SkillFile) error
+
+    // Delete removes a skill file by ID. Returns ErrNotFound if not found.
+    Delete(ctx context.Context, id uuid.UUID) error
+
+    // ListBySkill retrieves all files for a given skill.
+    ListBySkill(ctx context.Context, skillID uuid.UUID) ([]*SkillFile, error)
+
+    // DeleteBySkill removes all files for a given skill.
+    DeleteBySkill(ctx context.Context, skillID uuid.UUID) error
 }
 
-// MatchConfig represents type-specific match configuration.
-// Use type assertion to access type-specific fields.
-type MatchConfig interface {
-    Type() string
-}
-
-// KeywordMatchConfig for match_type = 'keyword'
-type KeywordMatchConfig struct {
-    Keywords  []string `json:"keywords"`
-    MatchMode string   `json:"match_mode"` // "any" or "all"
-}
-
-func (k KeywordMatchConfig) Type() string { return "keyword" }
-
-// RegexMatchConfig for match_type = 'regex'
-type RegexMatchConfig struct {
-    Pattern string `json:"pattern"`
-    Flags   string `json:"flags,omitempty"` // e.g., "i" for case-insensitive
-}
-
-func (r RegexMatchConfig) Type() string { return "regex" }
-
-// PatternMatchConfig for match_type = 'pattern'
-type PatternMatchConfig struct {
-    PatternIDs []uuid.UUID `json:"pattern_ids"`
-}
-
-func (p PatternMatchConfig) Type() string { return "pattern" }
-
-// DefaultMatchConfig for match_type = 'default'
-type DefaultMatchConfig struct{}
-
-func (d DefaultMatchConfig) Type() string { return "default" }
-
-// Filter defines filtering options for rule queries.
-type Filter struct {
-    AgentName *string // Filter by target agent
-    MatchType *string // Filter by match type
-    Enabled   *bool   // Filter by enabled state
+// SkillFile represents a child file for a skill.
+type SkillFile struct {
+    ID        uuid.UUID `db:"id"`
+    SkillID   uuid.UUID `db:"skill_id"`
+    Path      string    `db:"path"`
+    Content   string    `db:"content"`
+    CRC64     string    `db:"crc64"`
+    CreatedAt time.Time `db:"created_at"`
+    UpdatedAt time.Time `db:"updated_at"`
 }
 ```
 
@@ -1187,7 +1412,7 @@ type Filter struct {
 
 ```go
 // EnrichmentJobRepository defines data access operations for enrichment jobs.
-// Implementation: internal/repository/enrichment_job_repository.go
+// Implementation: internal/repository/enrichmentjob/repository.go
 type EnrichmentJobRepository interface {
     // Create stores a new enrichment job.
     Create(ctx context.Context, job *Job) error
@@ -1224,26 +1449,26 @@ type EnrichmentJobRepository interface {
     DeleteFailed(ctx context.Context, retention time.Duration) (int64, error)
 
     // List retrieves enrichment jobs with filtering and pagination.
-    // Returns the jobs, total count, and any error.
     List(ctx context.Context, filter Filter, opts ListOptions) ([]*Job, int64, error)
 }
 
 // Job represents a background enrichment task.
 type Job struct {
-    ID          uuid.UUID  `db:"id"`
-    PatternID   uuid.UUID  `db:"pattern_id"`
-    Status      string     `db:"status"`
-    Attempts    int        `db:"attempts"`
-    MaxAttempts int        `db:"max_attempts"`
-    LastError   *string    `db:"last_error"`
-    ScheduledFor time.Time `db:"scheduled_for"`
-    StartedAt   *time.Time `db:"started_at"`
-    CompletedAt *time.Time `db:"completed_at"`
-    CreatedAt   time.Time  `db:"created_at"`
-    UpdatedAt   time.Time  `db:"updated_at"`
+    ID           uuid.UUID  `db:"id"`
+    PatternID    uuid.UUID  `db:"pattern_id"`
+    Status       string     `db:"status"`
+    Attempts     int        `db:"attempts"`
+    MaxAttempts  int        `db:"max_attempts"`
+    LastError    *string    `db:"last_error"`
+    ScheduledFor time.Time  `db:"scheduled_for"`
+    StartedAt    *time.Time `db:"started_at"`
+    CompletedAt  *time.Time `db:"completed_at"`
+    CreatedAt    time.Time  `db:"created_at"`
+    UpdatedAt    time.Time  `db:"updated_at"`
 }
 
 // Filter defines filtering options for job queries.
+// This type is package-specific to internal/repository/enrichmentjob.
 type Filter struct {
     Status    *string    // Filter by job status (pending, processing, completed, failed)
     PatternID *uuid.UUID // Filter by the associated pattern ID
@@ -1254,7 +1479,7 @@ type Filter struct {
 
 ```go
 // GraphRepository defines data access operations for the Neo4j knowledge graph.
-// Implementation: internal/repository/graph_repository.go
+// Implementation: internal/repository/graph/repository.go
 type GraphRepository interface {
     // SyncAgent creates or updates an agent node in the graph.
     SyncAgent(ctx context.Context, agentName string) error
@@ -1274,7 +1499,16 @@ type GraphRepository interface {
     // SetPatternAgentRelevance sets the relevance relationships for a pattern.
     SetPatternAgentRelevance(ctx context.Context, patternID uuid.UUID, associations []AgentAssociation) error
 
+    // ComputeRelatedToEdges computes and creates RELATED_TO edges between
+    // the given pattern and other patterns sharing concepts. Existing
+    // RELATED_TO edges for this pattern are deleted first, then recomputed.
+    // Only edges with similarity >= minSimilarity are created.
+    // Called by EnrichmentService.ProcessJob after concept extraction.
+    // See: service-layer.md "RELATED_TO Edge Computation"
+    ComputeRelatedToEdges(ctx context.Context, patternID uuid.UUID, minSimilarity float64) error
+
     // FindRelatedPatterns finds patterns related through shared concepts.
+    // Uses pre-computed RELATED_TO edges and collects shared concept names.
     FindRelatedPatterns(ctx context.Context, patternID uuid.UUID, limit int) ([]RelatedPattern, error)
 
     // FindPatternsByAgent finds patterns relevant to an agent.
@@ -1301,10 +1535,23 @@ type Concept struct {
 }
 
 // RelatedPattern represents a pattern found through graph traversal.
+// Updated to include similarity score and shared concept names for the
+// MCP find_related_patterns tool.
+// See: service-layer.md "Resolving the find_related_patterns Data Gap"
 type RelatedPattern struct {
     ID             uuid.UUID
     Name           string
-    SharedConcepts int
+    SharedConcepts int      // Count of shared concepts (retained for backward compat)
+    Similarity     float64  // Pre-computed similarity score from RELATED_TO edge (0.0-1.0)
+    ConceptNames   []string // Names of the shared concepts
+}
+
+// AgentAssociation represents an agent relevance pair for graph sync.
+// Uses AgentName (not AgentID) because Neo4j Agent nodes are keyed by name.
+// See: service-layer.md "Enrichment Job Lifecycle" step 6
+type AgentAssociation struct {
+    AgentName string
+    Relevance float64
 }
 
 // PatternRelevance represents a pattern with its relevance to an agent.
@@ -1317,19 +1564,24 @@ type PatternRelevance struct {
 
 ### Common Types
 
+`ListOptions` is a shared type used across all repository packages that support pagination.
+
+`Filter` types are **not** shared -- each repository package defines its own `Filter` struct with fields specific to that entity. See the Filter definitions in [PatternRepository](#patternrepository) and [EnrichmentJob Repository](#enrichmentjob-repository).
+
 ```go
 // ListOptions defines pagination parameters.
+// Shared across all repository packages.
 type ListOptions struct {
     Offset int // Number of items to skip
     Limit  int // Maximum items to return (0 = no limit)
 }
 
 // Repository errors (package-specific)
+
 // agent package errors
 var (
     ErrNotFound = errors.New("agent not found")
     ErrExists   = errors.New("agent already exists")
-    ErrInUse    = errors.New("agent is referenced by routing rules")
 )
 
 // pattern package errors
@@ -1338,10 +1590,16 @@ var (
     ErrNameExists = errors.New("pattern name already exists")
 )
 
-// routingrule package errors
+// skill package errors
 var (
-    ErrNotFound   = errors.New("routing rule not found")
-    ErrNameExists = errors.New("routing rule name already exists")
+    ErrNotFound = errors.New("skill not found")
+    ErrExists   = errors.New("skill already exists")
+)
+
+// skillfile package errors
+var (
+    ErrNotFound  = errors.New("skill file not found")
+    ErrExists    = errors.New("skill file already exists")
 )
 
 // enrichmentjob package errors
@@ -1363,16 +1621,17 @@ var (
 
 ```go
 // PostgresConfig defines PostgreSQL connection parameters.
+// Viper handles env var binding via viper.BindEnv() or viper.AutomaticEnv().
 type PostgresConfig struct {
-    Host            string        `yaml:"host" env:"MNEMONIC_DATABASE_POSTGRES_HOST"`
-    Port            int           `yaml:"port" env:"MNEMONIC_DATABASE_POSTGRES_PORT"`
-    Database        string        `yaml:"database" env:"MNEMONIC_DATABASE_POSTGRES_DATABASE"`
-    Username        string        `yaml:"username" env:"MNEMONIC_DATABASE_POSTGRES_USERNAME"`
-    Password        string        `yaml:"password" env:"MNEMONIC_DATABASE_POSTGRES_PASSWORD"`
-    SSLMode         string        `yaml:"ssl_mode" env:"MNEMONIC_DATABASE_POSTGRES_SSL_MODE"`
-    MaxOpenConns    int           `yaml:"max_open_conns" env:"MNEMONIC_DATABASE_POSTGRES_MAX_OPEN_CONNS"`
-    MaxIdleConns    int           `yaml:"max_idle_conns" env:"MNEMONIC_DATABASE_POSTGRES_MAX_IDLE_CONNS"`
-    ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime" env:"MNEMONIC_DATABASE_POSTGRES_CONN_MAX_LIFETIME"`
+    Host            string        `mapstructure:"host"`
+    Port            int           `mapstructure:"port"`
+    Database        string        `mapstructure:"database"`
+    Username        string        `mapstructure:"username"`
+    Password        string        `mapstructure:"password"`
+    SSLMode         string        `mapstructure:"ssl_mode"`
+    MaxOpenConns    int           `mapstructure:"max_open_conns"`
+    MaxIdleConns    int           `mapstructure:"max_idle_conns"`
+    ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
 }
 ```
 
@@ -1390,13 +1649,14 @@ type PostgresConfig struct {
 
 ```go
 // Neo4jConfig defines Neo4j connection parameters.
+// Viper handles env var binding via viper.BindEnv() or viper.AutomaticEnv().
 type Neo4jConfig struct {
-    URI                          string        `yaml:"uri" env:"MNEMONIC_DATABASE_NEO4J_URI"`
-    Username                     string        `yaml:"username" env:"MNEMONIC_DATABASE_NEO4J_USERNAME"`
-    Password                     string        `yaml:"password" env:"MNEMONIC_DATABASE_NEO4J_PASSWORD"`
-    Database                     string        `yaml:"database" env:"MNEMONIC_DATABASE_NEO4J_DATABASE"`
-    MaxConnectionPoolSize        int           `yaml:"max_connection_pool_size" env:"MNEMONIC_DATABASE_NEO4J_MAX_POOL_SIZE"`
-    ConnectionAcquisitionTimeout time.Duration `yaml:"connection_acquisition_timeout" env:"MNEMONIC_DATABASE_NEO4J_ACQUISITION_TIMEOUT"`
+    URI                          string        `mapstructure:"uri"`
+    Username                     string        `mapstructure:"username"`
+    Password                     string        `mapstructure:"password"`
+    Database                     string        `mapstructure:"database"`
+    MaxConnectionPoolSize        int           `mapstructure:"max_connection_pool_size"`
+    ConnectionAcquisitionTimeout time.Duration `mapstructure:"connection_acquisition_timeout"`
 }
 ```
 
@@ -1459,15 +1719,15 @@ export MNEMONIC_DATABASE_NEO4J_DATABASE="neo4j"
 
 **Architecture Documents:**
 
-- [Data Architecture](../../architecture/08-data-architecture.md) - Data model design and storage decisions
-- [System Architecture](../../architecture/03-system-architecture.md) - Component overview
-- [Deployment Architecture](../../architecture/05-deployment-architecture.md) - Deployment patterns
+- [Data Architecture](../../architecture/04-data-architecture.md) - Data model design and storage decisions
+- [System Architecture](../../architecture/02-system-architecture.md) - Component overview
+- [Deployment Architecture](../../architecture/06-deployment-architecture.md) - Deployment patterns
 
 **Design Documents:**
 
+- [API Specification](2026-02-15-pivot-api-specification.md) - REST and MCP API contracts
 - [Configuration](configuration.md) - Server configuration including database settings
 - [Pattern Processing](pattern-processing.md) - Enrichment pipeline using this data layer
-- [Routing Engine](routing-engine.md) - Routing using rules from this data layer
 
 **External References:**
 
@@ -1475,3 +1735,4 @@ export MNEMONIC_DATABASE_NEO4J_DATABASE="neo4j"
 - [pgx](https://github.com/jackc/pgx) - PostgreSQL driver for Go
 - [pgvector](https://github.com/pgvector/pgvector) - Vector similarity search extension
 - [neo4j-go-driver](https://github.com/neo4j/neo4j-go-driver) - Neo4j driver for Go
+- [Claude Code Agent Skills Spec](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/skills) - Skill definition format

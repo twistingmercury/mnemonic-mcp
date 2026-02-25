@@ -1,21 +1,25 @@
 # Pattern Enrichment
 
-[Back to Architecture Overview](../../architecture/00-overview.md) | [Back to Project README](../../../README.md)
+[Back to Architecture Overview](../../architecture/README.md) | [Back to Project README](../../../README.md)
 
 ## Overview
 
-> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic) | [ADR-004: Unified Backend with REST API](../../architecture/02-architectural-decisions.md#adr-004-unified-backend-with-rest-api)
+> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/02-system-architecture.md#mnemonic) | [ADR-004: Unified Backend with REST API](../../architecture/00-architectural-decisions.md#adr-004-unified-backend-with-rest-api)
 
 Pattern enrichment transforms raw pattern content into searchable, interconnected knowledge. When a pattern is created or updated, Mnemonic automatically enriches it to enable:
 
-1. **Semantic search** - Find patterns by meaning, not just keywords
+1. **Semantic search** - Find patterns by meaning, not just keywords via the MCP `search_patterns` tool and Admin API search endpoint
 2. **Relationship discovery** - Connect related patterns and agents via knowledge graph
+
+Enrichment data feeds all three MCP tools: `search_patterns` (semantic search), `find_related_patterns` (graph traversal), and `get_pattern` (full pattern with graph context).
 
 This design is inspired by Cognee's cognify pipeline (chunk, classify, extract, integrate, summarize) but adapted for Mnemonic's simpler use case: patterns are already curated documents, not raw data requiring extensive preprocessing.
 
+**Note:** Following the architectural pivot (see [2026-02-14-mnemonic-pivot-knowledge-sync.md](../plans/2026-02-14-mnemonic-pivot-knowledge-sync.md)), enriched patterns are consumed by the MCP server's search tools and the Admin API search endpoint, not by a routing engine.
+
 ## Enrichment Model
 
-> **Architecture Reference:** [Communication Patterns - Response Structure](../../architecture/04-communication-patterns.md#response-structure)
+> **Architecture Reference:** [Communication Patterns - Response Structure](../../architecture/03-communication-patterns.md#response-structure)
 
 Patterns include enrichment status fields to track processing state:
 
@@ -39,9 +43,11 @@ Pattern:
       description: Timestamp of last successful enrichment
 ```
 
+`enrichment_status` on the pattern tracks the pattern's own state and uses the values `pending`, `enriched`, and `failed`. The `enrichment_jobs` table has a separate status field with an additional `processing` state (`pending`, `processing`, `completed`, `failed`). The `processing` state exists only on jobs, not on patterns.
+
 ## Automatic Enrichment Flow
 
-> **Architecture Reference:** [System Architecture - Data Flow](../../architecture/03-system-architecture.md#data-flow)
+> **Architecture Reference:** [System Architecture - Data Flow](../../architecture/02-system-architecture.md#data-flow)
 
 Enrichment is triggered automatically when a pattern is created or updated. The API responds immediately while enrichment processes asynchronously in the background.
 
@@ -88,7 +94,7 @@ Key characteristics:
 
 ## Enrichment Pipeline
 
-> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic) | [Overview - Core Concept](../../architecture/00-overview.md#core-concept)
+> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/02-system-architecture.md#mnemonic) | [Concept](../mnemonic-concept.md)
 
 ### Write-time Enrichment
 
@@ -101,7 +107,7 @@ stateDiagram-v2
     state "1. Validate & Store Metadata" as ValidateAndStore
     note right of ValidateAndStore
         Postgres: Name, description,
-        tags, agent_associations
+        tags, pattern_agent_associations
         enrichment_status: 'pending'
     end note
 
@@ -125,7 +131,7 @@ stateDiagram-v2
 
     state "4. Create Relationships" as CreateRelationships
     note right of CreateRelationships
-        Neo4j: RELATES_TO, RELEVANT_FOR,
+        Neo4j: RELATED_TO, RELEVANT_FOR,
         MENTIONED_IN relationships
     end note
 
@@ -147,7 +153,7 @@ Store pattern metadata in Postgres:
 - `id` (UUID, generated)
 - `name`, `description`, `content`
 - `tags` (array)
-- `agent_associations` (JSON with agent_name + relevance)
+- `pattern_agent_associations` (join table: `pattern_id UUID`, `agent_id UUID`, `relevance double precision`)
 - `enrichment_status` (initially "pending")
 - `enrichment_error` (null initially)
 - `enriched_at` (null initially)
@@ -177,28 +183,70 @@ Use an LLM to extract structured information from the pattern content:
 }
 ```
 
+These categories map to Concept nodes with `type` = `"domain"`, `"technology"`, and `"practice"` respectively. Concept names are normalized to lowercase before storage.
+
 This LLM call adds 1-5 seconds of processing time per pattern, which is why enrichment runs asynchronously.
 
 #### Step 4: Create Relationships
 
 Store relationships in Neo4j:
 
+The following runs as a transaction during enrichment:
+
 ```cypher
-// Pattern to agent relationship
+// Step 1: Create/update pattern node with full properties
 MERGE (p:Pattern {id: $patternId})
-MERGE (a:Agent {name: $agentName})
-MERGE (p)-[:RELEVANT_FOR {relevance: $relevance}]->(a)
+ON CREATE SET p.name = $name, p.description = $description, p.createdAt = datetime()
+ON MATCH SET p.name = $name, p.description = $description, p.updatedAt = datetime()
 
-// Pattern to concept relationship
-MERGE (p:Pattern {id: $patternId})
-MERGE (c:Concept {name: $conceptName})
-MERGE (c)-[:MENTIONED_IN]->(p)
+// Step 2: Remove old RELEVANT_FOR relationships
+MATCH (p:Pattern {id: $patternId})-[r:RELEVANT_FOR]->()
+DELETE r
 
-// Pattern to pattern relationship (based on shared entities)
-MATCH (p1:Pattern)-[:MENTIONS]->(e:Entity)<-[:MENTIONS]-(p2:Pattern)
-WHERE p1.id <> p2.id
-MERGE (p1)-[:RELATES_TO]->(p2)
+// Step 3: Create new RELEVANT_FOR relationships
+UNWIND $associations AS assoc
+MATCH (p:Pattern {id: $patternId})
+MATCH (a:Agent {name: assoc.agentName})
+CREATE (p)-[:RELEVANT_FOR {relevance: assoc.relevance}]->(a)
+
+// Step 4: Remove old MENTIONED_IN relationships for this pattern
+MATCH (:Concept)-[r:MENTIONED_IN]->(:Pattern {id: $patternId})
+DELETE r
+
+// Step 5: Create concepts and MENTIONED_IN relationships
+UNWIND $concepts AS concept
+MERGE (c:Concept {name: concept.name})
+ON CREATE SET c.type = concept.type, c.createdAt = datetime()
+WITH c
+MATCH (p:Pattern {id: $patternId})
+CREATE (c)-[:MENTIONED_IN]->(p)
+
+// Step 6: Delete old RELATED_TO edges for this pattern
+MATCH (p:Pattern {id: $patternId})-[r:RELATED_TO]-()
+DELETE r
 ```
+
+### RELATED_TO Edge Computation
+
+RELATED_TO is a symmetric relationship. Edges are created in one direction only, and queries use direction-agnostic traversal (`MATCH (a)-[:RELATED_TO]-(b)`, no arrow). This is the standard Neo4j pattern for symmetric relationships.
+
+After concept extraction and MENTIONED_IN edge creation, the enrichment pipeline
+computes direct RELATED_TO edges between patterns:
+
+1. For each newly enriched pattern, query Neo4j for other patterns that share
+   concepts (via MENTIONED_IN traversal)
+2. Compute a similarity score (0.0-1.0) based on concept overlap only:
+
+   ```text
+   similarity = sharedConcepts / max(totalConceptsA, totalConceptsB)
+   ```
+
+3. Create RELATED_TO edges between pattern pairs with the computed similarity score
+4. Edges below a minimum threshold (default 0.3) are not created; the threshold
+   is configurable via `enrichment.related_to_min_similarity` (see [configuration.md](configuration.md))
+
+This step runs as part of the asynchronous enrichment pipeline, after embedding
+generation and concept extraction.
 
 #### Step 5: Update Status
 
@@ -223,15 +271,15 @@ WHERE id = $patternId;
 
 ### Query-time Processing
 
-When patterns are retrieved via `POST /v1/api/route`:
+When patterns are retrieved via MCP `search_patterns` tool or Admin API `GET /v1/api/patterns/search`:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> EmbedQuery: Route Request
+    [*] --> EmbedQuery: Pattern Search Request
 
     state "1. Embed Query" as EmbedQuery
     note right of EmbedQuery
-        Generate embedding from prompt
+        Generate embedding from query
     end note
 
     EmbedQuery --> VectorSearch
@@ -243,44 +291,28 @@ stateDiagram-v2
         Only enriched patterns
     end note
 
-    VectorSearch --> GraphTraversal
-
-    state "3. Graph Traversal" as GraphTraversal
-    note right of GraphTraversal
-        Neo4j: Expand to related patterns
-        Boost strong graph connections
-    end note
-
-    GraphTraversal --> RankAndReturn
-
-    state "4. Rank and Return" as RankAndReturn
-    note right of RankAndReturn
-        Combine similarity + graph scores
-        Return top N patterns
-    end note
-
-    RankAndReturn --> [*]
+    VectorSearch --> [*]
 ```
 
 Note: Query-time search only considers patterns with `enrichment_status = 'enriched'`. Patterns still pending or failed enrichment are excluded from search results.
 
+Graph traversal to expand and re-rank results via Neo4j is a post-MVP enhancement (see Relevance Scoring below).
+
 #### Relevance Scoring
 
+**MVP**: `search_patterns` ranks results by vector similarity only (PGVector cosine similarity). This is the similarity score returned in results.
+
+**Post-MVP Enhancement**: Blended scoring combining vector similarity with graph context:
+
 ```text
-relevance = (0.7 * vector_similarity) + (0.3 * graph_score)
+relevance = (0.7 × vector_similarity) + (0.3 × graph_score)
 ```
 
-> **Note:** This combined formula is used for pattern search and retrieval, providing richer relevance scoring by incorporating graph context. For routing decisions, the Routing Engine uses simple cosine similarity for speed. See [Routing Engine - Scoring Logic by Match Type](routing-engine.md#scoring-logic-by-match-type) for details.
-
-Where `graph_score` considers:
-
-- Direct agent association relevance
-- Number of hops from matched patterns
-- Shared entity count
+Where `graph_score` would consider direct agent association relevance, hop distance from matched patterns, and shared concept count. The algorithm for computing `graph_score` will be designed when this enhancement is prioritized.
 
 ## Enrichment Worker Deployment
 
-> **Architecture Reference:** [Deployment Architecture - Component Deployment](../../architecture/05-deployment-architecture.md#component-deployment) | [Deployment Architecture - Scaling Considerations](../../architecture/05-deployment-architecture.md#scaling-considerations)
+> **Architecture Reference:** [Deployment Architecture - Component Deployment](../../architecture/06-deployment-architecture.md#component-deployment) | [Deployment Architecture - Scaling Considerations](../../architecture/06-deployment-architecture.md#scaling-considerations)
 
 ### In-Process Background Worker
 
@@ -330,6 +362,11 @@ CREATE TABLE enrichment_jobs (
 
 CREATE INDEX idx_enrichment_jobs_pending ON enrichment_jobs (scheduled_for)
     WHERE status = 'pending';
+CREATE INDEX idx_enrichment_jobs_pattern ON enrichment_jobs (pattern_id);
+CREATE INDEX idx_enrichment_jobs_processing ON enrichment_jobs (started_at)
+    WHERE status = 'processing';
+CREATE UNIQUE INDEX idx_enrichment_jobs_unique_pending ON enrichment_jobs (pattern_id)
+    WHERE status IN ('pending', 'processing');
 ```
 
 Worker polling:
@@ -429,7 +466,7 @@ Run this query periodically (e.g., every minute) to recover jobs from crashed wo
 
 | Pods   | Behavior                                       |
 | ------ | ---------------------------------------------- |
-| 1 pod  | Single worker processes all jobs sequentially  |
+| 1 pod  | Default 2 workers process jobs concurrently    |
 | 2 pods | Jobs distributed automatically; ~2x throughput |
 | N pods | Jobs distributed across N pods; ~Nx throughput |
 
@@ -499,7 +536,7 @@ flowchart TB
 
 ## External Service Dependencies
 
-> **Architecture Reference:** [Requirements - Non-Goals](../../architecture/01-requirements.md#non-goals) | [System Architecture - Boundary Definitions](../../architecture/03-system-architecture.md#boundary-definitions)
+> **Architecture Reference:** [Requirements - Non-Goals](../mnemonic-requirements.md#non-goals) | [System Architecture - Boundary Definitions](../../architecture/02-system-architecture.md#boundary-definitions)
 
 Pattern enrichment requires external API calls for embedding generation and entity extraction.
 
@@ -543,7 +580,7 @@ Additional LLM providers (Anthropic, Azure OpenAI) can be added post-MVP if need
 
 ## Configuration Requirements
 
-> **Architecture Reference:** [Deployment Architecture - Operational Considerations](../../architecture/05-deployment-architecture.md#operational-considerations)
+> **Architecture Reference:** [Deployment Architecture - Operational Considerations](../../architecture/06-deployment-architecture.md#operational-considerations)
 
 ### Required Environment Variables
 
@@ -579,6 +616,7 @@ enrichment:
   poll_interval: 5s # How often to check for new jobs
   max_attempts: 3 # Retry attempts before marking as failed
   retry_delay: 30s # Delay between retry attempts
+  job_timeout: 5m  # Maximum time for a single enrichment job
 
 # Neo4j configuration (required)
 neo4j:
@@ -629,7 +667,9 @@ For bulk pattern imports, implement:
 
 ## Deployment Requirements
 
-> **Architecture Reference:** [Deployment Architecture - Infrastructure Requirements](../../architecture/05-deployment-architecture.md#infrastructure-requirements) | [Deployment Architecture - Deployment Topology](../../architecture/05-deployment-architecture.md#deployment-topology)
+> **Architecture Reference:** [Deployment Architecture - Infrastructure Requirements](../../architecture/06-deployment-architecture.md#infrastructure-requirements) | [Deployment Architecture - Deployment Topology](../../architecture/06-deployment-architecture.md#deployment-topology)
+>
+> **Observability Reference:** [Enrichment Worker Observability](observability-implementation.md#enrichment-worker-observability) — metrics, tracing spans, and structured logging for the enrichment pipeline
 
 ### Infrastructure Checklist
 
@@ -674,7 +714,7 @@ The pattern service should expose a health check that validates enrichment capab
 
 ## Internal Dependencies
 
-> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/03-system-architecture.md#mnemonic)
+> **Architecture Reference:** [System Architecture - Mnemonic](../../architecture/02-system-architecture.md#mnemonic)
 
 ### PGVector Configuration
 
@@ -720,6 +760,17 @@ FOR (c:Concept) REQUIRE c.name IS UNIQUE;
 // Create indexes for common queries
 CREATE INDEX pattern_name IF NOT EXISTS
 FOR (p:Pattern) ON (p.name);
+
+// Full-text indexes for search
+CREATE FULLTEXT INDEX pattern_content_fulltext IF NOT EXISTS
+FOR (p:Pattern) ON EACH [p.name, p.description];
+
+CREATE FULLTEXT INDEX concept_name_fulltext IF NOT EXISTS
+FOR (c:Concept) ON EACH [c.name];
+
+// Property index for concept type filtering
+CREATE INDEX concept_type_index IF NOT EXISTS
+FOR (c:Concept) ON (c.type);
 ```
 
 ### Entity Extraction Prompt
@@ -738,7 +789,6 @@ Pattern content:
 
 ## References
 
-- [Architecture Overview](../../architecture/00-overview.md)
-- [System Architecture](../../architecture/03-system-architecture.md) - Storage stack details
-- [API Specification](api-specification.md) - Pattern endpoints
+- [Architecture Overview](../../architecture/README.md)
+- [System Architecture](../../architecture/02-system-architecture.md) - Storage stack details
 - [Mnemonic OpenAPI Spec](../../../api/openapi/mnemonic-v1.yaml) - Full API definition

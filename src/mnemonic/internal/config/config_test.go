@@ -67,16 +67,15 @@ func TestDefaultValues(t *testing.T) {
 	assert.Equal(t, config.DefaultRateLimitPerUserRPM, cfg.RateLimit.PerUser.RequestsPerMinute)
 	assert.Equal(t, config.DefaultRateLimitPerUserBurst, cfg.RateLimit.PerUser.BurstSize)
 
-	// Routing defaults
-	assert.Equal(t, config.DefaultRoutingCacheRefreshTTL, cfg.Routing.Cache.RefreshTTL)
-	assert.Equal(t, config.DefaultRoutingCacheStartupTimeout, cfg.Routing.Cache.StartupTimeout)
-
 	// Enrichment defaults
 	assert.Equal(t, config.DefaultEnrichmentWorkerCount, cfg.Enrichment.WorkerCount)
 	assert.Equal(t, config.DefaultEnrichmentPollInterval, cfg.Enrichment.PollInterval)
 	assert.Equal(t, config.DefaultEnrichmentMaxAttempts, cfg.Enrichment.MaxAttempts)
 	assert.Equal(t, config.DefaultEnrichmentRetryDelay, cfg.Enrichment.RetryDelay)
 	assert.Equal(t, config.DefaultEnrichmentJobTimeout, cfg.Enrichment.JobTimeout)
+	assert.Equal(t, config.DefaultEnrichmentCompletedRetention, cfg.Enrichment.CompletedRetention)
+	assert.Equal(t, config.DefaultEnrichmentFailedRetention, cfg.Enrichment.FailedRetention)
+	assert.Equal(t, config.DefaultEnrichmentRelatedToMinSimilarity, cfg.Enrichment.RelatedToMinSimilarity)
 
 	// Logging defaults
 	assert.Equal(t, config.DefaultLoggingLevel, cfg.Logging.Level)
@@ -645,40 +644,6 @@ func TestValidation_RateLimitDisabled(t *testing.T) {
 	}
 }
 
-// TestValidation_RoutingConfig tests routing configuration validation.
-func TestValidation_RoutingConfig(t *testing.T) {
-	tests := []struct {
-		name        string
-		modify      func(cfg *config.MnemonicConfig)
-		expectError string
-	}{
-		{
-			name: "negative cache.refresh_ttl",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Routing.Cache.RefreshTTL = -1 * time.Second
-			},
-			expectError: "routing.cache.refresh_ttl",
-		},
-		{
-			name: "negative cache.startup_timeout",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Routing.Cache.StartupTimeout = -1 * time.Second
-			},
-			expectError: "routing.cache.startup_timeout",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := validConfig()
-			tt.modify(cfg)
-			errs := cfg.Validate()
-			require.NotEmpty(t, errs, "expected validation errors")
-			assert.Contains(t, errs.Error(), tt.expectError)
-		})
-	}
-}
-
 // TestValidation_EnrichmentConfig tests enrichment configuration validation.
 func TestValidation_EnrichmentConfig(t *testing.T) {
 	tests := []struct {
@@ -720,6 +685,48 @@ func TestValidation_EnrichmentConfig(t *testing.T) {
 				cfg.Enrichment.JobTimeout = 0
 			},
 			expectError: "enrichment.job_timeout",
+		},
+		{
+			name: "zero completed_retention",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Enrichment.CompletedRetention = 0
+			},
+			expectError: "enrichment.completed_retention",
+		},
+		{
+			name: "negative completed_retention",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Enrichment.CompletedRetention = -1 * time.Hour
+			},
+			expectError: "enrichment.completed_retention",
+		},
+		{
+			name: "zero failed_retention",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Enrichment.FailedRetention = 0
+			},
+			expectError: "enrichment.failed_retention",
+		},
+		{
+			name: "negative failed_retention",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Enrichment.FailedRetention = -1 * time.Hour
+			},
+			expectError: "enrichment.failed_retention",
+		},
+		{
+			name: "negative related_to_min_similarity",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Enrichment.RelatedToMinSimilarity = -0.1
+			},
+			expectError: "enrichment.related_to_min_similarity",
+		},
+		{
+			name: "related_to_min_similarity over 1",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Enrichment.RelatedToMinSimilarity = 1.5
+			},
+			expectError: "enrichment.related_to_min_similarity",
 		},
 	}
 
@@ -1418,18 +1425,15 @@ func validConfig() *config.MnemonicConfig {
 				BurstSize:         10,
 			},
 		},
-		Routing: config.RoutingConfig{
-			Cache: config.RoutingCacheConfig{
-				RefreshTTL:     5 * time.Minute,
-				StartupTimeout: 30 * time.Second,
-			},
-		},
 		Enrichment: config.EnrichmentConfig{
-			WorkerCount:  2,
-			PollInterval: 5 * time.Second,
-			MaxAttempts:  3,
-			RetryDelay:   30 * time.Second,
-			JobTimeout:   5 * time.Minute,
+			WorkerCount:            2,
+			PollInterval:           5 * time.Second,
+			MaxAttempts:            3,
+			RetryDelay:             30 * time.Second,
+			JobTimeout:             5 * time.Minute,
+			CompletedRetention:     168 * time.Hour,
+			FailedRetention:        720 * time.Hour,
+			RelatedToMinSimilarity: 0.3,
 		},
 		Logging: config.LoggingConfig{
 			Level:         "info",

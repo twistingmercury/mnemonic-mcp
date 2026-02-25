@@ -12,141 +12,132 @@ import (
 
 // MnemonicConfig is the top-level configuration structure for the Mnemonic server.
 type MnemonicConfig struct {
-	Server        ServerConfig        `mapstructure:"server" yaml:"server"`
-	Database      DatabaseConfig      `mapstructure:"database" yaml:"database"`
-	OpenAI        OpenAIConfig        `mapstructure:"openai" yaml:"openai"`
-	RateLimit     RateLimitConfig     `mapstructure:"rate_limit" yaml:"rate_limit"`
-	Routing       RoutingConfig       `mapstructure:"routing" yaml:"routing"`
-	Enrichment    EnrichmentConfig    `mapstructure:"enrichment" yaml:"enrichment"`
-	Logging       LoggingConfig       `mapstructure:"logging" yaml:"logging"`
-	Observability ObservabilityConfig `mapstructure:"observability" yaml:"observability"`
+	Server        ServerConfig        `mapstructure:"server"`
+	Database      DatabaseConfig      `mapstructure:"database"`
+	OpenAI        OpenAIConfig        `mapstructure:"openai"`
+	RateLimit     RateLimitConfig     `mapstructure:"rate_limit"`
+	Enrichment    EnrichmentConfig    `mapstructure:"enrichment"`
+	Logging       LoggingConfig       `mapstructure:"logging"`
+	Observability ObservabilityConfig `mapstructure:"observability"`
 }
 
 // ServerConfig contains HTTP server settings.
 type ServerConfig struct {
-	Host            string        `mapstructure:"host" yaml:"host"`
-	Port            int           `mapstructure:"port" yaml:"port"`
-	ReadTimeout     time.Duration `mapstructure:"read_timeout" yaml:"read_timeout"`
-	WriteTimeout    time.Duration `mapstructure:"write_timeout" yaml:"write_timeout"`
-	IdleTimeout     time.Duration `mapstructure:"idle_timeout" yaml:"idle_timeout"`
-	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout" yaml:"shutdown_timeout"`
-	TLS             TLSConfig     `mapstructure:"tls" yaml:"tls"`
+	Host            string        `mapstructure:"host"`
+	Port            int           `mapstructure:"port"`
+	ReadTimeout     time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout    time.Duration `mapstructure:"write_timeout"`
+	IdleTimeout     time.Duration `mapstructure:"idle_timeout"`
+	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
+	TLS             TLSConfig     `mapstructure:"tls"`
 }
 
 // TLSConfig contains TLS settings for the server.
 type TLSConfig struct {
-	Enabled  bool   `mapstructure:"enabled" yaml:"enabled"`
-	CertFile string `mapstructure:"cert_file" yaml:"cert_file"`
-	KeyFile  string `mapstructure:"key_file" yaml:"key_file"`
+	Enabled  bool   `mapstructure:"enabled"`
+	CertFile string `mapstructure:"cert_file"`
+	KeyFile  string `mapstructure:"key_file"`
 }
 
 // DatabaseConfig contains database connection settings.
 type DatabaseConfig struct {
-	Postgres PostgresConfig `mapstructure:"postgres" yaml:"postgres"`
-	Neo4j    Neo4jConfig    `mapstructure:"neo4j" yaml:"neo4j"`
+	Postgres PostgresConfig `mapstructure:"postgres"`
+	Neo4j    Neo4jConfig    `mapstructure:"neo4j"`
 }
 
 // PostgresConfig contains PostgreSQL connection settings.
 type PostgresConfig struct {
-	Host            string        `mapstructure:"host" yaml:"host"`
-	Port            int           `mapstructure:"port" yaml:"port"`
-	Database        string        `mapstructure:"database" yaml:"database"`
-	Username        string        `mapstructure:"username" yaml:"username"`
-	Password        string        `mapstructure:"password" yaml:"password"`
-	SSLMode         string        `mapstructure:"ssl_mode" yaml:"ssl_mode"`
-	MaxOpenConns    int           `mapstructure:"max_open_conns" yaml:"max_open_conns"`
-	MaxIdleConns    int           `mapstructure:"max_idle_conns" yaml:"max_idle_conns"`
-	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime" yaml:"conn_max_lifetime"`
+	Host            string        `mapstructure:"host"`
+	Port            int           `mapstructure:"port"`
+	Database        string        `mapstructure:"database"`
+	Username        string        `mapstructure:"username"`
+	Password        string        `mapstructure:"password"` // #nosec G117 -- credentials loaded from config/env, not serialized
+	SSLMode         string        `mapstructure:"ssl_mode"`
+	MaxOpenConns    int           `mapstructure:"max_open_conns"`
+	MaxIdleConns    int           `mapstructure:"max_idle_conns"`
+	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
 }
 
 // Neo4jConfig contains Neo4j connection settings.
 type Neo4jConfig struct {
-	URI                          string        `mapstructure:"uri" yaml:"uri"`
-	Username                     string        `mapstructure:"username" yaml:"username"`
-	Password                     string        `mapstructure:"password" yaml:"password"`
-	Database                     string        `mapstructure:"database" yaml:"database"`
-	MaxConnectionPoolSize        int           `mapstructure:"max_connection_pool_size" yaml:"max_connection_pool_size"`
-	ConnectionAcquisitionTimeout time.Duration `mapstructure:"connection_acquisition_timeout" yaml:"connection_acquisition_timeout"`
+	URI                          string        `mapstructure:"uri"`
+	Username                     string        `mapstructure:"username"`
+	Password                     string        `mapstructure:"password"` // #nosec G117 -- credentials loaded from config/env, not serialized
+	Database                     string        `mapstructure:"database"`
+	MaxConnectionPoolSize        int           `mapstructure:"max_connection_pool_size"`
+	ConnectionAcquisitionTimeout time.Duration `mapstructure:"connection_acquisition_timeout"`
 }
 
 // OpenAIConfig contains OpenAI API settings.
 type OpenAIConfig struct {
-	APIKey               string        `mapstructure:"api_key" yaml:"api_key"`
-	EmbeddingModel       string        `mapstructure:"embedding_model" yaml:"embedding_model"`
-	EmbeddingDimensions  int           `mapstructure:"embedding_dimensions" yaml:"embedding_dimensions"`
-	ExtractionModel      string        `mapstructure:"extraction_model" yaml:"extraction_model"`
-	MaxRequestsPerMinute int           `mapstructure:"max_requests_per_minute" yaml:"max_requests_per_minute"`
-	RetryAttempts        int           `mapstructure:"retry_attempts" yaml:"retry_attempts"`
-	RetryDelay           time.Duration `mapstructure:"retry_delay" yaml:"retry_delay"`
+	APIKey               string        `mapstructure:"api_key"` // #nosec G117 -- credentials loaded from config/env, not serialized
+	EmbeddingModel       string        `mapstructure:"embedding_model"`
+	EmbeddingDimensions  int           `mapstructure:"embedding_dimensions"`
+	ExtractionModel      string        `mapstructure:"extraction_model"`
+	MaxRequestsPerMinute int           `mapstructure:"max_requests_per_minute"`
+	RetryAttempts        int           `mapstructure:"retry_attempts"`
+	RetryDelay           time.Duration `mapstructure:"retry_delay"`
 }
 
 // RateLimitConfig contains rate limiting settings.
 type RateLimitConfig struct {
-	Enabled           bool             `mapstructure:"enabled" yaml:"enabled"`
-	RequestsPerSecond int              `mapstructure:"requests_per_second" yaml:"requests_per_second"`
-	BurstSize         int              `mapstructure:"burst_size" yaml:"burst_size"`
-	PerUser           PerUserRateLimit `mapstructure:"per_user" yaml:"per_user"`
+	Enabled           bool             `mapstructure:"enabled"`
+	RequestsPerSecond int              `mapstructure:"requests_per_second"`
+	BurstSize         int              `mapstructure:"burst_size"`
+	PerUser           PerUserRateLimit `mapstructure:"per_user"`
 }
 
 // PerUserRateLimit contains per-user rate limiting settings.
 type PerUserRateLimit struct {
-	RequestsPerMinute int `mapstructure:"requests_per_minute" yaml:"requests_per_minute"`
-	BurstSize         int `mapstructure:"burst_size" yaml:"burst_size"`
-}
-
-// RoutingConfig contains routing engine settings.
-type RoutingConfig struct {
-	Cache RoutingCacheConfig `mapstructure:"cache" yaml:"cache"`
-}
-
-// RoutingCacheConfig contains routing cache settings.
-type RoutingCacheConfig struct {
-	RefreshTTL     time.Duration `mapstructure:"refresh_ttl" yaml:"refresh_ttl"`
-	StartupTimeout time.Duration `mapstructure:"startup_timeout" yaml:"startup_timeout"`
+	RequestsPerMinute int `mapstructure:"requests_per_minute"`
+	BurstSize         int `mapstructure:"burst_size"`
 }
 
 // EnrichmentConfig contains enrichment worker settings.
 type EnrichmentConfig struct {
-	WorkerCount  int           `mapstructure:"worker_count" yaml:"worker_count"`
-	PollInterval time.Duration `mapstructure:"poll_interval" yaml:"poll_interval"`
-	MaxAttempts  int           `mapstructure:"max_attempts" yaml:"max_attempts"`
-	RetryDelay   time.Duration `mapstructure:"retry_delay" yaml:"retry_delay"`
-	JobTimeout   time.Duration `mapstructure:"job_timeout" yaml:"job_timeout"`
+	WorkerCount            int           `mapstructure:"worker_count"`
+	PollInterval           time.Duration `mapstructure:"poll_interval"`
+	MaxAttempts            int           `mapstructure:"max_attempts"`
+	RetryDelay             time.Duration `mapstructure:"retry_delay"`
+	JobTimeout             time.Duration `mapstructure:"job_timeout"`
+	CompletedRetention     time.Duration `mapstructure:"completed_retention"`
+	FailedRetention        time.Duration `mapstructure:"failed_retention"`
+	RelatedToMinSimilarity float64       `mapstructure:"related_to_min_similarity"`
 }
 
 // LoggingConfig contains logging settings.
 type LoggingConfig struct {
-	Level         string `mapstructure:"level" yaml:"level"`
-	Format        string `mapstructure:"format" yaml:"format"`
-	IncludeCaller bool   `mapstructure:"include_caller" yaml:"include_caller"`
+	Level         string `mapstructure:"level"`
+	Format        string `mapstructure:"format"`
+	IncludeCaller bool   `mapstructure:"include_caller"`
 }
 
 // ObservabilityConfig contains observability settings.
 type ObservabilityConfig struct {
-	Metrics MetricsConfig `mapstructure:"metrics" yaml:"metrics"`
-	Health  HealthConfig  `mapstructure:"health" yaml:"health"`
-	Tracing TracingConfig `mapstructure:"tracing" yaml:"tracing"`
+	Metrics MetricsConfig `mapstructure:"metrics"`
+	Health  HealthConfig  `mapstructure:"health"`
+	Tracing TracingConfig `mapstructure:"tracing"`
 }
 
 // MetricsConfig contains metrics settings.
 type MetricsConfig struct {
-	Enabled bool   `mapstructure:"enabled" yaml:"enabled"`
-	Path    string `mapstructure:"path" yaml:"path"`
-	Port    int    `mapstructure:"port" yaml:"port"`
+	Enabled bool   `mapstructure:"enabled"`
+	Path    string `mapstructure:"path"`
+	Port    int    `mapstructure:"port"`
 }
 
 // HealthConfig contains health check settings.
 type HealthConfig struct {
-	Enabled bool   `mapstructure:"enabled" yaml:"enabled"`
-	Path    string `mapstructure:"path" yaml:"path"`
+	Enabled bool   `mapstructure:"enabled"`
+	Path    string `mapstructure:"path"`
 }
 
 // TracingConfig contains distributed tracing settings.
 type TracingConfig struct {
-	Enabled      bool    `mapstructure:"enabled" yaml:"enabled"`
-	Endpoint     string  `mapstructure:"endpoint" yaml:"endpoint"`
-	SampleRate   float64 `mapstructure:"sample_rate" yaml:"sample_rate"`
-	OTLPInsecure bool    `mapstructure:"otlp_insecure" yaml:"otlp_insecure"`
+	Enabled      bool    `mapstructure:"enabled"`
+	Endpoint     string  `mapstructure:"endpoint"`
+	SampleRate   float64 `mapstructure:"sample_rate"`
+	OTLPInsecure bool    `mapstructure:"otlp_insecure"`
 }
 
 // ValidationError represents a configuration validation error.
@@ -169,7 +160,7 @@ func (e ValidationErrors) Error() string {
 	var sb strings.Builder
 	sb.WriteString("configuration validation failed:\n")
 	for _, err := range e {
-		sb.WriteString(fmt.Sprintf("  - %s\n", err.Error()))
+		fmt.Fprintf(&sb, "  - %s\n", err.Error())
 	}
 	return sb.String()
 }
@@ -292,16 +283,15 @@ func SetDefaults(v *viper.Viper) {
 	v.SetDefault("rate_limit.per_user.requests_per_minute", DefaultRateLimitPerUserRPM)
 	v.SetDefault("rate_limit.per_user.burst_size", DefaultRateLimitPerUserBurst)
 
-	// Routing defaults
-	v.SetDefault("routing.cache.refresh_ttl", DefaultRoutingCacheRefreshTTL)
-	v.SetDefault("routing.cache.startup_timeout", DefaultRoutingCacheStartupTimeout)
-
 	// Enrichment defaults
 	v.SetDefault("enrichment.worker_count", DefaultEnrichmentWorkerCount)
 	v.SetDefault("enrichment.poll_interval", DefaultEnrichmentPollInterval)
 	v.SetDefault("enrichment.max_attempts", DefaultEnrichmentMaxAttempts)
 	v.SetDefault("enrichment.retry_delay", DefaultEnrichmentRetryDelay)
 	v.SetDefault("enrichment.job_timeout", DefaultEnrichmentJobTimeout)
+	v.SetDefault("enrichment.completed_retention", DefaultEnrichmentCompletedRetention)
+	v.SetDefault("enrichment.failed_retention", DefaultEnrichmentFailedRetention)
+	v.SetDefault("enrichment.related_to_min_similarity", DefaultEnrichmentRelatedToMinSimilarity)
 
 	// Logging defaults
 	v.SetDefault("logging.level", DefaultLoggingLevel)
@@ -379,9 +369,6 @@ func (c *MnemonicConfig) Validate() ValidationErrors {
 
 	// Rate limit validation
 	errs = append(errs, c.RateLimit.validate()...)
-
-	// Routing validation
-	errs = append(errs, c.Routing.validate()...)
 
 	// Enrichment validation
 	errs = append(errs, c.Enrichment.validate()...)
@@ -626,26 +613,6 @@ func (c *RateLimitConfig) validate() ValidationErrors {
 	return errs
 }
 
-func (c *RoutingConfig) validate() ValidationErrors {
-	var errs ValidationErrors
-
-	if c.Cache.RefreshTTL < 0 {
-		errs = append(errs, ValidationError{
-			Field:   "routing.cache.refresh_ttl",
-			Message: "must be non-negative",
-		})
-	}
-
-	if c.Cache.StartupTimeout < 0 {
-		errs = append(errs, ValidationError{
-			Field:   "routing.cache.startup_timeout",
-			Message: "must be non-negative",
-		})
-	}
-
-	return errs
-}
-
 func (c *EnrichmentConfig) validate() ValidationErrors {
 	var errs ValidationErrors
 
@@ -681,6 +648,27 @@ func (c *EnrichmentConfig) validate() ValidationErrors {
 		errs = append(errs, ValidationError{
 			Field:   "enrichment.job_timeout",
 			Message: "must be a positive duration",
+		})
+	}
+
+	if c.CompletedRetention <= 0 {
+		errs = append(errs, ValidationError{
+			Field:   "enrichment.completed_retention",
+			Message: "must be a positive duration",
+		})
+	}
+
+	if c.FailedRetention <= 0 {
+		errs = append(errs, ValidationError{
+			Field:   "enrichment.failed_retention",
+			Message: "must be a positive duration",
+		})
+	}
+
+	if c.RelatedToMinSimilarity < 0 || c.RelatedToMinSimilarity > 1 {
+		errs = append(errs, ValidationError{
+			Field:   "enrichment.related_to_min_similarity",
+			Message: fmt.Sprintf("must be between 0 and 1, got %f", c.RelatedToMinSimilarity),
 		})
 	}
 

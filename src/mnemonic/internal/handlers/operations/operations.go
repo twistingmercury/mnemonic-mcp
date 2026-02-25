@@ -13,8 +13,8 @@ import (
 func SetupHandlers(r *gin.Engine) {
 	deps := DefineDependencies()
 
-	r.GET("/ops/health", heartbeat.Handler("mnemonic", deps...))
-	r.GET("/ops/version", GetVersion)
+	r.GET("/health", heartbeat.Handler("mnemonic", deps...))
+	r.GET("/version", GetVersion)
 }
 
 // GetVersion handles GET /version

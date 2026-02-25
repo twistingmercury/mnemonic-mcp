@@ -51,6 +51,10 @@ type Repository interface {
 	// GetAgentAssociations retrieves all agent associations for a pattern.
 	GetAgentAssociations(ctx context.Context, patternID uuid.UUID) ([]AgentAssociation, error)
 
+	// GetPatternIDsByAgent returns all pattern IDs associated with the given agent.
+	// Used by SearchService for agent-scoped similarity search pre-filtering.
+	GetPatternIDsByAgent(ctx context.Context, agentID uuid.UUID) ([]uuid.UUID, error)
+
 	// Exists checks if a pattern with the given ID exists.
 	Exists(ctx context.Context, id uuid.UUID) (bool, error)
 }
@@ -571,13 +575,13 @@ func (r *pgxRepository) setAgentAssociationsWithTx(ctx context.Context, txBeginn
 		}
 	}()
 
-	// Validate agent names exist before modifying associations
+	// Validate agent IDs exist before modifying associations
 	if len(associations) > 0 {
-		agentNames := make([]string, len(associations))
+		agentIDs := make([]uuid.UUID, len(associations))
 		for i, assoc := range associations {
-			agentNames[i] = assoc.AgentName
+			agentIDs[i] = assoc.AgentID
 		}
-		if err = r.validateAgentNames(ctx, tx, agentNames); err != nil {
+		if err = r.validateAgentIDs(ctx, tx, agentIDs); err != nil {
 			return err
 		}
 	}
@@ -607,13 +611,13 @@ func (r *pgxRepository) setAgentAssociationsWithTx(ctx context.Context, txBeginn
 
 // setAgentAssociationsNoTx performs the operation assuming we're already in a transaction.
 func (r *pgxRepository) setAgentAssociationsNoTx(ctx context.Context, patternID uuid.UUID, associations []AgentAssociation) error {
-	// Validate agent names exist before modifying associations
+	// Validate agent IDs exist before modifying associations
 	if len(associations) > 0 {
-		agentNames := make([]string, len(associations))
+		agentIDs := make([]uuid.UUID, len(associations))
 		for i, assoc := range associations {
-			agentNames[i] = assoc.AgentName
+			agentIDs[i] = assoc.AgentID
 		}
-		if err := r.validateAgentNames(ctx, r.db, agentNames); err != nil {
+		if err := r.validateAgentIDs(ctx, r.db, agentIDs); err != nil {
 			return err
 		}
 	}
@@ -646,12 +650,12 @@ func (r *pgxRepository) insertAssociationsBatch(ctx context.Context, db reposito
 
 	for _, assoc := range associations {
 		valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d)", argNum, argNum+1, argNum+2))
-		args = append(args, patternID, assoc.AgentName, assoc.Relevance)
+		args = append(args, patternID, assoc.AgentID, assoc.Relevance)
 		argNum += 3
 	}
 
 	query := fmt.Sprintf(`
-		INSERT INTO pattern_agent_associations (pattern_id, agent_name, relevance)
+		INSERT INTO pattern_agent_associations (pattern_id, agent_id, relevance)
 		VALUES %s
 	`, strings.Join(valueStrings, ", "))
 
@@ -666,7 +670,7 @@ func (r *pgxRepository) insertAssociationsBatch(ctx context.Context, db reposito
 // GetAgentAssociations retrieves all agent associations for a pattern.
 func (r *pgxRepository) GetAgentAssociations(ctx context.Context, patternID uuid.UUID) ([]AgentAssociation, error) {
 	query := `
-		SELECT agent_name, relevance
+		SELECT agent_id, relevance
 		FROM pattern_agent_associations
 		WHERE pattern_id = $1
 		ORDER BY relevance DESC
@@ -682,7 +686,7 @@ func (r *pgxRepository) GetAgentAssociations(ctx context.Context, patternID uuid
 
 	for rows.Next() {
 		var assoc AgentAssociation
-		err := rows.Scan(&assoc.AgentName, &assoc.Relevance)
+		err := rows.Scan(&assoc.AgentID, &assoc.Relevance)
 		if err != nil {
 			return nil, fmt.Errorf("getting agent associations: scanning row: %w", err)
 		}
@@ -694,6 +698,34 @@ func (r *pgxRepository) GetAgentAssociations(ctx context.Context, patternID uuid
 	}
 
 	return associations, nil
+}
+
+// GetPatternIDsByAgent returns all pattern IDs associated with the given agent.
+// Uses idx_pattern_agent_assoc_agent index for efficient lookup.
+func (r *pgxRepository) GetPatternIDsByAgent(ctx context.Context, agentID uuid.UUID) ([]uuid.UUID, error) {
+	query := `SELECT pattern_id FROM pattern_agent_associations WHERE agent_id = $1`
+
+	rows, err := r.db.Query(ctx, query, agentID)
+	if err != nil {
+		return nil, fmt.Errorf("getting pattern IDs by agent: %w", err)
+	}
+	defer rows.Close()
+
+	var patternIDs []uuid.UUID
+
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("getting pattern IDs by agent: scanning row: %w", err)
+		}
+		patternIDs = append(patternIDs, id)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("getting pattern IDs by agent: iterating rows: %w", err)
+	}
+
+	return patternIDs, nil
 }
 
 // Exists checks if a pattern with the given ID exists.
@@ -709,23 +741,23 @@ func (r *pgxRepository) Exists(ctx context.Context, id uuid.UUID) (bool, error) 
 	return exists, nil
 }
 
-// validateAgentNames checks that all agent names exist in the agents table.
-// Returns ErrAgentNotFound with details if any names are invalid.
-func (r *pgxRepository) validateAgentNames(ctx context.Context, db repository.DBTX, names []string) error {
-	if len(names) == 0 {
+// validateAgentIDs checks that all agent IDs exist in the agents table.
+// Returns ErrAgentNotFound with details if any IDs are invalid.
+func (r *pgxRepository) validateAgentIDs(ctx context.Context, db repository.DBTX, ids []uuid.UUID) error {
+	if len(ids) == 0 {
 		return nil
 	}
 
-	// Build query to find which names exist
+	// Build query to find which IDs exist
 	var placeholders []string
-	args := make([]any, len(names))
-	for i, name := range names {
+	args := make([]any, len(ids))
+	for i, id := range ids {
 		placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
-		args[i] = name
+		args[i] = id
 	}
 
 	query := fmt.Sprintf(`
-		SELECT name FROM agents WHERE name IN (%s)
+		SELECT id FROM agents WHERE id IN (%s)
 	`, strings.Join(placeholders, ", "))
 
 	rows, err := db.Query(ctx, query, args...)
@@ -734,30 +766,30 @@ func (r *pgxRepository) validateAgentNames(ctx context.Context, db repository.DB
 	}
 	defer rows.Close()
 
-	// Collect found names
-	foundNames := make(map[string]bool)
+	// Collect found IDs
+	foundIDs := make(map[uuid.UUID]bool)
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return fmt.Errorf("scanning agent name: %w", err)
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("scanning agent id: %w", err)
 		}
-		foundNames[name] = true
+		foundIDs[id] = true
 	}
 
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("reading agent names: %w", err)
+		return fmt.Errorf("reading agent ids: %w", err)
 	}
 
-	// Check for missing names
-	var missingNames []string
-	for _, name := range names {
-		if !foundNames[name] {
-			missingNames = append(missingNames, name)
+	// Check for missing IDs
+	var missingIDs []string
+	for _, id := range ids {
+		if !foundIDs[id] {
+			missingIDs = append(missingIDs, id.String())
 		}
 	}
 
-	if len(missingNames) > 0 {
-		return fmt.Errorf("%w: %s", ErrAgentNotFound, strings.Join(missingNames, ", "))
+	if len(missingIDs) > 0 {
+		return fmt.Errorf("%w: %s", ErrAgentNotFound, strings.Join(missingIDs, ", "))
 	}
 
 	return nil
