@@ -752,7 +752,7 @@ func (m *MCP) RecordSessionClosed(ctx context.Context) {
 }
 ```
 
-> **Deferred:** MCP server-side instrumentation (wiring these metrics into MCP tool handlers, adding tracing spans for MCP requests) is deferred to a later MVP iteration. The metric instruments above define the contract; the integration point in `internal/mcpserver/` will be implemented once the MCP SDK's handler middleware patterns are finalized. Until then, MCP tool calls are observable only through the Admin API request metrics when proxied.
+> **Deferred:** MCP server-side instrumentation (wiring these metrics into MCP tool handlers, adding tracing spans for MCP requests) is deferred to a later MVP iteration. The metric instruments above define the contract; the integration point in `internal/mcpserver/` will be implemented once the MCP SDK's handler middleware patterns are finalized. Until then, MCP tool calls will be instrumented via native MCP receiving middleware, not through Admin API proxying.
 
 ### Pattern Metrics
 
@@ -1859,7 +1859,7 @@ func SetupHandlers(r *gin.Engine) {
     deps := DefineDependencies()
 
     r.GET("/health", heartbeat.Handler("mnemonic", deps...))
-    r.GET("/api/version", GetVersion)
+    r.GET("/version", GetVersion)
 }
 ```
 

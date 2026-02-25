@@ -574,9 +574,9 @@ graph LR
 | Flexibility   | Standard components enable customization, but more configuration   |
 | Auditability  | Clear separation enables detailed audit trails                     |
 
-**Next:** Return to [Architecture Overview](README.md)
+**Next:** [System Architecture](02-system-architecture.md)
 
 See also:
 
-- [System Architecture](02-system-architecture.md) for component details
+- [Architecture Overview](README.md) for the full document index
 - [Deployment Architecture](06-deployment-architecture.md) for deployment patterns
