@@ -33,10 +33,10 @@ type Pagination struct {
 // Agent represents the full agent definition.
 // OpenAPI: api/openapi/mnemonic-v1.yaml:315 (Agent)
 type Agent struct {
-	Name            string   `json:"name"`
-	Description     string   `json:"description"`
-	SystemPrompt    string   `json:"system_prompt"`
-	Model           string   `json:"model"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	SystemPrompt string   `json:"system_prompt"`
+	Model        string   `json:"model"`
 	AllowedTools []string `json:"allowed_tools,omitempty"`
 	CreatedAt    string   `json:"created_at,omitempty"`
 	UpdatedAt    string   `json:"updated_at,omitempty"`
@@ -82,7 +82,7 @@ type AgentList struct {
 // AgentAssociation represents association between pattern and agent.
 // OpenAPI: api/openapi/mnemonic-v1.yaml:529 (AgentAssociation)
 type AgentAssociation struct {
-	AgentName string  `json:"agent_name"`
+	AgentID   string  `json:"agent_id"`
 	Relevance float64 `json:"relevance"`
 }
 

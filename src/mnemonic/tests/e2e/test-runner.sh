@@ -11,7 +11,7 @@ echo ""
 
 echo "Waiting for API to be ready..."
 for i in $(seq 1 "${MAX_RETRIES}"); do
-    if curl -sf "${API_URL}/ops/health" > /dev/null 2>&1; then
+    if curl -sf "${API_URL}/health" > /dev/null 2>&1; then
         echo "API is ready (attempt ${i}/${MAX_RETRIES})"
         break
     fi

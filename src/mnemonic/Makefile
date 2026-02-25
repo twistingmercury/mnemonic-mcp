@@ -14,7 +14,7 @@ local:
 	LOCAL_BUILD=true go build --ldflags ${LD_FLAGS} -o .bin/mnemonic cmd/main/main.go
 
 build: ## Build Docker image locally using the full CI build script
-	./build/build.sh 
+	LOCAL_BUILD=1 ./build/build.sh 
 	docker system prune -f
 
 analyze: ## Run linters, formatters, security scanners, etc
@@ -43,17 +43,6 @@ tests-unit: ## Run the unit tests
 
 tests-bench: ## Run benchmark tests
 	go test ./internal/... -bench=. -benchmem -run=^$
-
-image: ## Build the image locally
-	docker build --rm \
-        --file "build/Dockerfile" \
-        --build-arg BUILD_VER="${GIT_COMMIT}-local" \
-        --build-arg BUILD_DATE="${BUILD_DATE}" \
-        --build-arg BUILD_COMMIT="${GIT_COMMIT}" \
-        --target final \
-        --tag "mnemonic:${GIT_COMMIT}-local" .
-
-	docker run --rm mnemonic:${GIT_COMMIT}-local --version
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nAvailable targets:\n"} /^[a-zA-Z0-9_-]+:.*##/ { printf "  %-18s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)

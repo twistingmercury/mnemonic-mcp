@@ -126,7 +126,7 @@ func (e *openaiEmbedding) doEmbed(ctx context.Context, text string) ([]float32, 
 	if err != nil {
 		return nil, fmt.Errorf("send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

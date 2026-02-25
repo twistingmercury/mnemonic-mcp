@@ -37,6 +37,17 @@ cleanup_db_infra() {
     docker compose -f "${SRC_ROOT}/migrations/docker-compose.yaml" down -v --remove-orphans > /dev/null 2>&1 || true
 }
 
+run_migrations() {
+    printf "\n=== Running database migrations ===\n"
+
+    if ! docker compose -f "${SRC_ROOT}/migrations/docker-compose.yaml" run --rm migrate; then
+        printf "ERROR: Database migrations failed\n" >&2
+        return 1
+    fi
+
+    printf "Migrations applied successfully.\n"
+}
+
 start_db_infra() {
     printf "\n=== Starting database infrastructure ===\n"
 
@@ -133,15 +144,32 @@ build_api(){
 e2e_tests(){
     printf "\n=== starting end-to-end tests ===\n"
 
+    local compose_file="${PROJ_ROOT}/tests/docker-compose.yaml"
+
     cleanup() {
-        docker compose -f "${PROJ_ROOT}/tests/docker-compose.yaml" down -v --remove-orphans > /dev/null 2>&1 || true
+        docker compose -f "${compose_file}" down -v --remove-orphans > /dev/null 2>&1 || true
     }
     trap cleanup EXIT
 
+    printf "Starting infrastructure services...\n"
+    if ! docker compose -f "${compose_file}" up -d postgres neo4j; then
+        printf "ERROR: Failed to start infrastructure services\n" >&2
+        return 1
+    fi
+
+    printf "Waiting for infrastructure to be healthy...\n"
+    if ! docker compose -f "${compose_file}" run --rm migrate; then
+        printf "ERROR: E2E migrations failed\n" >&2
+        return 1
+    fi
+
     if [ "${LOCAL_BUILD}" -eq 1 ]; then
-        docker compose -f "${PROJ_ROOT}/tests/docker-compose.yaml" up -d
+        docker compose -f "${compose_file}" up -d mnemonic_api mnemonic_tests
     else
-        docker compose -f "${PROJ_ROOT}/tests/docker-compose.yaml" up --abort-on-container-exit --exit-code-from mnemonic_tests
+        docker compose -f "${compose_file}" up \
+            --abort-on-container-exit \
+            --exit-code-from mnemonic_tests \
+            mnemonic_api mnemonic_tests
     fi
 
     trap - EXIT
@@ -153,6 +181,11 @@ main(){
 
     if ! start_db_infra; then
         printf "ERROR: Failed to start database infrastructure\n" >&2
+        exit 1
+    fi
+
+    if ! run_migrations; then
+        printf "ERROR: Failed to run database migrations\n" >&2
         exit 1
     fi
 

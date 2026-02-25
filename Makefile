@@ -2,14 +2,8 @@
 
 default: help
 
-install-agents: ## Installs the agent definitions locally to ~/.claude/agents for development purposes
-	agents/workbench/scripts/01-install-agents.sh
-
-enrich: ## Runs the cognify process for patterns that were loaded into cognee.
-	agents/workbench/scripts/enrich-patterns.sh
-
 mnemonic: ## Run the build.sh script to build the mnemonic server
-	./src/mnemonic/build/build.sh
+	LOCAL_BUILD=1 ./src/mnemonic/build/build.sh
 	docker system prune -f
 
 help: ## Show this help

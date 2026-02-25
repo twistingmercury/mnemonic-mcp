@@ -107,6 +107,7 @@ func New(repo skillrepo.Repository, logger zerolog.Logger) Service {
 
 // Create marshals the input into a definition, computes CRC64, and stores the skill.
 func (s *skillService) Create(ctx context.Context, input CreateInput) (*skillrepo.Skill, error) {
+	//nolint:gocritic
 	def := skillDefinition{
 		Description:   input.Description,
 		Content:       input.Content,
@@ -174,16 +175,7 @@ func (s *skillService) Update(ctx context.Context, name string, input UpdateInpu
 		return nil, fmt.Errorf("get skill for update: %w", err)
 	}
 
-	def := skillDefinition{
-		Description:   input.Description,
-		Content:       input.Content,
-		Tags:          input.Tags,
-		License:       input.License,
-		Compatibility: input.Compatibility,
-		Metadata:      input.Metadata,
-		AllowedTools:  input.AllowedTools,
-		Version:       input.Version,
-	}
+	def := skillDefinition(input)
 
 	defJSON, err := marshalDefinition(def)
 	if err != nil {

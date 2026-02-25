@@ -584,6 +584,13 @@ func TestIntegration_FindRelatedPatterns(t *testing.T) {
 	// pD concepts: python, django (0 shared with pA)
 	require.NoError(t, repo.SyncConcepts(ctx, pD.ID, testConcepts("python", "django")))
 
+	// Compute RELATED_TO edges for all patterns so FindRelatedPatterns can discover them.
+	// Use minSimilarity=0.0 to ensure all shared-concept relationships produce edges.
+	require.NoError(t, repo.ComputeRelatedToEdges(ctx, pA.ID, 0.0))
+	require.NoError(t, repo.ComputeRelatedToEdges(ctx, pB.ID, 0.0))
+	require.NoError(t, repo.ComputeRelatedToEdges(ctx, pC.ID, 0.0))
+	require.NoError(t, repo.ComputeRelatedToEdges(ctx, pD.ID, 0.0))
+
 	t.Run("finds patterns ordered by shared concept count", func(t *testing.T) {
 		results, err := repo.FindRelatedPatterns(ctx, pA.ID, 10)
 		require.NoError(t, err)
@@ -638,6 +645,161 @@ func TestIntegration_FindRelatedPatterns(t *testing.T) {
 		results, err := repo.FindRelatedPatterns(ctx, uuid.New(), 10)
 		require.NoError(t, err)
 		assert.Empty(t, results, "nonexistent pattern should have no related patterns")
+	})
+}
+
+func TestIntegration_ComputeRelatedToEdges(t *testing.T) {
+	driver, repo := setupNeo4jDriver(t)
+	cleanupNeo4jTestData(t, driver)
+	t.Cleanup(func() { cleanupNeo4jTestData(t, driver) })
+
+	ctx := context.Background()
+
+	// Create two patterns sharing concepts.
+	pX := testPattern("compute-x")
+	pY := testPattern("compute-y")
+	pZ := testPattern("compute-z")
+	require.NoError(t, repo.SyncPattern(ctx, pX))
+	require.NoError(t, repo.SyncPattern(ctx, pY))
+	require.NoError(t, repo.SyncPattern(ctx, pZ))
+
+	// pX and pY share "go" and "concurrency"; pX and pZ share only "go".
+	require.NoError(t, repo.SyncConcepts(ctx, pX.ID, testConcepts("go", "concurrency", "channels")))
+	require.NoError(t, repo.SyncConcepts(ctx, pY.ID, testConcepts("go", "concurrency")))
+	require.NoError(t, repo.SyncConcepts(ctx, pZ.ID, testConcepts("go", "python")))
+
+	t.Run("creates RELATED_TO edges from shared concepts", func(t *testing.T) {
+		err := repo.ComputeRelatedToEdges(ctx, pX.ID, 0.0)
+		require.NoError(t, err)
+
+		results, err := repo.FindRelatedPatterns(ctx, pX.ID, 10)
+		require.NoError(t, err)
+
+		// Filter to our test patterns.
+		var filtered []graph.RelatedPattern
+		for _, r := range results {
+			if r.ID == pY.ID || r.ID == pZ.ID {
+				filtered = append(filtered, r)
+			}
+		}
+		require.Len(t, filtered, 2, "should find pY and pZ as related")
+
+		// pY should have higher similarity (2 shared out of max(3,2)=3) than pZ (1 shared out of max(3,2)=3).
+		assert.Equal(t, pY.ID, filtered[0].ID, "pY should be first (higher similarity)")
+		assert.InDelta(t, 2.0/3.0, filtered[0].Similarity, 0.01)
+		assert.Equal(t, pZ.ID, filtered[1].ID, "pZ should be second")
+		assert.InDelta(t, 1.0/3.0, filtered[1].Similarity, 0.01)
+	})
+
+	t.Run("is idempotent when called multiple times", func(t *testing.T) {
+		// Call again; should not create duplicate edges.
+		err := repo.ComputeRelatedToEdges(ctx, pX.ID, 0.0)
+		require.NoError(t, err)
+
+		results, err := repo.FindRelatedPatterns(ctx, pX.ID, 10)
+		require.NoError(t, err)
+
+		var filtered []graph.RelatedPattern
+		for _, r := range results {
+			if r.ID == pY.ID || r.ID == pZ.ID {
+				filtered = append(filtered, r)
+			}
+		}
+		assert.Len(t, filtered, 2, "idempotent call should still produce exactly 2 results")
+	})
+
+	t.Run("respects minSimilarity threshold", func(t *testing.T) {
+		// pZ similarity with pX is ~0.33; set threshold above that.
+		err := repo.ComputeRelatedToEdges(ctx, pX.ID, 0.5)
+		require.NoError(t, err)
+
+		results, err := repo.FindRelatedPatterns(ctx, pX.ID, 10)
+		require.NoError(t, err)
+
+		var filtered []graph.RelatedPattern
+		for _, r := range results {
+			if r.ID == pY.ID || r.ID == pZ.ID {
+				filtered = append(filtered, r)
+			}
+		}
+		// Only pY (similarity ~0.67) should pass; pZ (~0.33) should be filtered.
+		require.Len(t, filtered, 1, "only pY should pass minSimilarity=0.5")
+		assert.Equal(t, pY.ID, filtered[0].ID)
+	})
+
+	t.Run("no edges for pattern with no shared concepts", func(t *testing.T) {
+		pAlone := testPattern("compute-alone")
+		require.NoError(t, repo.SyncPattern(ctx, pAlone))
+		require.NoError(t, repo.SyncConcepts(ctx, pAlone.ID, testConcepts("unique-lang")))
+
+		err := repo.ComputeRelatedToEdges(ctx, pAlone.ID, 0.0)
+		require.NoError(t, err)
+
+		results, err := repo.FindRelatedPatterns(ctx, pAlone.ID, 10)
+		require.NoError(t, err)
+		assert.Empty(t, results, "pattern with unique concepts should have no RELATED_TO edges")
+	})
+}
+
+func TestIntegration_GetPatternConcepts(t *testing.T) {
+	driver, repo := setupNeo4jDriver(t)
+	cleanupNeo4jTestData(t, driver)
+	t.Cleanup(func() { cleanupNeo4jTestData(t, driver) })
+
+	ctx := context.Background()
+
+	t.Run("returns concepts for a pattern", func(t *testing.T) {
+		p := testPattern("get-concepts")
+		require.NoError(t, repo.SyncPattern(ctx, p))
+
+		expected := testConcepts("alpha", "beta", "gamma")
+		require.NoError(t, repo.SyncConcepts(ctx, p.ID, expected))
+
+		concepts, err := repo.GetPatternConcepts(ctx, p.ID)
+		require.NoError(t, err)
+		require.Len(t, concepts, 3)
+
+		// Results are ordered by c.name ASC.
+		assert.Equal(t, testIntegrationConceptPrefix+"alpha", concepts[0].Name)
+		assert.Equal(t, testIntegrationConceptPrefix+"beta", concepts[1].Name)
+		assert.Equal(t, testIntegrationConceptPrefix+"gamma", concepts[2].Name)
+
+		// All should have the type set by testConcepts.
+		for _, c := range concepts {
+			assert.Equal(t, "technology", c.Type)
+		}
+	})
+
+	t.Run("returns empty for pattern with no concepts", func(t *testing.T) {
+		p := testPattern("get-concepts-empty")
+		require.NoError(t, repo.SyncPattern(ctx, p))
+
+		concepts, err := repo.GetPatternConcepts(ctx, p.ID)
+		require.NoError(t, err)
+		assert.Empty(t, concepts)
+	})
+
+	t.Run("returns empty for nonexistent pattern", func(t *testing.T) {
+		concepts, err := repo.GetPatternConcepts(ctx, uuid.New())
+		require.NoError(t, err)
+		assert.Empty(t, concepts)
+	})
+
+	t.Run("reflects changes after concept re-sync", func(t *testing.T) {
+		p := testPattern("get-concepts-resync")
+		require.NoError(t, repo.SyncPattern(ctx, p))
+
+		require.NoError(t, repo.SyncConcepts(ctx, p.ID, testConcepts("first", "second")))
+		concepts, err := repo.GetPatternConcepts(ctx, p.ID)
+		require.NoError(t, err)
+		require.Len(t, concepts, 2)
+
+		// Re-sync with different concepts.
+		require.NoError(t, repo.SyncConcepts(ctx, p.ID, testConcepts("third")))
+		concepts, err = repo.GetPatternConcepts(ctx, p.ID)
+		require.NoError(t, err)
+		require.Len(t, concepts, 1)
+		assert.Equal(t, testIntegrationConceptPrefix+"third", concepts[0].Name)
 	})
 }
 
@@ -811,6 +973,22 @@ func TestIntegration_ContextCancellation(t *testing.T) {
 		assert.Error(t, err)
 	})
 
+	t.Run("ComputeRelatedToEdges with cancelled context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err := repo.ComputeRelatedToEdges(ctx, uuid.New(), 0.0)
+		assert.Error(t, err)
+	})
+
+	t.Run("GetPatternConcepts with cancelled context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := repo.GetPatternConcepts(ctx, uuid.New())
+		assert.Error(t, err)
+	})
+
 	t.Run("SyncConcepts with expired timeout", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
 		defer cancel()
@@ -900,6 +1078,18 @@ func TestIntegration_InputValidation(t *testing.T) {
 		err := repo.SetPatternAgentRelevance(ctx, uuid.Nil, []graph.AgentAssociation{
 			{AgentName: "any", Relevance: 0.5},
 		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "patternID must not be nil UUID")
+	})
+
+	t.Run("ComputeRelatedToEdges rejects nil UUID", func(t *testing.T) {
+		err := repo.ComputeRelatedToEdges(ctx, uuid.Nil, 0.0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "patternID must not be nil UUID")
+	})
+
+	t.Run("GetPatternConcepts rejects nil UUID", func(t *testing.T) {
+		_, err := repo.GetPatternConcepts(ctx, uuid.Nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "patternID must not be nil UUID")
 	})

@@ -88,6 +88,7 @@ func New(repo agentrepo.Repository, graphRepo graphrepo.Repository, logger zerol
 
 // Create stores a new agent and syncs to Neo4j best-effort.
 func (s *agentService) Create(ctx context.Context, input CreateInput) (*agentrepo.Agent, error) {
+	//nolint:gocritic
 	def := agentDefinition{
 		Description:  input.Description,
 		SystemPrompt: input.SystemPrompt,
@@ -143,13 +144,7 @@ func (s *agentService) Update(ctx context.Context, name string, input UpdateInpu
 		return nil, fmt.Errorf("update agent: %w", err)
 	}
 
-	def := agentDefinition{
-		Description:  input.Description,
-		SystemPrompt: input.SystemPrompt,
-		Model:        input.Model,
-		AllowedTools: input.AllowedTools,
-		Version:      input.Version,
-	}
+	def := agentDefinition(input)
 
 	definition, crc, err := marshalDefinition(def)
 	if err != nil {

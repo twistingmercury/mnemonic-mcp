@@ -2,7 +2,7 @@
 # Stage 1: Run linters, formatters, security scanners, 
 # unit tests, then build binary
 #------------------------------------------------------------
-FROM ghcr.io/twistingmercury/golang-tooling:go1.25.7-alpine AS build
+FROM ghcr.io/twistingmercury/golang-tooling:go1.26-alpine AS build
 
 ENV CGO_ENABLED=0 \
     GOARCH=amd64 \

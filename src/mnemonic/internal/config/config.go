@@ -51,7 +51,7 @@ type PostgresConfig struct {
 	Port            int           `mapstructure:"port"`
 	Database        string        `mapstructure:"database"`
 	Username        string        `mapstructure:"username"`
-	Password        string        `mapstructure:"password"`
+	Password        string        `mapstructure:"password"` // #nosec G117 -- credentials loaded from config/env, not serialized
 	SSLMode         string        `mapstructure:"ssl_mode"`
 	MaxOpenConns    int           `mapstructure:"max_open_conns"`
 	MaxIdleConns    int           `mapstructure:"max_idle_conns"`
@@ -62,7 +62,7 @@ type PostgresConfig struct {
 type Neo4jConfig struct {
 	URI                          string        `mapstructure:"uri"`
 	Username                     string        `mapstructure:"username"`
-	Password                     string        `mapstructure:"password"`
+	Password                     string        `mapstructure:"password"` // #nosec G117 -- credentials loaded from config/env, not serialized
 	Database                     string        `mapstructure:"database"`
 	MaxConnectionPoolSize        int           `mapstructure:"max_connection_pool_size"`
 	ConnectionAcquisitionTimeout time.Duration `mapstructure:"connection_acquisition_timeout"`
@@ -70,7 +70,7 @@ type Neo4jConfig struct {
 
 // OpenAIConfig contains OpenAI API settings.
 type OpenAIConfig struct {
-	APIKey               string        `mapstructure:"api_key"`
+	APIKey               string        `mapstructure:"api_key"` // #nosec G117 -- credentials loaded from config/env, not serialized
 	EmbeddingModel       string        `mapstructure:"embedding_model"`
 	EmbeddingDimensions  int           `mapstructure:"embedding_dimensions"`
 	ExtractionModel      string        `mapstructure:"extraction_model"`
@@ -160,7 +160,7 @@ func (e ValidationErrors) Error() string {
 	var sb strings.Builder
 	sb.WriteString("configuration validation failed:\n")
 	for _, err := range e {
-		sb.WriteString(fmt.Sprintf("  - %s\n", err.Error()))
+		fmt.Fprintf(&sb, "  - %s\n", err.Error())
 	}
 	return sb.String()
 }

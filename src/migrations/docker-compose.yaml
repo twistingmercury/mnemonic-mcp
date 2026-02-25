@@ -9,12 +9,25 @@ services:
       - "5433:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./postgres/up:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mnemonic"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - mnemonic-network
+
+  migrate:
+    image: migrate/migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./postgres:/migrations:ro
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://mnemonic:mnemonic_dev@postgres:5432/mnemonic?sslmode=disable"
+      - "up"
     networks:
       - mnemonic-network
 

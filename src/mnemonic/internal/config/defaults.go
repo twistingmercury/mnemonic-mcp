@@ -55,13 +55,13 @@ const (
 
 // Default values for enrichment configuration
 const (
-	DefaultEnrichmentWorkerCount          = 2
-	DefaultEnrichmentPollInterval         = 5 * time.Second
-	DefaultEnrichmentMaxAttempts          = 3
-	DefaultEnrichmentRetryDelay           = 30 * time.Second
-	DefaultEnrichmentJobTimeout           = 5 * time.Minute
-	DefaultEnrichmentCompletedRetention   = 168 * time.Hour // 7 days
-	DefaultEnrichmentFailedRetention      = 720 * time.Hour // 30 days
+	DefaultEnrichmentWorkerCount            = 2
+	DefaultEnrichmentPollInterval           = 5 * time.Second
+	DefaultEnrichmentMaxAttempts            = 3
+	DefaultEnrichmentRetryDelay             = 30 * time.Second
+	DefaultEnrichmentJobTimeout             = 5 * time.Minute
+	DefaultEnrichmentCompletedRetention     = 168 * time.Hour // 7 days
+	DefaultEnrichmentFailedRetention        = 720 * time.Hour // 30 days
 	DefaultEnrichmentRelatedToMinSimilarity = 0.3
 )
 
