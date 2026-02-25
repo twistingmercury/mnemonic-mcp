@@ -61,7 +61,7 @@ Each entry includes:
 #### 6. Middleware Option Signatures
 
 - **Original**: `otelgin.WithSkipPaths([]string{"/health"})`
-- **Implementation**: `otelxgin.WithSkipPaths("/health", "/ops/health", "/metrics")`
+- **Implementation**: `otelxgin.WithSkipPaths("/health", "/metrics")`
 - **Justification**: otelx library uses variadic parameters, not slices. Additional paths for ops endpoints.
 
 #### 7. Tracing Middleware Functions

@@ -213,6 +213,7 @@ logging:
 
 # Observability
 observability:
+  log_db_statements: false
   metrics:
     enabled: true
     path: /metrics
@@ -324,6 +325,8 @@ The otelx package handles the complexity of OpenTelemetry SDK setup, allowing Mn
 | `database.neo4j.username`                 | string   | `neo4j`                  | `MNEMONIC_DATABASE_NEO4J_USERNAME`                 | Neo4j username                                                                   |
 | `database.neo4j.password`                 | string   | `""`                     | `MNEMONIC_DATABASE_NEO4J_PASSWORD`                 | Neo4j password                                                                   |
 | `database.neo4j.database`                 | string   | `neo4j`                  | `MNEMONIC_DATABASE_NEO4J_DATABASE`                 | Neo4j database                                                                   |
+| `database.neo4j.max_connection_pool_size` | int      | `50`                     | `MNEMONIC_DATABASE_NEO4J_MAX_CONNECTION_POOL_SIZE` | Neo4j max connection pool size                                                   |
+| `database.neo4j.connection_acquisition_timeout` | duration | `60s`              | `MNEMONIC_DATABASE_NEO4J_CONNECTION_ACQUISITION_TIMEOUT` | Neo4j connection acquisition timeout                                       |
 | `openai.api_key`                          | string   | `""`                     | `MNEMONIC_OPENAI_API_KEY`                          | OpenAI API key                                                                   |
 | `openai.embedding_model`                  | string   | `text-embedding-3-small` | `MNEMONIC_OPENAI_EMBEDDING_MODEL`                  | Embedding model                                                                  |
 | `openai.embedding_dimensions`             | int      | `1536`                   | `MNEMONIC_OPENAI_EMBEDDING_DIMENSIONS`             | Embedding dimensions                                                             |
@@ -332,6 +335,7 @@ The otelx package handles the complexity of OpenTelemetry SDK setup, allowing Mn
 | `rate_limit.requests_per_second`          | int      | `100`                    | `MNEMONIC_RATE_LIMIT_REQUESTS_PER_SECOND`          | Global RPS limit (Post-MVP)                                                      |
 | `rate_limit.burst_size`                   | int      | `200`                    | `MNEMONIC_RATE_LIMIT_BURST_SIZE`                   | Burst size (Post-MVP)                                                            |
 | `rate_limit.per_user.requests_per_minute` | int      | `60`                     | `MNEMONIC_RATE_LIMIT_PER_USER_REQUESTS_PER_MINUTE` | Per-user RPM (Post-MVP)                                                          |
+| `rate_limit.per_user.burst_size`          | int      | `10`                     | `MNEMONIC_RATE_LIMIT_PER_USER_BURST_SIZE`          | Per-user burst size (Post-MVP)                                                   |
 | `enrichment.worker_count`                 | int      | `2`                      | `MNEMONIC_ENRICHMENT_WORKER_COUNT`                 | Concurrent workers                                                               |
 | `enrichment.poll_interval`                | duration | `5s`                     | `MNEMONIC_ENRICHMENT_POLL_INTERVAL`                | Job poll interval                                                                |
 | `enrichment.max_attempts`                 | int      | `3`                      | `MNEMONIC_ENRICHMENT_MAX_ATTEMPTS`                 | Max retry attempts                                                               |

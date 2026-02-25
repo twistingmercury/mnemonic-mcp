@@ -892,6 +892,7 @@ BEGIN
   1. INSERT INTO patterns (name, description, content, tags, enrichment_status='pending')
   2. INSERT INTO enrichment_jobs (pattern_id, status='pending')
   3. If agent_associations provided:
+     Resolve each agent name to UUID via agentRepo.Get(ctx, name) before this step.
      INSERT INTO pattern_agent_associations (pattern_id, agent_id, relevance)
 COMMIT
 
@@ -915,7 +916,8 @@ BEGIN
      -- already exists. Handle the conflict:
      ON CONFLICT DO NOTHING (or check first)
   3. DELETE FROM pattern_agent_associations WHERE pattern_id = $id
-  4. INSERT INTO pattern_agent_associations (new associations)
+  4. Resolve each agent name in AgentAssociations to UUID via agentRepo.Get(ctx, name) before this step.
+     INSERT INTO pattern_agent_associations (new associations)
 COMMIT
 
 After commit (best-effort):
