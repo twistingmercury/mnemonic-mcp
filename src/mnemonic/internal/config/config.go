@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -835,11 +836,16 @@ func (c *PostgresConfig) ConnectionString() string {
 }
 
 // DSN returns the PostgreSQL DSN for use with database/sql.
+// Username, password, and SSLMode are URL-encoded to handle special characters safely.
 func (c *PostgresConfig) DSN() string {
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		c.Username, c.Password, c.Host, c.Port, c.Database, c.SSLMode,
-	)
+	u := &url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(c.Username, c.Password),
+		Host:     fmt.Sprintf("%s:%d", c.Host, c.Port),
+		Path:     c.Database,
+		RawQuery: fmt.Sprintf("sslmode=%s", url.QueryEscape(c.SSLMode)),
+	}
+	return u.String()
 }
 
 // SafeConnectionString returns the PostgreSQL connection string with the password masked.
@@ -854,10 +860,21 @@ func (c *PostgresConfig) SafeConnectionString() string {
 // SafeDSN returns the PostgreSQL DSN with the password masked.
 // Use this method for logging to prevent secret exposure.
 func (c *PostgresConfig) SafeDSN() string {
-	return fmt.Sprintf(
-		"postgres://%s:*****@%s:%d/%s?sslmode=%s",
-		c.Username, c.Host, c.Port, c.Database, c.SSLMode,
-	)
+	u := &url.URL{
+		Scheme:   "postgres",
+		User:     url.User(c.Username),
+		Host:     fmt.Sprintf("%s:%d", c.Host, c.Port),
+		Path:     c.Database,
+		RawQuery: fmt.Sprintf("sslmode=%s", url.QueryEscape(c.SSLMode)),
+	}
+	// Build the DSN with the URL-encoded username, then inject the mask.
+	// url.User encodes the username safely; we append the fixed mask ourselves
+	// so that the literal "*****" is not percent-encoded.
+	safe := u.String()
+	// Replace "postgres://encodeduser@" with "postgres://encodeduser:*****@"
+	encoded := u.User.String()
+	safe = strings.Replace(safe, encoded+"@", encoded+":*****@", 1)
+	return safe
 }
 
 // ConnectionURI returns the Neo4j URI for API consistency with PostgresConfig.

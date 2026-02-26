@@ -95,6 +95,14 @@ func (m *mockPatternService) GetAgentAssociations(ctx context.Context, patternID
 	return args.Get(0).([]patternrepo.AgentAssociation), args.Error(1)
 }
 
+func (m *mockPatternService) ResolveAgentNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	args := m.Called(ctx, ids)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[uuid.UUID]string), args.Error(1)
+}
+
 func (m *mockPatternService) FindRelated(ctx context.Context, patternID uuid.UUID, limit int) ([]patternsvc.RelatedPatternResult, error) {
 	args := m.Called(ctx, patternID, limit)
 	if args.Get(0) == nil {
@@ -222,6 +230,8 @@ func TestPatternGet_Success(t *testing.T) {
 	psvc.On("GetWithGraph", mock.Anything, pattern.ID).Return(pattern, (*patternsvc.GraphContext)(nil), nil)
 	psvc.On("GetAgentAssociations", mock.Anything, pattern.ID).
 		Return([]patternrepo.AgentAssociation{}, nil)
+	psvc.On("ResolveAgentNames", mock.Anything, []uuid.UUID{}).
+		Return(map[uuid.UUID]string{}, nil)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/api/patterns/"+pattern.ID.String(), nil)
@@ -382,6 +392,8 @@ func TestGetAgentAssociations_Success(t *testing.T) {
 		Return([]patternrepo.AgentAssociation{
 			{AgentID: agentID, Relevance: 0.95},
 		}, nil)
+	psvc.On("ResolveAgentNames", mock.Anything, []uuid.UUID{agentID}).
+		Return(map[uuid.UUID]string{agentID: "go-software-engineer"}, nil)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/api/patterns/"+id.String()+"/agents", nil)
@@ -392,7 +404,11 @@ func TestGetAgentAssociations_Success(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assocs := resp["associations"].([]any)
-	assert.Len(t, assocs, 1)
+	require.Len(t, assocs, 1)
+
+	first := assocs[0].(map[string]any)
+	assert.Equal(t, "go-software-engineer", first["agent_name"])
+	assert.InDelta(t, 0.95, first["relevance"], 0.001)
 }
 
 func TestSearch_Success(t *testing.T) {

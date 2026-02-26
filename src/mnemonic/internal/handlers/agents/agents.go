@@ -79,7 +79,8 @@ type agentListResponse struct {
 }
 
 // toAgentResponse converts a repository Agent to the wire-format response.
-func toAgentResponse(a *agentrepo.Agent) agentResponse {
+// It returns an error if the stored JSONB definition cannot be unmarshaled.
+func toAgentResponse(a *agentrepo.Agent) (agentResponse, error) {
 	// Unmarshal the JSONB definition to extract flat fields.
 	var def struct {
 		Description  string   `json:"description"`
@@ -88,7 +89,9 @@ func toAgentResponse(a *agentrepo.Agent) agentResponse {
 		AllowedTools []string `json:"allowed_tools"`
 		Version      string   `json:"version"`
 	}
-	_ = json.Unmarshal(a.Definition, &def)
+	if err := json.Unmarshal(a.Definition, &def); err != nil {
+		return agentResponse{}, fmt.Errorf("corrupt agent definition for %s: %w", a.ID, err)
+	}
 
 	if def.AllowedTools == nil {
 		def.AllowedTools = []string{}
@@ -105,7 +108,7 @@ func toAgentResponse(a *agentrepo.Agent) agentResponse {
 		CRC64:        a.CRC64,
 		CreatedAt:    a.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 		UpdatedAt:    a.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"),
-	}
+	}, nil
 }
 
 // Create handles POST /v1/api/agents.
@@ -133,7 +136,11 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	resp := toAgentResponse(agent)
+	resp, err := toAgentResponse(agent)
+	if err != nil {
+		handlers.RespondError(c, err)
+		return
+	}
 	c.Header("Location", fmt.Sprintf("/v1/api/agents/%s", agent.Name))
 	c.JSON(http.StatusCreated, resp)
 }
@@ -159,7 +166,12 @@ func (h *Handler) List(c *gin.Context) {
 
 	data := make([]agentResponse, len(agents))
 	for i, a := range agents {
-		data[i] = toAgentResponse(a)
+		resp, err := toAgentResponse(a)
+		if err != nil {
+			handlers.RespondError(c, err)
+			return
+		}
+		data[i] = resp
 	}
 
 	var cursorPtr *string
@@ -194,7 +206,12 @@ func (h *Handler) Get(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, toAgentResponse(agent))
+	resp, err := toAgentResponse(agent)
+	if err != nil {
+		handlers.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // Update handles PUT /v1/api/agents/:name.
@@ -231,7 +248,12 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, toAgentResponse(agent))
+	resp, err := toAgentResponse(agent)
+	if err != nil {
+		handlers.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // Delete handles DELETE /v1/api/agents/:name.

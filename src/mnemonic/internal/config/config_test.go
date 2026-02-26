@@ -1022,17 +1022,58 @@ func TestPostgresConnectionString(t *testing.T) {
 
 // TestPostgresDSN tests the DSN() helper method.
 func TestPostgresDSN(t *testing.T) {
-	cfg := &config.PostgresConfig{
-		Host:     "localhost",
-		Port:     5432,
-		Database: "testdb",
-		Username: "testuser",
-		Password: "testpass",
-		SSLMode:  "require",
+	tests := []struct {
+		name     string
+		cfg      config.PostgresConfig
+		expected string
+	}{
+		{
+			name: "simple credentials",
+			cfg: config.PostgresConfig{
+				Host: "localhost", Port: 5432, Database: "testdb",
+				Username: "testuser", Password: "testpass", SSLMode: "require",
+			},
+			expected: "postgres://testuser:testpass@localhost:5432/testdb?sslmode=require",
+		},
+		{
+			name: "password with @ symbol",
+			cfg: config.PostgresConfig{
+				Host: "localhost", Port: 5432, Database: "testdb",
+				Username: "testuser", Password: "p@ss", SSLMode: "require",
+			},
+			expected: "postgres://testuser:p%40ss@localhost:5432/testdb?sslmode=require",
+		},
+		{
+			name: "password with colon and slash",
+			cfg: config.PostgresConfig{
+				Host: "localhost", Port: 5432, Database: "testdb",
+				Username: "testuser", Password: "p:a/ss", SSLMode: "require",
+			},
+			expected: "postgres://testuser:p%3Aa%2Fss@localhost:5432/testdb?sslmode=require",
+		},
+		{
+			name: "password with percent",
+			cfg: config.PostgresConfig{
+				Host: "localhost", Port: 5432, Database: "testdb",
+				Username: "testuser", Password: "100%pass", SSLMode: "require",
+			},
+			expected: "postgres://testuser:100%25pass@localhost:5432/testdb?sslmode=require",
+		},
+		{
+			name: "username with special characters",
+			cfg: config.PostgresConfig{
+				Host: "localhost", Port: 5432, Database: "testdb",
+				Username: "user@domain", Password: "testpass", SSLMode: "require",
+			},
+			expected: "postgres://user%40domain:testpass@localhost:5432/testdb?sslmode=require",
+		},
 	}
 
-	expected := "postgres://testuser:testpass@localhost:5432/testdb?sslmode=require"
-	assert.Equal(t, expected, cfg.DSN())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.cfg.DSN())
+		})
+	}
 }
 
 // TestPostgresSafeConnectionString tests the SafeConnectionString() helper method.
@@ -1054,19 +1095,36 @@ func TestPostgresSafeConnectionString(t *testing.T) {
 
 // TestPostgresSafeDSN tests the SafeDSN() helper method.
 func TestPostgresSafeDSN(t *testing.T) {
-	cfg := &config.PostgresConfig{
-		Host:     "localhost",
-		Port:     5432,
-		Database: "testdb",
-		Username: "testuser",
-		Password: "supersecretpassword",
-		SSLMode:  "require",
+	tests := []struct {
+		name     string
+		cfg      config.PostgresConfig
+		expected string
+	}{
+		{
+			name: "simple credentials",
+			cfg: config.PostgresConfig{
+				Host: "localhost", Port: 5432, Database: "testdb",
+				Username: "testuser", Password: "supersecretpassword", SSLMode: "require",
+			},
+			expected: "postgres://testuser:*****@localhost:5432/testdb?sslmode=require",
+		},
+		{
+			name: "username with special characters",
+			cfg: config.PostgresConfig{
+				Host: "localhost", Port: 5432, Database: "testdb",
+				Username: "user@domain", Password: "supersecretpassword", SSLMode: "require",
+			},
+			expected: "postgres://user%40domain:*****@localhost:5432/testdb?sslmode=require",
+		},
 	}
 
-	result := cfg.SafeDSN()
-	expected := "postgres://testuser:*****@localhost:5432/testdb?sslmode=require"
-	assert.Equal(t, expected, result)
-	assert.NotContains(t, result, "supersecretpassword")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.cfg.SafeDSN()
+			assert.Equal(t, tt.expected, result)
+			assert.NotContains(t, result, tt.cfg.Password)
+		})
+	}
 }
 
 // TestNeo4jConnectionURI tests the ConnectionURI() helper method.
@@ -1363,8 +1421,11 @@ func TestEmptyValidationErrors(t *testing.T) {
 func clearMnemonicEnvVars(t *testing.T) {
 	t.Helper()
 	for _, env := range os.Environ() {
-		if len(env) > 9 && env[:9] == "MNEMONIC_" {
-			key := env[:strings.Index(env, "=")]
+		key, _, ok := strings.Cut(env, "=")
+		if !ok {
+			continue
+		}
+		if strings.HasPrefix(key, "MNEMONIC_") {
 			// t.Setenv handles cleanup automatically when test completes
 			t.Setenv(key, "")
 		}

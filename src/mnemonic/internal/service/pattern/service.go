@@ -56,6 +56,10 @@ type Service interface {
 	// GetAgentAssociations retrieves all agent associations for a pattern.
 	GetAgentAssociations(ctx context.Context, patternID uuid.UUID) ([]patternrepo.AgentAssociation, error)
 
+	// ResolveAgentNames maps a slice of agent UUIDs to their human-readable
+	// names. Unknown IDs are omitted from the result map without error.
+	ResolveAgentNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
+
 	// FindRelated finds patterns related to the given pattern via the Neo4j
 	// knowledge graph. Returns service.ErrNotFound if the pattern does not exist.
 	FindRelated(ctx context.Context, patternID uuid.UUID, limit int) ([]RelatedPatternResult, error)
@@ -349,6 +353,31 @@ func (s *patternService) GetAgentAssociations(ctx context.Context, patternID uui
 		return nil, fmt.Errorf("get agent associations: %w", err)
 	}
 	return assocs, nil
+}
+
+// ResolveAgentNames maps agent UUIDs to their human-readable names.
+// Unknown IDs are silently omitted from the returned map.
+func (s *patternService) ResolveAgentNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	if len(ids) == 0 {
+		return map[uuid.UUID]string{}, nil
+	}
+
+	names := make(map[uuid.UUID]string, len(ids))
+	for _, id := range ids {
+		agent, err := s.agentRepo.GetByID(ctx, id)
+		if err != nil {
+			if errors.Is(err, agentrepo.ErrNotFound) {
+				s.logger.Warn().
+					Str("agent_id", id.String()).
+					Msg("agent not found during name resolution, omitting")
+				continue
+			}
+			return nil, fmt.Errorf("resolving agent %s: %w", id, err)
+		}
+		names[id] = agent.Name
+	}
+
+	return names, nil
 }
 
 // FindRelated finds patterns related to the given pattern via the knowledge graph.

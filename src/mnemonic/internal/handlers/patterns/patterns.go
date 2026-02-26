@@ -217,6 +217,17 @@ func toPatternSummary(p *patternrepo.Pattern) patternSummaryResponse {
 	}
 }
 
+func toAssociationResponses(assocs []patternrepo.AgentAssociation, names map[uuid.UUID]string) []associationResponse {
+	result := make([]associationResponse, len(assocs))
+	for i, a := range assocs {
+		result[i] = associationResponse{
+			AgentName: names[a.AgentID],
+			Relevance: a.Relevance,
+		}
+	}
+	return result
+}
+
 func toAssociationInputs(reqs []associationRequest) []patternsvc.AssociationInput {
 	inputs := make([]patternsvc.AssociationInput, len(reqs))
 	for i, r := range reqs {
@@ -345,22 +356,18 @@ func (h *Handler) Get(c *gin.Context) {
 		return
 	}
 
-	// Resolve agent UUIDs to names requires agent repo access.
-	// The service layer returns AgentID + Relevance. For the REST response,
-	// we need agent names. Since the handler does not have direct agent repo
-	// access, we store agent_name on AgentAssociation if available, or
-	// return agent_id. For now, the associations field uses agent_id as name
-	// until the service provides name resolution.
-	// TODO: Add a service method that returns resolved association names.
-	assocs := make([]associationResponse, len(pgAssocs))
+	// Resolve agent UUIDs to human-readable names for the REST response.
+	agentIDs := make([]uuid.UUID, len(pgAssocs))
 	for i, a := range pgAssocs {
-		assocs[i] = associationResponse{
-			AgentName: a.AgentID.String(),
-			Relevance: a.Relevance,
-		}
+		agentIDs[i] = a.AgentID
+	}
+	names, err := h.patternSvc.ResolveAgentNames(c.Request.Context(), agentIDs)
+	if err != nil {
+		handlers.RespondError(c, err)
+		return
 	}
 
-	c.JSON(http.StatusOK, toPatternResponse(pattern, graph, assocs))
+	c.JSON(http.StatusOK, toPatternResponse(pattern, graph, toAssociationResponses(pgAssocs, names)))
 }
 
 // Update handles PUT /v1/api/patterns/:id.
@@ -435,15 +442,18 @@ func (h *Handler) GetAgentAssociations(c *gin.Context) {
 		return
 	}
 
-	assocs := make([]associationResponse, len(pgAssocs))
+	// Resolve agent UUIDs to human-readable names for the REST response.
+	agentIDs := make([]uuid.UUID, len(pgAssocs))
 	for i, a := range pgAssocs {
-		assocs[i] = associationResponse{
-			AgentName: a.AgentID.String(),
-			Relevance: a.Relevance,
-		}
+		agentIDs[i] = a.AgentID
+	}
+	names, err := h.patternSvc.ResolveAgentNames(c.Request.Context(), agentIDs)
+	if err != nil {
+		handlers.RespondError(c, err)
+		return
 	}
 
-	c.JSON(http.StatusOK, associationsResponse{Associations: assocs})
+	c.JSON(http.StatusOK, associationsResponse{Associations: toAssociationResponses(pgAssocs, names)})
 }
 
 // SetAgentAssociations handles PUT /v1/api/patterns/:id/agents.
