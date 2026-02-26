@@ -2,12 +2,14 @@ package enricher
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/twistingmercury/mnemonic/internal/config"
+	enrichmentjob "github.com/twistingmercury/mnemonic/internal/repository/enrichmentjob"
 	enrichmentsvc "github.com/twistingmercury/mnemonic/internal/service/enrichment"
 )
 
@@ -37,65 +39,133 @@ func New(svc enrichmentsvc.Service, cfg config.EnrichmentConfig, logger zerolog.
 
 // Run starts the worker pool and blocks until ctx is cancelled. It launches
 // cfg.WorkerCount claim-process goroutines plus one maintenance goroutine.
-// All goroutines are coordinated via an errgroup; Run returns nil on graceful
-// shutdown (context cancellation).
+//
+// On shutdown (ctx cancellation), Run performs a two-phase graceful drain:
+//  1. Stop claiming new jobs (workers exit their claim loops).
+//  2. Wait for in-flight ProcessJob calls to complete, up to cfg.DrainTimeout.
+//
+// If the drain timeout expires, in-flight job contexts are cancelled and Run
+// returns. Run always returns nil on shutdown; worker goroutines never crash
+// the server.
 func (w *Worker) Run(ctx context.Context) error {
-	g, ctx := errgroup.WithContext(ctx)
+	// drainCtx controls the lifetime of in-flight ProcessJob calls during
+	// shutdown. It remains live after ctx is cancelled, giving in-flight jobs
+	// a grace period to complete. It is cancelled after DrainTimeout elapses
+	// or when all in-flight jobs complete, whichever comes first.
+	drainCtx, drainCancel := context.WithCancel(context.Background())
+	defer drainCancel()
 
-	// Start claim-process workers.
+	// inflight tracks the number of currently executing ProcessJob calls
+	// so Run can wait for them during the drain phase.
+	var inflight sync.WaitGroup
+	var inflightCount atomic.Int64
+
+	// allDone tracks all goroutines (workers + maintenance) so Run can wait
+	// for everything to finish before returning.
+	var allDone sync.WaitGroup
+
 	for i := range w.cfg.WorkerCount {
 		workerID := i
-		g.Go(func() error {
-			w.runWorker(ctx, workerID)
-			return nil
-		})
+		allDone.Add(1)
+		go func() {
+			defer allDone.Done()
+			w.runWorker(ctx, drainCtx, workerID, &inflight, &inflightCount)
+		}()
 	}
 
-	// Start maintenance goroutine.
-	g.Go(func() error {
+	allDone.Add(1)
+	go func() {
+		defer allDone.Done()
 		w.runMaintenance(ctx)
-		return nil
-	})
+	}()
 
 	w.logger.Info().
 		Int("worker_count", w.cfg.WorkerCount).
 		Dur("poll_interval", w.cfg.PollInterval).
+		Dur("drain_timeout", w.cfg.DrainTimeout).
 		Msg("enrichment worker started")
 
-	err := g.Wait()
+	// Block until the parent context is cancelled (shutdown signal).
+	<-ctx.Done()
+
+	// Drain phase: wait for in-flight ProcessJob calls to complete, bounded
+	// by the drain timeout. Worker goroutines will stop claiming new jobs
+	// (because ctx is cancelled) and will exit after their current
+	// ProcessJob call finishes.
+	remaining := inflightCount.Load()
+	if remaining > 0 {
+		w.logger.Info().
+			Int64("in_flight_jobs", remaining).
+			Dur("drain_timeout", w.cfg.DrainTimeout).
+			Msg("draining in-flight enrichment jobs")
+	}
+
+	w.drainInFlight(&inflight, drainCancel)
+
+	// Wait for all goroutines to exit cleanly after drain completes.
+	allDone.Wait()
 
 	w.logger.Info().Msg("enrichment worker stopped")
-	return err
+	return nil
+}
+
+// drainInFlight waits for all in-flight ProcessJob calls tracked by wg to
+// complete. If they do not finish within cfg.DrainTimeout, drainCancel is
+// called to cancel the drain context, forcing in-flight calls to abort.
+func (w *Worker) drainInFlight(wg *sync.WaitGroup, drainCancel context.CancelFunc) {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		w.logger.Info().Msg("all in-flight jobs drained successfully")
+	case <-time.After(w.cfg.DrainTimeout):
+		w.logger.Warn().
+			Dur("drain_timeout", w.cfg.DrainTimeout).
+			Msg("drain timeout expired, cancelling in-flight jobs")
+		drainCancel()
+		// Wait for goroutines to finish after cancellation.
+		<-done
+	}
 }
 
 // runWorker is the claim-process loop for a single worker goroutine. It
-// repeatedly claims and processes jobs until ctx is cancelled.
-func (w *Worker) runWorker(ctx context.Context, id int) {
+// repeatedly claims and processes jobs until claimCtx is cancelled.
+//
+// When claimCtx is cancelled, the worker stops claiming new jobs. Any
+// in-flight ProcessJob call uses drainCtx, which remains live during the
+// drain phase so that the job can finish its work gracefully. The inflight
+// WaitGroup and inflightCount track active ProcessJob calls for the drain
+// phase.
+func (w *Worker) runWorker(claimCtx, drainCtx context.Context, id int, inflight *sync.WaitGroup, inflightCount *atomic.Int64) {
 	log := w.logger.With().Int("worker_id", id).Logger()
 	log.Debug().Msg("worker goroutine started")
 
 	for {
 		select {
-		case <-ctx.Done():
-			log.Debug().Msg("worker goroutine stopping")
+		case <-claimCtx.Done():
+			log.Debug().Msg("worker goroutine stopping (no longer claiming jobs)")
 			return
 		default:
 		}
 
-		job, err := w.svc.ClaimNextJob(ctx)
+		job, err := w.svc.ClaimNextJob(claimCtx)
 		if err != nil {
 			// Check for context cancellation to avoid noisy logging on shutdown.
-			if ctx.Err() != nil {
+			if claimCtx.Err() != nil {
 				return
 			}
 			log.Error().Err(err).Msg("failed to claim job")
-			w.sleep(ctx, w.cfg.PollInterval)
+			w.sleep(claimCtx, w.cfg.PollInterval)
 			continue
 		}
 
 		if job == nil {
 			// No pending jobs; sleep before polling again.
-			w.sleep(ctx, w.cfg.PollInterval)
+			w.sleep(claimCtx, w.cfg.PollInterval)
 			continue
 		}
 
@@ -104,18 +174,33 @@ func (w *Worker) runWorker(ctx context.Context, id int) {
 			Str("pattern_id", job.PatternID.String()).
 			Msg("processing enrichment job")
 
-		if err := w.svc.ProcessJob(ctx, job); err != nil {
-			// Non-nil error from ProcessJob means the failure could not be
-			// recorded (unrecoverable). Log at error level.
-			log.Error().
-				Err(err).
-				Str("job_id", job.ID.String()).
-				Msg("enrichment job failed with unrecoverable error")
-		} else {
-			log.Info().
-				Str("job_id", job.ID.String()).
-				Msg("enrichment job completed")
-		}
+		// Track the in-flight job for graceful drain. Use drainCtx for the
+		// ProcessJob call so that in-flight work can complete even after
+		// claimCtx is cancelled.
+		inflight.Add(1)
+		inflightCount.Add(1)
+		w.processJob(drainCtx, job, log)
+		inflightCount.Add(-1)
+		inflight.Done()
+	}
+}
+
+// processJob runs the enrichment pipeline for a single job and logs the
+// outcome. It uses the provided context, which during normal operation is the
+// drain context (not the claim context) so that in-flight jobs can complete
+// during shutdown.
+func (w *Worker) processJob(ctx context.Context, job *enrichmentjob.Job, log zerolog.Logger) {
+	if err := w.svc.ProcessJob(ctx, job); err != nil {
+		// Non-nil error from ProcessJob means the failure could not be
+		// recorded (unrecoverable). Log at error level.
+		log.Error().
+			Err(err).
+			Str("job_id", job.ID.String()).
+			Msg("enrichment job failed with unrecoverable error")
+	} else {
+		log.Info().
+			Str("job_id", job.ID.String()).
+			Msg("enrichment job completed")
 	}
 }
 

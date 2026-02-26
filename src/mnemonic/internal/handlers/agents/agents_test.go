@@ -323,3 +323,119 @@ func TestDelete_NotFound(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
+
+// makeCorruptAgent creates an agent whose Definition field contains invalid JSON.
+// This simulates data corruption in the JSONB definition column.
+func makeCorruptAgent(name string) *agentrepo.Agent {
+	return &agentrepo.Agent{
+		ID:         uuid.New(),
+		Name:       name,
+		Definition: []byte(`{not valid json`),
+		CRC64:      "123456789",
+		CreatedAt:  time.Date(2026, 1, 15, 10, 0, 0, 0, time.UTC),
+		UpdatedAt:  time.Date(2026, 1, 15, 10, 0, 0, 0, time.UTC),
+	}
+}
+
+func TestCreate_CorruptDefinition(t *testing.T) {
+	t.Parallel()
+	svc := new(mockAgentService)
+	router := newTestRouter(svc)
+
+	corrupt := makeCorruptAgent("corrupt-agent")
+	svc.On("Create", mock.Anything, mock.Anything).Return(corrupt, nil)
+
+	body := `{
+		"name": "corrupt-agent",
+		"description": "desc",
+		"system_prompt": "prompt",
+		"model": "sonnet",
+		"version": "1.0.0"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/agents", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+
+	var problem map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &problem))
+	assert.Equal(t, "https://mnemonic.example.com/problems/internal-error", problem["type"])
+	assert.Equal(t, "Internal Error", problem["title"])
+	assert.Equal(t, float64(http.StatusInternalServerError), problem["status"])
+}
+
+func TestGet_CorruptDefinition(t *testing.T) {
+	t.Parallel()
+	svc := new(mockAgentService)
+	router := newTestRouter(svc)
+
+	corrupt := makeCorruptAgent("corrupt-agent")
+	svc.On("Get", mock.Anything, "corrupt-agent").Return(corrupt, nil)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/api/agents/corrupt-agent", nil)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+
+	var problem map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &problem))
+	assert.Equal(t, "https://mnemonic.example.com/problems/internal-error", problem["type"])
+	assert.Equal(t, "Internal Error", problem["title"])
+	assert.Equal(t, float64(http.StatusInternalServerError), problem["status"])
+}
+
+func TestList_CorruptDefinition(t *testing.T) {
+	t.Parallel()
+	svc := new(mockAgentService)
+	router := newTestRouter(svc)
+
+	good := makeAgent("good-agent")
+	corrupt := makeCorruptAgent("corrupt-agent")
+	svc.On("List", mock.Anything, mock.AnythingOfType("agent.ListOptions")).
+		Return([]*agentrepo.Agent{good, corrupt}, int64(2), nil)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/api/agents?limit=100", nil)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+
+	var problem map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &problem))
+	assert.Equal(t, "https://mnemonic.example.com/problems/internal-error", problem["type"])
+	assert.Equal(t, "Internal Error", problem["title"])
+	assert.Equal(t, float64(http.StatusInternalServerError), problem["status"])
+}
+
+func TestUpdate_CorruptDefinition(t *testing.T) {
+	t.Parallel()
+	svc := new(mockAgentService)
+	router := newTestRouter(svc)
+
+	corrupt := makeCorruptAgent("corrupt-agent")
+	svc.On("Update", mock.Anything, "corrupt-agent", mock.Anything).Return(corrupt, nil)
+
+	body := `{
+		"description": "Updated",
+		"system_prompt": "Updated prompt",
+		"model": "opus",
+		"version": "2.0.0"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/v1/api/agents/corrupt-agent", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+
+	var problem map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &problem))
+	assert.Equal(t, "https://mnemonic.example.com/problems/internal-error", problem["type"])
+	assert.Equal(t, "Internal Error", problem["title"])
+	assert.Equal(t, float64(http.StatusInternalServerError), problem["status"])
+}

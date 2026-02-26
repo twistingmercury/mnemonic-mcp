@@ -110,6 +110,7 @@ type EnrichmentConfig struct {
 	MaxAttempts            int           `mapstructure:"max_attempts"`
 	RetryDelay             time.Duration `mapstructure:"retry_delay"`
 	JobTimeout             time.Duration `mapstructure:"job_timeout"`
+	DrainTimeout           time.Duration `mapstructure:"drain_timeout"`
 	CompletedRetention     time.Duration `mapstructure:"completed_retention"`
 	FailedRetention        time.Duration `mapstructure:"failed_retention"`
 	RelatedToMinSimilarity float64       `mapstructure:"related_to_min_similarity"`
@@ -305,6 +306,7 @@ func SetDefaults(v *viper.Viper) {
 	v.SetDefault("enrichment.max_attempts", DefaultEnrichmentMaxAttempts)
 	v.SetDefault("enrichment.retry_delay", DefaultEnrichmentRetryDelay)
 	v.SetDefault("enrichment.job_timeout", DefaultEnrichmentJobTimeout)
+	v.SetDefault("enrichment.drain_timeout", DefaultEnrichmentDrainTimeout)
 	v.SetDefault("enrichment.completed_retention", DefaultEnrichmentCompletedRetention)
 	v.SetDefault("enrichment.failed_retention", DefaultEnrichmentFailedRetention)
 	v.SetDefault("enrichment.related_to_min_similarity", DefaultEnrichmentRelatedToMinSimilarity)
@@ -706,6 +708,13 @@ func (c *EnrichmentConfig) validate() ValidationErrors {
 	if c.JobTimeout <= 0 {
 		errs = append(errs, ValidationError{
 			Field:   "enrichment.job_timeout",
+			Message: "must be a positive duration",
+		})
+	}
+
+	if c.DrainTimeout <= 0 {
+		errs = append(errs, ValidationError{
+			Field:   "enrichment.drain_timeout",
 			Message: "must be a positive duration",
 		})
 	}

@@ -79,6 +79,7 @@ func TestDefaultValues(t *testing.T) {
 	assert.Equal(t, config.DefaultEnrichmentMaxAttempts, cfg.Enrichment.MaxAttempts)
 	assert.Equal(t, config.DefaultEnrichmentRetryDelay, cfg.Enrichment.RetryDelay)
 	assert.Equal(t, config.DefaultEnrichmentJobTimeout, cfg.Enrichment.JobTimeout)
+	assert.Equal(t, config.DefaultEnrichmentDrainTimeout, cfg.Enrichment.DrainTimeout)
 	assert.Equal(t, config.DefaultEnrichmentCompletedRetention, cfg.Enrichment.CompletedRetention)
 	assert.Equal(t, config.DefaultEnrichmentFailedRetention, cfg.Enrichment.FailedRetention)
 	assert.Equal(t, config.DefaultEnrichmentRelatedToMinSimilarity, cfg.Enrichment.RelatedToMinSimilarity)
@@ -691,6 +692,20 @@ func TestValidation_EnrichmentConfig(t *testing.T) {
 				cfg.Enrichment.JobTimeout = 0
 			},
 			expectError: "enrichment.job_timeout",
+		},
+		{
+			name: "zero drain_timeout",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Enrichment.DrainTimeout = 0
+			},
+			expectError: "enrichment.drain_timeout",
+		},
+		{
+			name: "negative drain_timeout",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.Enrichment.DrainTimeout = -1 * time.Second
+			},
+			expectError: "enrichment.drain_timeout",
 		},
 		{
 			name: "zero completed_retention",
@@ -1504,6 +1519,7 @@ func validConfig() *config.MnemonicConfig {
 			MaxAttempts:            3,
 			RetryDelay:             30 * time.Second,
 			JobTimeout:             5 * time.Minute,
+			DrainTimeout:           30 * time.Second,
 			CompletedRetention:     168 * time.Hour,
 			FailedRetention:        720 * time.Hour,
 			RelatedToMinSimilarity: 0.3,

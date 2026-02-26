@@ -9,10 +9,9 @@ import (
 )
 
 // SetupHandlers associates the handlers related to operations endpoints
-// to the gin.Engine that is passed in.
-func SetupHandlers(r *gin.Engine) {
-	deps := DefineDependencies()
-
+// to the gin.Engine that is passed in. The deps slice is used to register
+// real dependency health checks with the heartbeat handler.
+func SetupHandlers(r *gin.Engine, deps []heartbeat.DependencyDescriptor) {
 	r.GET("/health", heartbeat.Handler("mnemonic", deps...))
 	r.GET("/version", GetVersion)
 }
@@ -26,15 +25,4 @@ func GetVersion(c *gin.Context) {
 		"build_date": version.BuildDate(),
 		"commit":     version.Commit(),
 	})
-}
-
-func DefineDependencies() []heartbeat.DependencyDescriptor {
-	deps := []heartbeat.DependencyDescriptor{
-		{
-			Connection: "https://golang.org/",
-			Name:       "Golang Site",
-			Type:       "Website",
-		}}
-
-	return deps
 }
