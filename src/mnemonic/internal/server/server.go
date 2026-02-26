@@ -19,6 +19,7 @@ import (
 	"github.com/twistingmercury/mnemonic/internal/database"
 	"github.com/twistingmercury/mnemonic/internal/enricher"
 	"github.com/twistingmercury/mnemonic/internal/handlers/operations"
+	"github.com/twistingmercury/mnemonic/internal/health"
 	"github.com/twistingmercury/mnemonic/internal/mcpserver"
 	"github.com/twistingmercury/mnemonic/internal/middleware"
 	agentrepo "github.com/twistingmercury/mnemonic/internal/repository/agent"
@@ -74,6 +75,14 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	}
 	defer closeDatabases(pgPool, neo4jDriver, logger)
 
+	// Initialize health checks with real database connections.
+	if err := health.Initialize(health.Dependencies{
+		PGPool:      pgPool,
+		Neo4jDriver: neo4jDriver,
+	}); err != nil {
+		return fmt.Errorf("failed to initialize health checks: %w", err)
+	}
+
 	// Wire all dependencies.
 	svc, toolDeps, enrichWorker := wireDependencies(pgPool, neo4jDriver, cfg, logger)
 
@@ -85,7 +94,7 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 
 	// Build the Admin API router.
 	router := setupRouter(tel, requestMetrics)
-	operations.SetupHandlers(router)
+	operations.SetupHandlers(router, health.Descriptors())
 	RegisterAPIRoutes(router, svc)
 
 	// Build the Admin API HTTP server.

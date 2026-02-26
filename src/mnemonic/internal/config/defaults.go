@@ -68,6 +68,7 @@ const (
 	DefaultEnrichmentMaxAttempts            = 3
 	DefaultEnrichmentRetryDelay             = 30 * time.Second
 	DefaultEnrichmentJobTimeout             = 5 * time.Minute
+	DefaultEnrichmentDrainTimeout           = 30 * time.Second
 	DefaultEnrichmentCompletedRetention     = 168 * time.Hour // 7 days
 	DefaultEnrichmentFailedRetention        = 720 * time.Hour // 30 days
 	DefaultEnrichmentRelatedToMinSimilarity = 0.3

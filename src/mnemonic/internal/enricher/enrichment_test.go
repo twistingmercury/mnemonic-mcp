@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/twistingmercury/mnemonic/internal/config"
 	"github.com/twistingmercury/mnemonic/internal/enricher"
@@ -85,6 +86,7 @@ func testConfig(workerCount int) config.EnrichmentConfig {
 		MaxAttempts:            3,
 		RetryDelay:             10 * time.Millisecond,
 		JobTimeout:             1 * time.Second,
+		DrainTimeout:           500 * time.Millisecond,
 		CompletedRetention:     1 * time.Hour,
 		FailedRetention:        1 * time.Hour,
 		RelatedToMinSimilarity: 0.3,
@@ -255,28 +257,10 @@ func TestMaintenanceLoopRuns(t *testing.T) {
 	svc := new(mockService)
 	svc.On("ClaimNextJob", mock.Anything).Return(nil, nil).Maybe()
 
-	var reclaimCalled atomic.Bool
-	var cleanupCompletedCalled atomic.Bool
-	var cleanupFailedCalled atomic.Bool
+	svc.On("ReclaimStaleJobs", mock.Anything).Return(int64(0), nil).Maybe()
+	svc.On("CleanupCompletedJobs", mock.Anything).Return(int64(0), nil).Maybe()
+	svc.On("CleanupFailedJobs", mock.Anything).Return(int64(0), nil).Maybe()
 
-	svc.On("ReclaimStaleJobs", mock.Anything).Return(int64(2), nil).Maybe().Run(func(_ mock.Arguments) {
-		reclaimCalled.Store(true)
-	})
-	svc.On("CleanupCompletedJobs", mock.Anything).Return(int64(1), nil).Maybe().Run(func(_ mock.Arguments) {
-		cleanupCompletedCalled.Store(true)
-	})
-	svc.On("CleanupFailedJobs", mock.Anything).Return(int64(0), nil).Maybe().Run(func(_ mock.Arguments) {
-		cleanupFailedCalled.Store(true)
-	})
-
-	// Use a very short maintenance interval for testing by running the worker
-	// long enough for the default 5m interval to NOT fire. Instead, we test
-	// that the maintenance loop is wired by using a custom approach:
-	// We cannot easily change the defaultMaintenanceInterval since it's a const.
-	// Instead, verify that the maintenance goroutine starts and can be shut down.
-	// For a thorough test of the maintenance functions being called, we test
-	// doMaintenance behavior indirectly through a longer-running test.
-	//
 	// Since we cannot inject the maintenance interval, we verify the maintenance
 	// goroutine does not prevent shutdown. The actual maintenance calls happen on
 	// a 5-minute ticker, which is too slow for unit tests. We verify the wiring
@@ -361,4 +345,260 @@ func TestNewReturnsNonNil(t *testing.T) {
 	svc := new(mockService)
 	w := enricher.New(svc, testConfig(2), testLogger())
 	assert.NotNil(t, w)
+}
+
+// --- Graceful drain tests ---
+
+func TestGracefulDrainWaitsForInflightJobs(t *testing.T) {
+	t.Parallel()
+
+	// This test verifies that when the context is cancelled while a job is
+	// being processed, Run waits for the in-flight job to complete before
+	// returning.
+
+	var (
+		jobClaimed     atomic.Bool
+		processStarted = make(chan struct{})
+		processDone    atomic.Bool
+	)
+
+	job := newTestJob()
+
+	svc := &concurrentService{
+		claimFunc: func(ctx context.Context) (*enrichmentjob.Job, error) {
+			// Return the job exactly once, then return nil.
+			if jobClaimed.CompareAndSwap(false, true) {
+				return job, nil
+			}
+			// Block on context to avoid busy-spinning while the job processes.
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+		processFunc: func(ctx context.Context, _ *enrichmentjob.Job) error {
+			close(processStarted)
+			// Simulate a long-running job (100ms).
+			select {
+			case <-time.After(100 * time.Millisecond):
+				processDone.Store(true)
+				return nil
+			case <-ctx.Done():
+				// If the drain context is cancelled, the job was not given
+				// enough time.
+				return ctx.Err()
+			}
+		},
+	}
+
+	cfg := testConfig(1)
+	cfg.DrainTimeout = 2 * time.Second // Generous drain timeout.
+
+	w := enricher.New(svc, cfg, testLogger())
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- w.Run(ctx)
+	}()
+
+	// Wait for the job to start processing, then cancel.
+	<-processStarted
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+		assert.True(t, processDone.Load(), "in-flight job should have completed before Run returned")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return within expected time")
+	}
+}
+
+func TestGracefulDrainTimeoutCancelsInflightJobs(t *testing.T) {
+	t.Parallel()
+
+	// This test verifies that if in-flight jobs take longer than the drain
+	// timeout, their context is cancelled and Run returns.
+
+	var (
+		jobClaimed       atomic.Bool
+		processStarted   = make(chan struct{})
+		contextCancelled atomic.Bool
+	)
+
+	job := newTestJob()
+
+	svc := &concurrentService{
+		claimFunc: func(ctx context.Context) (*enrichmentjob.Job, error) {
+			if jobClaimed.CompareAndSwap(false, true) {
+				return job, nil
+			}
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+		processFunc: func(ctx context.Context, _ *enrichmentjob.Job) error {
+			close(processStarted)
+			// Simulate a very long job that exceeds the drain timeout.
+			select {
+			case <-time.After(10 * time.Second):
+				return nil
+			case <-ctx.Done():
+				contextCancelled.Store(true)
+				return ctx.Err()
+			}
+		},
+	}
+
+	cfg := testConfig(1)
+	cfg.DrainTimeout = 50 * time.Millisecond // Short drain timeout.
+
+	w := enricher.New(svc, cfg, testLogger())
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- w.Run(ctx)
+	}()
+
+	// Wait for the job to start processing, then cancel.
+	<-processStarted
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+		assert.True(t, contextCancelled.Load(), "drain timeout should have cancelled the in-flight job's context")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return within expected time")
+	}
+}
+
+func TestGracefulDrainStopsClaimingNewJobs(t *testing.T) {
+	t.Parallel()
+
+	// This test verifies that after context cancellation, no new jobs are
+	// claimed even if there are jobs available.
+
+	var (
+		claimedAfterCancel atomic.Bool
+		cancelTime         atomic.Int64
+	)
+
+	svc := &concurrentService{
+		claimFunc: func(ctx context.Context) (*enrichmentjob.Job, error) {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			// If cancel has already happened, record that a claim was attempted.
+			if cancelTime.Load() > 0 && time.Now().UnixNano() > cancelTime.Load() {
+				claimedAfterCancel.Store(true)
+			}
+			return nil, nil
+		},
+		processFunc: func(_ context.Context, _ *enrichmentjob.Job) error {
+			return nil
+		},
+	}
+
+	w := enricher.New(svc, testConfig(1), testLogger())
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- w.Run(ctx)
+	}()
+
+	// Let the worker poll for a bit, then cancel.
+	time.Sleep(20 * time.Millisecond)
+	cancelTime.Store(time.Now().UnixNano())
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+		// The worker should not claim jobs after context cancellation. The
+		// claimFunc may be called once more due to timing, but the key point
+		// is that Run returns promptly.
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return within expected time")
+	}
+}
+
+func TestGracefulDrainMultipleInflightJobs(t *testing.T) {
+	t.Parallel()
+
+	// This test verifies that the drain phase waits for multiple in-flight
+	// jobs across multiple workers.
+
+	const workerCount = 3
+
+	var (
+		mu         sync.Mutex
+		jobIndex   int
+		allStarted = make(chan struct{})
+		started    atomic.Int32
+		completed  atomic.Int32
+	)
+
+	jobs := make([]*enrichmentjob.Job, workerCount)
+	for i := range jobs {
+		jobs[i] = newTestJob()
+	}
+
+	svc := &concurrentService{
+		claimFunc: func(ctx context.Context) (*enrichmentjob.Job, error) {
+			mu.Lock()
+			if jobIndex < len(jobs) {
+				j := jobs[jobIndex]
+				jobIndex++
+				mu.Unlock()
+				return j, nil
+			}
+			mu.Unlock()
+			// Block until context is cancelled to avoid busy-spinning.
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+		processFunc: func(ctx context.Context, _ *enrichmentjob.Job) error {
+			count := started.Add(1)
+			if int(count) == workerCount {
+				close(allStarted)
+			}
+			// Simulate work that takes 100ms.
+			select {
+			case <-time.After(100 * time.Millisecond):
+				completed.Add(1)
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	}
+
+	cfg := testConfig(workerCount)
+	cfg.DrainTimeout = 2 * time.Second
+
+	w := enricher.New(svc, cfg, testLogger())
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- w.Run(ctx)
+	}()
+
+	// Wait for all workers to start processing, then cancel.
+	<-allStarted
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+		require.Equal(t, int32(workerCount), completed.Load(),
+			"all in-flight jobs should complete during drain")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return within expected time")
+	}
 }

@@ -244,6 +244,85 @@ func TestPatternGet_Success(t *testing.T) {
 	assert.Equal(t, "go-error-handling", resp["name"])
 }
 
+func TestPatternGet_WithAssociations_ResolvesAgentNames(t *testing.T) {
+	t.Parallel()
+	psvc := new(mockPatternService)
+	ssvc := new(mockSearchService)
+	router := newTestRouter(psvc, ssvc)
+
+	pattern := makePattern("go-error-handling")
+	agentID1 := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	agentID2 := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+
+	psvc.On("GetWithGraph", mock.Anything, pattern.ID).Return(pattern, (*patternsvc.GraphContext)(nil), nil)
+	psvc.On("GetAgentAssociations", mock.Anything, pattern.ID).
+		Return([]patternrepo.AgentAssociation{
+			{AgentID: agentID1, Relevance: 0.95},
+			{AgentID: agentID2, Relevance: 0.80},
+		}, nil)
+	psvc.On("ResolveAgentNames", mock.Anything, []uuid.UUID{agentID1, agentID2}).
+		Return(map[uuid.UUID]string{
+			agentID1: "go-software-engineer",
+			agentID2: "code-reviewer",
+		}, nil)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/api/patterns/"+pattern.ID.String(), nil)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	// Verify agent_associations contains human-readable names, not UUIDs.
+	assocs, ok := resp["agent_associations"].([]any)
+	require.True(t, ok, "expected agent_associations to be an array")
+	require.Len(t, assocs, 2)
+
+	first := assocs[0].(map[string]any)
+	assert.Equal(t, "go-software-engineer", first["agent_name"],
+		"agent_name should be a human-readable name, not a UUID")
+	assert.InDelta(t, 0.95, first["relevance"], 0.001)
+
+	second := assocs[1].(map[string]any)
+	assert.Equal(t, "code-reviewer", second["agent_name"],
+		"agent_name should be a human-readable name, not a UUID")
+	assert.InDelta(t, 0.80, second["relevance"], 0.001)
+
+	// Verify that no UUID strings leaked into agent_name fields.
+	assert.NotEqual(t, agentID1.String(), first["agent_name"],
+		"agent_name must not contain a UUID")
+	assert.NotEqual(t, agentID2.String(), second["agent_name"],
+		"agent_name must not contain a UUID")
+
+	psvc.AssertExpectations(t)
+}
+
+func TestPatternGet_ResolveAgentNames_Error(t *testing.T) {
+	t.Parallel()
+	psvc := new(mockPatternService)
+	ssvc := new(mockSearchService)
+	router := newTestRouter(psvc, ssvc)
+
+	pattern := makePattern("go-error-handling")
+	agentID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+
+	psvc.On("GetWithGraph", mock.Anything, pattern.ID).Return(pattern, (*patternsvc.GraphContext)(nil), nil)
+	psvc.On("GetAgentAssociations", mock.Anything, pattern.ID).
+		Return([]patternrepo.AgentAssociation{
+			{AgentID: agentID, Relevance: 0.95},
+		}, nil)
+	psvc.On("ResolveAgentNames", mock.Anything, []uuid.UUID{agentID}).
+		Return(nil, fmt.Errorf("database connection lost"))
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/api/patterns/"+pattern.ID.String(), nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
 func TestPatternGet_InvalidUUID(t *testing.T) {
 	t.Parallel()
 	psvc := new(mockPatternService)

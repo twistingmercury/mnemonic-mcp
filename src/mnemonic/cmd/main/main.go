@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/pflag"
 	"github.com/twistingmercury/mnemonic/internal/config"
-	"github.com/twistingmercury/mnemonic/internal/health"
 	"github.com/twistingmercury/mnemonic/internal/server"
 	"github.com/twistingmercury/mnemonic/internal/version"
 )
@@ -33,9 +32,9 @@ func main() {
 		log.Fatalf("failed to load configuration: %s", err)
 	}
 
-	if err := health.Initialize(cfg); err != nil {
-		log.Fatalf("failed to initialize health check: %s", err)
-	}
+	// Health checks are initialized inside ListenAndServe after database
+	// connections are established, so no separate health.Initialize call
+	// is needed here.
 
 	if err := server.ListenAndServe(cfg); err != nil {
 		log.Fatalf("exited with err: %s\n", err.Error())
@@ -45,23 +44,8 @@ func main() {
 func checkHealth() (exitCode int) {
 	exitCode = 0
 	//--> TODO: this will need to be implemented in Phase 19
-	// cfg, err := config.Load()
-
-	// if err != nil {
-	// 	log.Fatalf("failed to load configuration: %s", err)
-	// }
-
-	// if err := health.Initialize(cfg); err != nil {
-	// 	log.Fatalf("failed to initialize health check: %s", err)
-	// }
-
-	// if *healthFlag {
-	// 	err := health.CheckHealth()
-	// 	if err != nil {
-	// 		log.Fatalf("health check failed with this error: %s", err)
-	// 		exitCode = 1
-	// 	}
-	// }
+	// The CLI health check requires opening database connections to ping
+	// dependencies. For now, this is a placeholder that always returns 0.
 	// <--
 
 	return

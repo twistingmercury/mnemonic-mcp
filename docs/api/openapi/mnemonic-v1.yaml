@@ -62,8 +62,6 @@ tags:
     description: Script, reference, and asset file management for skills
   - name: Operations
     description: Health, version, and metrics endpoints
-  - name: Removed
-    description: Endpoints removed in the pivot (return 410 Gone)
 
 components:
   parameters:
@@ -1286,23 +1284,6 @@ components:
             title: Content Too Large
             status: 413
             detail: "Script file exceeds maximum size of 1048576 bytes"
-            traceId: 550e8400-e29b-41d4-a716-446655440000
-
-    Gone:
-      description: Endpoint removed in the pivot
-      headers:
-        X-Request-ID:
-          $ref: "#/components/headers/X-Request-ID"
-      content:
-        application/problem+json:
-          schema:
-            $ref: "#/components/schemas/ErrorResponse"
-          example:
-            type: https://mnemonic.example.com/problems/gone
-            title: Gone
-            status: 410
-            detail: The routing engine has been removed. See the pivot documentation for details.
-            instance: /v1/api/route
             traceId: 550e8400-e29b-41d4-a716-446655440000
 
     InternalError:
@@ -2638,74 +2619,3 @@ paths:
             text/plain:
               schema:
                 type: string
-
-  # ==================== Removed Endpoints (410 Gone) ====================
-  /v1/api/route:
-    post:
-      tags:
-        - Removed
-      summary: "[REMOVED] Route prompt to agent"
-      description: |
-        This endpoint has been removed in the pivot. The routing engine is no
-        longer part of Mnemonic. Returns 410 Gone with an RFC 7807 error body.
-      operationId: routePromptGone
-      deprecated: true
-      responses:
-        "410":
-          $ref: "#/components/responses/Gone"
-
-  /v1/api/routing-rules:
-    get:
-      tags:
-        - Removed
-      summary: "[REMOVED] List routing rules"
-      operationId: listRoutingRulesGone
-      deprecated: true
-      responses:
-        "410":
-          $ref: "#/components/responses/Gone"
-    post:
-      tags:
-        - Removed
-      summary: "[REMOVED] Create routing rule"
-      operationId: createRoutingRuleGone
-      deprecated: true
-      responses:
-        "410":
-          $ref: "#/components/responses/Gone"
-
-  /v1/api/routing-rules/{id}:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-    get:
-      tags:
-        - Removed
-      summary: "[REMOVED] Get routing rule"
-      operationId: getRoutingRuleGone
-      deprecated: true
-      responses:
-        "410":
-          $ref: "#/components/responses/Gone"
-    put:
-      tags:
-        - Removed
-      summary: "[REMOVED] Update routing rule"
-      operationId: updateRoutingRuleGone
-      deprecated: true
-      responses:
-        "410":
-          $ref: "#/components/responses/Gone"
-    delete:
-      tags:
-        - Removed
-      summary: "[REMOVED] Delete routing rule"
-      operationId: deleteRoutingRuleGone
-      deprecated: true
-      responses:
-        "410":
-          $ref: "#/components/responses/Gone"
