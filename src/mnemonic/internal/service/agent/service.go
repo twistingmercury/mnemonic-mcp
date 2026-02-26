@@ -222,11 +222,12 @@ type agentDefinition struct {
 	Version      string   `json:"version"`
 }
 
+// crc64Table is the pre-computed CRC-64/ISO lookup table, allocated once at package init.
+var crc64Table = crc64.MakeTable(crc64.ISO)
+
 // computeCRC64 returns the CRC-64 checksum of data as a decimal string.
 func computeCRC64(data []byte) string {
-	table := crc64.MakeTable(crc64.ISO)
-	checksum := crc64.Checksum(data, table)
-	return strconv.FormatUint(checksum, 10)
+	return strconv.FormatUint(crc64.Checksum(data, crc64Table), 10)
 }
 
 // marshalDefinition marshals v to JSON and computes its CRC-64 checksum.

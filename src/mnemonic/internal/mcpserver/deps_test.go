@@ -98,6 +98,14 @@ func (m *mockPatternService) GetAgentAssociations(ctx context.Context, patternID
 	return args.Get(0).([]patternrepo.AgentAssociation), args.Error(1)
 }
 
+func (m *mockPatternService) ResolveAgentNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	args := m.Called(ctx, ids)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[uuid.UUID]string), args.Error(1)
+}
+
 func (m *mockPatternService) FindRelated(ctx context.Context, patternID uuid.UUID, limit int) ([]patternsvc.RelatedPatternResult, error) {
 	args := m.Called(ctx, patternID, limit)
 	if args.Get(0) == nil {

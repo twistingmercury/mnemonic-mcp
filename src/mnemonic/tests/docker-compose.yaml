@@ -58,6 +58,15 @@ services:
     container_name: mnemonic_api
     ports:
       - "8080:8080"
+      - "8081:8081"
+    environment:
+      MNEMONIC_DATABASE_POSTGRES_HOST: postgres
+      MNEMONIC_DATABASE_POSTGRES_PASSWORD: mnemonic_dev
+      MNEMONIC_DATABASE_POSTGRES_SSL_MODE: disable
+      MNEMONIC_DATABASE_NEO4J_URI:  bolt://neo4j:7687
+      MNEMONIC_DATABASE_NEO4J_PASSWORD: mnemonic_dev
+      MNEMONIC_OPENAI_API_KEY: sk-test-dummy
+      MNEMONIC_MCP_PORT: 8081
     depends_on:
       migrate:
         condition: service_completed_successfully

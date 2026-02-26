@@ -13,8 +13,6 @@ BUILD_VER="${BUILD_VER:-$(git -C "${PROJ_ROOT}" describe --tags --abbrev=0 2>/de
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 BUILD_COMMIT="${BUILD_COMMIT:-$(git -C "${PROJ_ROOT}" rev-parse --short HEAD 2>/dev/null || echo 'unknown')}"
 
-LOCAL_BUILD="${LOCAL_BUILD:-0}"
-
 MAX_RETRIES="${MAX_RETRIES:-30}"
 RETRY_INTERVAL="${RETRY_INTERVAL:-2}"
 PG_HOST="${PG_HOST:-localhost}"
@@ -22,15 +20,6 @@ PG_PORT="${PG_PORT:-5433}"
 PG_USER="${PG_USER:-mnemonic}"
 NEO4J_USER="${NEO4J_USER:-neo4j}"
 NEO4J_PASSWORD="${NEO4J_PASSWORD:-mnemonic_dev}"
-
-case "${LOCAL_BUILD}" in
-    0|1) ;;
-    *) printf "ERROR: LOCAL_BUILD must be 0 or 1, got: %s\n" "${LOCAL_BUILD}" >&2; exit 1 ;;
-esac
-
-if [ "${LOCAL_BUILD}" -eq 1 ]; then
-    IMAGE_TAG="${BUILD_VER}-localdev"
-fi
 
 cleanup_db_infra() {
     printf "Cleaning up database infrastructure...\n" >&2
@@ -139,6 +128,8 @@ build_api(){
 
     printf "\nImage: %s:%s\n" "${IMAGE_NAME}" "${IMAGE_TAG}"
     docker images "${IMAGE_NAME}:${IMAGE_TAG}" --format "Size: {{.Size}}"
+
+    return 0
 }
 
 e2e_tests(){
@@ -163,17 +154,15 @@ e2e_tests(){
         return 1
     fi
 
-    if [ "${LOCAL_BUILD}" -eq 1 ]; then
-        docker compose -f "${compose_file}" up -d mnemonic_api mnemonic_tests
-    else
-        docker compose -f "${compose_file}" up \
-            --abort-on-container-exit \
-            --exit-code-from mnemonic_tests \
-            mnemonic_api mnemonic_tests
-    fi
+    docker compose -f "${compose_file}" up \
+        --abort-on-container-exit \
+        --exit-code-from mnemonic_tests \
+        mnemonic_api mnemonic_tests
 
     trap - EXIT
     cleanup
+
+    return 0
 }
 
 main(){
@@ -181,17 +170,17 @@ main(){
 
     if ! start_db_infra; then
         printf "ERROR: Failed to start database infrastructure\n" >&2
-        exit 1
+        return 1
     fi
 
     if ! run_migrations; then
         printf "ERROR: Failed to run database migrations\n" >&2
-        exit 1
+        return 1
     fi
 
     if ! run_integration_tests; then
-        printf "ERROR: Integration tests failed, aborting build\n" >&2
-        exit 1
+        prreturnintf "ERROR: Integration tests failed, aborting build\n" >&2
+        return 1
     fi
 
     trap - EXIT
@@ -204,6 +193,8 @@ main(){
     fi
 
     e2e_tests
+
+    return 0
 }
 
 main "$@"

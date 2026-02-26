@@ -951,6 +951,106 @@ func TestGetAgentAssociations(t *testing.T) {
 	})
 }
 
+// ---------- ResolveAgentNames ----------
+
+func TestResolveAgentNames(t *testing.T) {
+	t.Parallel()
+
+	t.Run("happy path resolves all IDs", func(t *testing.T) {
+		t.Parallel()
+
+		pr := new(mockPatternRepo)
+		er := new(mockEnrichmentRepo)
+		gr := new(mockGraphRepo)
+		ar := new(mockAgentRepo)
+		tb := new(mockTxBeginner)
+		svc := newTestService(pr, er, gr, ar, tb)
+
+		ar.On("GetByID", mock.Anything, testAgentID).Return(&agentrepo.Agent{
+			ID:   testAgentID,
+			Name: "code-reviewer",
+		}, nil)
+		ar.On("GetByID", mock.Anything, testAgent2ID).Return(&agentrepo.Agent{
+			ID:   testAgent2ID,
+			Name: "doc-writer",
+		}, nil)
+
+		names, err := svc.ResolveAgentNames(context.Background(), []uuid.UUID{testAgentID, testAgent2ID})
+
+		require.NoError(t, err)
+		assert.Len(t, names, 2)
+		assert.Equal(t, "code-reviewer", names[testAgentID])
+		assert.Equal(t, "doc-writer", names[testAgent2ID])
+
+		ar.AssertExpectations(t)
+	})
+
+	t.Run("empty input returns empty map", func(t *testing.T) {
+		t.Parallel()
+
+		pr := new(mockPatternRepo)
+		er := new(mockEnrichmentRepo)
+		gr := new(mockGraphRepo)
+		ar := new(mockAgentRepo)
+		tb := new(mockTxBeginner)
+		svc := newTestService(pr, er, gr, ar, tb)
+
+		names, err := svc.ResolveAgentNames(context.Background(), []uuid.UUID{})
+
+		require.NoError(t, err)
+		assert.Empty(t, names)
+
+		ar.AssertNotCalled(t, "GetByID")
+	})
+
+	t.Run("unknown agent ID is omitted silently", func(t *testing.T) {
+		t.Parallel()
+
+		pr := new(mockPatternRepo)
+		er := new(mockEnrichmentRepo)
+		gr := new(mockGraphRepo)
+		ar := new(mockAgentRepo)
+		tb := new(mockTxBeginner)
+		svc := newTestService(pr, er, gr, ar, tb)
+
+		unknownID := uuid.MustParse("99999999-9999-9999-9999-999999999999")
+		ar.On("GetByID", mock.Anything, testAgentID).Return(&agentrepo.Agent{
+			ID:   testAgentID,
+			Name: "code-reviewer",
+		}, nil)
+		ar.On("GetByID", mock.Anything, unknownID).Return(nil, agentrepo.ErrNotFound)
+
+		names, err := svc.ResolveAgentNames(context.Background(), []uuid.UUID{testAgentID, unknownID})
+
+		require.NoError(t, err)
+		assert.Len(t, names, 1)
+		assert.Equal(t, "code-reviewer", names[testAgentID])
+		_, exists := names[unknownID]
+		assert.False(t, exists)
+
+		ar.AssertExpectations(t)
+	})
+
+	t.Run("repository error propagates", func(t *testing.T) {
+		t.Parallel()
+
+		pr := new(mockPatternRepo)
+		er := new(mockEnrichmentRepo)
+		gr := new(mockGraphRepo)
+		ar := new(mockAgentRepo)
+		tb := new(mockTxBeginner)
+		svc := newTestService(pr, er, gr, ar, tb)
+
+		ar.On("GetByID", mock.Anything, testAgentID).Return(nil, errors.New("db connection lost"))
+
+		names, err := svc.ResolveAgentNames(context.Background(), []uuid.UUID{testAgentID})
+
+		require.Error(t, err)
+		assert.Nil(t, names)
+		assert.Contains(t, err.Error(), "db connection lost")
+	})
+}
+
 // ---------- FindRelated ----------
 
 func TestFindRelated(t *testing.T) {

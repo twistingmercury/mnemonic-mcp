@@ -3,7 +3,6 @@
 // agent definitions via the REST API.
 //
 // Documentation:
-//   - Architecture: docs/architecture/03-system-architecture.md (Component Breakdown)
-//   - Architecture: docs/architecture/04-communication-patterns.md (REST Endpoints)
-//   - Design: docs/design/api-specification.md (API Specification)
+//   - API: docs/api/openapi/mnemonic-v1.yaml (Agent Endpoints)
+//   - Design: docs/design/service-layer.md (AgentService)
 package agents
