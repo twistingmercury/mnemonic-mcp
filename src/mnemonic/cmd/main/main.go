@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/pflag"
-	"github.com/twistingmercury/mnemonic/cmd/version"
+	"github.com/twistingmercury/mnemonic/internal/version"
 	"github.com/twistingmercury/mnemonic/internal/config"
 	"github.com/twistingmercury/mnemonic/internal/health"
 	"github.com/twistingmercury/mnemonic/internal/server"

@@ -1,5 +1,7 @@
 package version
 
+import "fmt"
+
 var (
 	version   = "n/a"
 	buildDate = "n/a"
@@ -35,4 +37,18 @@ func GetInfo() Info {
 		BuildDate: buildDate,
 		Commit:    commit,
 	}
+}
+
+// Print returns a formatted ASCII art banner with version information
+// suitable for CLI display.
+func Print() string {
+	const mnemonic = `
+  __  __                                  _
+ |  \/  |                                (_)
+ | \  / |_ __   ___ _ __ ___   ___  _ __  _  ___
+ | |\/| | '_ \ / _ \ '_ ' _ \ / _ \| '_ \| |/ __|
+ | |  | | | | |  __/ | | | | | (_) | | | | | (__
+ |_|  |_|_| |_|\___|_| |_| |_|\___/|_| |_|_|\___|`
+
+	return fmt.Sprintf("%s\n                                   version %s\n", mnemonic, Version())
 }
