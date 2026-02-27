@@ -43,14 +43,13 @@ To build Mnemonic locally:
 
 ```bash
 cd src/mnemonic
-LOCAL_BUILD=1 ./build/build.sh
+./build/build.sh
 ```
 
-The `LOCAL_BUILD` flag:
+The build script runs the same steps locally and in CI:
 
-- Tags the Docker image with `${BUILD_VER}-localdev` suffix instead of `latest`
-- Runs a `docker run --version` check after the build to verify the image
-- E2E tests run automatically regardless of the `LOCAL_BUILD` value
+- Builds the Docker image with embedded build metadata
+- Runs end-to-end tests against Postgres and Neo4j via Docker Compose
 
 ## CI/CD
 

@@ -15,4 +15,7 @@ var (
 
 	// ErrNoPending is returned when ClaimPending finds no available jobs.
 	ErrNoPending = errors.New("no pending jobs available")
+
+	// ErrJobAlreadyPending is returned when a pending enrichment job already exists for this pattern.
+	ErrJobAlreadyPending = errors.New("enrichment job already pending for this pattern")
 )

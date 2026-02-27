@@ -11,10 +11,10 @@ LD_FLAGS="-s -w \
 default: help
 
 local:
-	LOCAL_BUILD=true go build --ldflags ${LD_FLAGS} -o .bin/mnemonic cmd/main/main.go
+	go build --ldflags ${LD_FLAGS} -o .bin/mnemonic cmd/main/main.go
 
 build: ## Build Docker image locally using the full CI build script
-	LOCAL_BUILD=1 ./build/build.sh 
+	./build/build.sh 
 	docker system prune -f
 
 analyze: ## Run linters, formatters, security scanners, etc
@@ -35,11 +35,12 @@ tests-db-graph: ## Run graph repository integration tests
 	./internal/repository/tests/run-graph-integration-tests.sh
 	
 tests-e2e: ## Runs the end-to-end tests
-	docker compose -f "./tests/docker-compose.yaml" up \
+	docker compose -f "./tests/docker-compose-dev.yaml" up \
         --build \
         --abort-on-container-exit \
         --exit-code-from mnemonic_tests \
         mnemonic_api mnemonic_tests
+		docker system prune -f
 
 tests-unit: ## Run the unit tests
 	go test ./internal/... -coverprofile=coverage.out

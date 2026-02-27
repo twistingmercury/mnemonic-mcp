@@ -11,12 +11,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/twistingmercury/mnemonic/internal/handlers"
 	agentrepo "github.com/twistingmercury/mnemonic/internal/repository/agent"
 	agentsvc "github.com/twistingmercury/mnemonic/internal/service/agent"
 )
+
+// agentNameRe is the compiled pattern for valid agent names.
+var agentNameRe = regexp.MustCompile(`^[a-z]([a-z0-9](-[a-z0-9])*)*$`)
 
 // Handler provides HTTP handlers for agent CRUD operations.
 type Handler struct {
@@ -40,22 +45,22 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 
 // agentCreateRequest maps the OpenAPI AgentCreate schema.
 type agentCreateRequest struct {
-	Name         string   `json:"name" binding:"required"`
-	Description  string   `json:"description" binding:"required"`
-	SystemPrompt string   `json:"system_prompt" binding:"required"`
-	Model        string   `json:"model" binding:"required"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	SystemPrompt string   `json:"system_prompt"`
+	Model        string   `json:"model"`
 	AllowedTools []string `json:"allowed_tools"`
-	Version      string   `json:"version" binding:"required"`
+	Version      string   `json:"version"`
 }
 
 // agentUpdateRequest maps the OpenAPI AgentUpdate schema.
 type agentUpdateRequest struct {
 	Name         string   `json:"name"`
-	Description  string   `json:"description" binding:"required"`
-	SystemPrompt string   `json:"system_prompt" binding:"required"`
-	Model        string   `json:"model" binding:"required"`
+	Description  string   `json:"description"`
+	SystemPrompt string   `json:"system_prompt"`
+	Model        string   `json:"model"`
 	AllowedTools []string `json:"allowed_tools"`
-	Version      string   `json:"version" binding:"required"`
+	Version      string   `json:"version"`
 }
 
 // agentResponse maps an agent repository object to the OpenAPI Agent schema.
@@ -111,11 +116,50 @@ func toAgentResponse(a *agentrepo.Agent) (agentResponse, error) {
 	}, nil
 }
 
+// validateAgentFields checks field-level constraints for create/update and
+// returns a non-nil slice of FieldErrors when any constraint is violated.
+func validateAgentFields(name, systemPrompt, model, description string) []handlers.FieldError {
+	var errs []handlers.FieldError
+
+	// name: required, regex, max 64
+	if name == "" {
+		errs = append(errs, handlers.FieldError{Field: "name", Code: "REQUIRED", Message: "name is required"})
+	} else if utf8.RuneCountInString(name) > 64 {
+		errs = append(errs, handlers.FieldError{Field: "name", Code: "MAX_LENGTH", Message: "name must be 64 characters or fewer"})
+	} else if !agentNameRe.MatchString(name) {
+		errs = append(errs, handlers.FieldError{Field: "name", Code: "INVALID_FORMAT", Message: "name must match ^[a-z]([a-z0-9](-[a-z0-9])*)*$"})
+	}
+
+	// system_prompt: required, max 2048
+	if systemPrompt == "" {
+		errs = append(errs, handlers.FieldError{Field: "system_prompt", Code: "REQUIRED", Message: "system_prompt is required"})
+	} else if utf8.RuneCountInString(systemPrompt) > 2048 {
+		errs = append(errs, handlers.FieldError{Field: "system_prompt", Code: "MAX_LENGTH", Message: "system_prompt must be 2048 characters or fewer"})
+	}
+
+	// model: required
+	if model == "" {
+		errs = append(errs, handlers.FieldError{Field: "model", Code: "REQUIRED", Message: "model is required"})
+	}
+
+	// description: optional, max 500
+	if utf8.RuneCountInString(description) > 500 {
+		errs = append(errs, handlers.FieldError{Field: "description", Code: "MAX_LENGTH", Message: "description must be 500 characters or fewer"})
+	}
+
+	return errs
+}
+
 // Create handles POST /v1/api/agents.
 func (h *Handler) Create(c *gin.Context) {
 	var req agentCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		handlers.RespondValidationError(c, "The request body contains invalid fields", nil)
+		return
+	}
+
+	if fieldErrs := validateAgentFields(req.Name, req.SystemPrompt, req.Model, req.Description); len(fieldErrs) > 0 {
+		handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
 		return
 	}
 
@@ -147,8 +191,20 @@ func (h *Handler) Create(c *gin.Context) {
 
 // List handles GET /v1/api/agents.
 func (h *Handler) List(c *gin.Context) {
-	limit := handlers.ParseIntQuery(c, "limit", 100, 1, 200)
-	offset := handlers.DecodeCursor(c.Query("cursor"))
+	limit, ok := handlers.ParseIntQueryStrict(c, "limit", 100, 1, 200)
+	if !ok {
+		handlers.RespondValidationError(c, "Invalid query parameter", []handlers.FieldError{
+			{Field: "limit", Code: "INVALID_VALUE", Message: "limit must be an integer between 1 and 200"},
+		})
+		return
+	}
+	offset, ok := handlers.DecodeCursorStrict(c.Query("cursor"))
+	if !ok {
+		handlers.RespondValidationError(c, "Invalid query parameter", []handlers.FieldError{
+			{Field: "cursor", Code: "INVALID_VALUE", Message: "cursor is not a valid pagination token"},
+		})
+		return
+	}
 
 	agents, _, err := h.svc.List(c.Request.Context(), agentsvc.ListOptions{
 		Offset: offset,
@@ -229,6 +285,16 @@ func (h *Handler) Update(c *gin.Context) {
 		handlers.RespondValidationError(c, "Name in body must match path parameter", []handlers.FieldError{
 			{Field: "name", Code: "INVALID_VALUE", Message: "name in body must match path parameter or be omitted"},
 		})
+		return
+	}
+
+	// Validate body fields (use path name for name validation).
+	effectiveName := req.Name
+	if effectiveName == "" {
+		effectiveName = name
+	}
+	if fieldErrs := validateAgentFields(effectiveName, req.SystemPrompt, req.Model, req.Description); len(fieldErrs) > 0 {
+		handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
 		return
 	}
 

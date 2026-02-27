@@ -165,6 +165,37 @@ func ParseIntQuery(c *gin.Context, key string, defaultVal, minVal, maxVal int) i
 	return val
 }
 
+// ParseIntQueryStrict returns (value, true) or (defaultVal, false) when the raw value is out of [minVal, maxVal].
+// An empty string returns (defaultVal, true).
+func ParseIntQueryStrict(c *gin.Context, key string, defaultVal, minVal, maxVal int) (int, bool) {
+	raw := c.Query(key)
+	if raw == "" {
+		return defaultVal, true
+	}
+	val, err := strconv.Atoi(raw)
+	if err != nil || val < minVal || val > maxVal {
+		return defaultVal, false
+	}
+	return val, true
+}
+
+// DecodeCursorStrict returns (offset, true). An empty cursor returns (0, true).
+// A non-empty, non-decodable cursor returns (0, false).
+func DecodeCursorStrict(cursor string) (int, bool) {
+	if cursor == "" {
+		return 0, true
+	}
+	data, err := base64.URLEncoding.DecodeString(cursor)
+	if err != nil {
+		return 0, false
+	}
+	var payload CursorPayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return 0, false
+	}
+	return payload.Offset, true
+}
+
 // ParseFloatQuery parses a float64 query parameter with a default value.
 // Clamps the result to [min, max].
 func ParseFloatQuery(c *gin.Context, key string, defaultVal, minVal, maxVal float64) float64 {

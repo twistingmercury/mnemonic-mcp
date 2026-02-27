@@ -1,6 +1,11 @@
 package e2e
 
 import (
+	"bytes"
+	"encoding/base64"
+	"fmt"
+	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -54,6 +59,60 @@ var fileTypes = []fileTypeTestCase{
 	{collection: "assets", maxFiles: 50, maxSizeBytes: 5242880, maxSizeLabel: "5MB"},
 }
 
+// createTestSkill creates a skill with a unique name and returns that name.
+// It fails the test immediately if creation does not return 201.
+func createTestSkill(t *testing.T, client *TestClient) string {
+	t.Helper()
+	name := GenerateUniqueName("skill")
+	body := SkillCreate{
+		Name:    name,
+		Content: "# Test skill content",
+	}
+	resp, err := client.Post("/v1/api/skills", body)
+	if err != nil {
+		t.Fatalf("failed to create skill: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		b := ReadBody(t, resp)
+		t.Fatalf("expected 201 creating skill, got %d: %s", resp.StatusCode, string(b))
+	}
+	// Drain body so connection can be reused.
+	ReadBody(t, resp)
+	return name
+}
+
+// skillFilePath returns the collection path for a skill.
+func skillFilePath(skillName, collection string) string {
+	return fmt.Sprintf("/v1/api/skills/%s/%s", skillName, collection)
+}
+
+// skillFileItemPath returns the path to a specific file within a skill collection.
+func skillFileItemPath(skillName, collection, filename string) string {
+	return fmt.Sprintf("/v1/api/skills/%s/%s/%s", skillName, collection, filename)
+}
+
+// postRawBody performs a POST request with a raw (pre-serialized) body, setting
+// Content-Type to application/json. Used for invalid JSON and empty body tests.
+func postRawBody(t *testing.T, client *TestClient, path string, raw []byte) (*http.Response, error) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, client.BaseURL+path, bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	return client.Do(req)
+}
+
+// putRawBody performs a PUT request with a raw (pre-serialized) body.
+func putRawBody(t *testing.T, client *TestClient, path string, raw []byte) (*http.Response, error) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPut, client.BaseURL+path, bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	return client.Do(req)
+}
+
 // -----------------------------------------------------------------------------
 // List Skill Files (GET /v1/api/skills/{name}/{collection})
 // OpenAPI: listSkillScripts, listSkillReferences, listSkillAssets
@@ -68,8 +127,41 @@ var fileTypes = []fileTypeTestCase{
 func TestListSkillFiles_Success(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			// Upload one file so the list is non-empty.
+			upload := SkillFileCreate{
+				Filename:    "list-test.txt",
+				ContentType: "text/plain",
+				Content:     "hello",
+				Encoding:    "utf-8",
+			}
+			upResp, err := client.Post(skillFilePath(skillName, ft.collection), upload)
+			if err != nil {
+				t.Fatalf("failed to upload file: %v", err)
+			}
+			AssertStatusCode(t, upResp, http.StatusCreated)
+			ReadBody(t, upResp)
+
+			resp, err := client.Get(skillFilePath(skillName, ft.collection))
+			if err != nil {
+				t.Fatalf("failed to GET collection: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusOK)
+			AssertRequestIDHeader(t, resp)
+
+			list := ParseJSON[SkillFileList](t, resp)
+			if len(list.Data) == 0 {
+				t.Fatal("expected at least one file in list, got empty")
+			}
+
+			// Summaries should not include content.
+			for _, f := range list.Data {
+				if f.Content != "" {
+					t.Errorf("list response should not include file content, got non-empty content for %q", f.Filename)
+				}
+			}
 		})
 	}
 }
@@ -82,8 +174,19 @@ func TestListSkillFiles_Success(t *testing.T) {
 func TestListSkillFiles_SkillNotFound(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			nonExistent := GenerateUniqueName("skill")
+
+			resp, err := client.Get(skillFilePath(nonExistent, ft.collection))
+			if err != nil {
+				t.Fatalf("failed to GET collection: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusNotFound)
+
+			errResp := ParseJSON[ErrorResponse](t, resp)
+			if errResp.Status != http.StatusNotFound {
+				t.Errorf("expected error status 404, got %d", errResp.Status)
+			}
 		})
 	}
 }
@@ -96,8 +199,19 @@ func TestListSkillFiles_SkillNotFound(t *testing.T) {
 func TestListSkillFiles_EmptyResult(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			resp, err := client.Get(skillFilePath(skillName, ft.collection))
+			if err != nil {
+				t.Fatalf("failed to GET collection: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusOK)
+
+			list := ParseJSON[SkillFileList](t, resp)
+			if len(list.Data) != 0 {
+				t.Errorf("expected empty data array, got %d items", len(list.Data))
+			}
 		})
 	}
 }
@@ -117,8 +231,35 @@ func TestListSkillFiles_EmptyResult(t *testing.T) {
 func TestUploadSkillFile_Success(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			upload := SkillFileCreate{
+				Filename:    "hello.txt",
+				ContentType: "text/plain",
+				Content:     "hello world",
+				Encoding:    "utf-8",
+			}
+
+			resp, err := client.Post(skillFilePath(skillName, ft.collection), upload)
+			if err != nil {
+				t.Fatalf("failed to POST file: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusCreated)
+			AssertRequestIDHeader(t, resp)
+
+			location := resp.Header.Get("Location")
+			if location == "" {
+				t.Error("expected Location header to be present")
+			}
+
+			sf := ParseJSON[SkillFile](t, resp)
+			if sf.Filename != upload.Filename {
+				t.Errorf("expected filename %q, got %q", upload.Filename, sf.Filename)
+			}
+			if sf.ContentType != upload.ContentType {
+				t.Errorf("expected content_type %q, got %q", upload.ContentType, sf.ContentType)
+			}
 		})
 	}
 }
@@ -131,8 +272,35 @@ func TestUploadSkillFile_Success(t *testing.T) {
 func TestUploadSkillFile_Base64Encoding(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			encoded := base64.StdEncoding.EncodeToString([]byte("hello world"))
+			upload := SkillFileCreate{
+				Filename:    "hello-b64.txt",
+				ContentType: "text/plain",
+				Content:     encoded,
+				Encoding:    "base64",
+			}
+
+			resp, err := client.Post(skillFilePath(skillName, ft.collection), upload)
+			if err != nil {
+				t.Fatalf("failed to POST base64 file: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusCreated)
+
+			sf := ParseJSON[SkillFile](t, resp)
+			if sf.Filename != upload.Filename {
+				t.Errorf("expected filename %q, got %q", upload.Filename, sf.Filename)
+			}
+
+			// Retrieve to confirm it's stored.
+			getResp, err := client.Get(skillFileItemPath(skillName, ft.collection, upload.Filename))
+			if err != nil {
+				t.Fatalf("failed to GET file: %v", err)
+			}
+			AssertStatusCode(t, getResp, http.StatusOK)
+			ReadBody(t, getResp)
 		})
 	}
 }
@@ -145,8 +313,26 @@ func TestUploadSkillFile_Base64Encoding(t *testing.T) {
 func TestUploadSkillFile_SkillNotFound(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			nonExistent := GenerateUniqueName("skill")
+
+			upload := SkillFileCreate{
+				Filename:    "notfound.txt",
+				ContentType: "text/plain",
+				Content:     "content",
+				Encoding:    "utf-8",
+			}
+
+			resp, err := client.Post(skillFilePath(nonExistent, ft.collection), upload)
+			if err != nil {
+				t.Fatalf("failed to POST file: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusNotFound)
+
+			errResp := ParseJSON[ErrorResponse](t, resp)
+			if errResp.Status != http.StatusNotFound {
+				t.Errorf("expected error status 404, got %d", errResp.Status)
+			}
 		})
 	}
 }
@@ -160,8 +346,36 @@ func TestUploadSkillFile_SkillNotFound(t *testing.T) {
 func TestUploadSkillFile_DuplicateFilename(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			upload := SkillFileCreate{
+				Filename:    "duplicate.txt",
+				ContentType: "text/plain",
+				Content:     "first upload",
+				Encoding:    "utf-8",
+			}
+
+			// First upload — must succeed.
+			resp1, err := client.Post(skillFilePath(skillName, ft.collection), upload)
+			if err != nil {
+				t.Fatalf("failed to POST file (first): %v", err)
+			}
+			AssertStatusCode(t, resp1, http.StatusCreated)
+			ReadBody(t, resp1)
+
+			// Second upload with same filename — must conflict.
+			upload.Content = "second upload"
+			resp2, err := client.Post(skillFilePath(skillName, ft.collection), upload)
+			if err != nil {
+				t.Fatalf("failed to POST file (second): %v", err)
+			}
+			AssertStatusCode(t, resp2, http.StatusConflict)
+
+			errResp := ParseJSON[ErrorResponse](t, resp2)
+			if errResp.Status != http.StatusConflict {
+				t.Errorf("expected error status 409, got %d", errResp.Status)
+			}
 		})
 	}
 }
@@ -174,8 +388,23 @@ func TestUploadSkillFile_DuplicateFilename(t *testing.T) {
 func TestUploadSkillFile_FileSizeExceeded(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			oversizedContent := strings.Repeat("x", ft.maxSizeBytes+1)
+			upload := SkillFileCreate{
+				Filename:    "oversized.txt",
+				ContentType: "text/plain",
+				Content:     oversizedContent,
+				Encoding:    "utf-8",
+			}
+
+			resp, err := client.Post(skillFilePath(skillName, ft.collection), upload)
+			if err != nil {
+				t.Fatalf("failed to POST oversized file: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusRequestEntityTooLarge)
+			ReadBody(t, resp)
 		})
 	}
 }
@@ -189,8 +418,45 @@ func TestUploadSkillFile_FileSizeExceeded(t *testing.T) {
 func TestUploadSkillFile_FileCountExceeded(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			// Upload exactly maxFiles files.
+			for i := 0; i < ft.maxFiles; i++ {
+				upload := SkillFileCreate{
+					Filename:    fmt.Sprintf("file-%03d.txt", i),
+					ContentType: "text/plain",
+					Content:     fmt.Sprintf("content %d", i),
+					Encoding:    "utf-8",
+				}
+				resp, err := client.Post(skillFilePath(skillName, ft.collection), upload)
+				if err != nil {
+					t.Fatalf("failed to POST file %d: %v", i, err)
+				}
+				if resp.StatusCode != http.StatusCreated {
+					b := ReadBody(t, resp)
+					t.Fatalf("expected 201 for file %d, got %d: %s", i, resp.StatusCode, string(b))
+				}
+				ReadBody(t, resp)
+			}
+
+			// One more upload — must be rejected.
+			extra := SkillFileCreate{
+				Filename:    "one-too-many.txt",
+				ContentType: "text/plain",
+				Content:     "over the limit",
+				Encoding:    "utf-8",
+			}
+			resp, err := client.Post(skillFilePath(skillName, ft.collection), extra)
+			if err != nil {
+				t.Fatalf("failed to POST extra file: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusUnprocessableEntity)
+
+			errResp := ParseJSON[ErrorResponse](t, resp)
+			if errResp.Status != http.StatusUnprocessableEntity {
+				t.Errorf("expected error status 422, got %d", errResp.Status)
+			}
 		})
 	}
 }
@@ -209,8 +475,107 @@ func TestUploadSkillFile_FileCountExceeded(t *testing.T) {
 func TestUploadSkillFile_ValidationErrors(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+			path := skillFilePath(skillName, ft.collection)
+
+			cases := []struct {
+				name   string
+				upload SkillFileCreate
+			}{
+				{
+					name: "missing filename",
+					upload: SkillFileCreate{
+						Filename:    "",
+						ContentType: "text/plain",
+						Content:     "content",
+						Encoding:    "utf-8",
+					},
+				},
+				{
+					name: "missing content_type",
+					upload: SkillFileCreate{
+						Filename:    "valid.txt",
+						ContentType: "",
+						Content:     "content",
+						Encoding:    "utf-8",
+					},
+				},
+				{
+					name: "missing content",
+					upload: SkillFileCreate{
+						Filename:    "valid2.txt",
+						ContentType: "text/plain",
+						Content:     "",
+						Encoding:    "utf-8",
+					},
+				},
+				{
+					name: "filename too long",
+					upload: SkillFileCreate{
+						Filename:    strings.Repeat("a", 256),
+						ContentType: "text/plain",
+						Content:     "content",
+						Encoding:    "utf-8",
+					},
+				},
+				{
+					name: "filename with invalid chars",
+					upload: SkillFileCreate{
+						Filename:    "bad file!.txt",
+						ContentType: "text/plain",
+						Content:     "content",
+						Encoding:    "utf-8",
+					},
+				},
+				{
+					name: "filename starting with dot",
+					upload: SkillFileCreate{
+						Filename:    ".hidden",
+						ContentType: "text/plain",
+						Content:     "content",
+						Encoding:    "utf-8",
+					},
+				},
+				{
+					name: "filename starting with hyphen",
+					upload: SkillFileCreate{
+						Filename:    "-leading",
+						ContentType: "text/plain",
+						Content:     "content",
+						Encoding:    "utf-8",
+					},
+				},
+				{
+					name: "content_type too long",
+					upload: SkillFileCreate{
+						Filename:    "valid3.txt",
+						ContentType: strings.Repeat("x", 129),
+						Content:     "content",
+						Encoding:    "utf-8",
+					},
+				},
+				{
+					name: "invalid encoding",
+					upload: SkillFileCreate{
+						Filename:    "valid4.txt",
+						ContentType: "text/plain",
+						Content:     "content",
+						Encoding:    "binary",
+					},
+				},
+			}
+
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					resp, err := client.Post(path, tc.upload)
+					if err != nil {
+						t.Fatalf("failed to POST file: %v", err)
+					}
+					AssertStatusCode(t, resp, http.StatusBadRequest)
+					ReadBody(t, resp)
+				})
+			}
 		})
 	}
 }
@@ -222,8 +587,16 @@ func TestUploadSkillFile_ValidationErrors(t *testing.T) {
 func TestUploadSkillFile_InvalidJSON(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+			path := skillFilePath(skillName, ft.collection)
+
+			resp, err := postRawBody(t, client, path, []byte(`{not valid json`))
+			if err != nil {
+				t.Fatalf("failed to POST invalid JSON: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusBadRequest)
+			ReadBody(t, resp)
 		})
 	}
 }
@@ -235,8 +608,16 @@ func TestUploadSkillFile_InvalidJSON(t *testing.T) {
 func TestUploadSkillFile_EmptyBody(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+			path := skillFilePath(skillName, ft.collection)
+
+			resp, err := postRawBody(t, client, path, []byte{})
+			if err != nil {
+				t.Fatalf("failed to POST empty body: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusBadRequest)
+			ReadBody(t, resp)
 		})
 	}
 }
@@ -249,8 +630,63 @@ func TestUploadSkillFile_EmptyBody(t *testing.T) {
 func TestUploadSkillFile_FilenameFormat(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+			path := skillFilePath(skillName, ft.collection)
+
+			validCases := []string{
+				"script.py",
+				"README.md",
+				"config-v2.yaml",
+				"a",
+			}
+			for _, filename := range validCases {
+				t.Run("valid/"+filename, func(t *testing.T) {
+					upload := SkillFileCreate{
+						Filename:    filename,
+						ContentType: "text/plain",
+						Content:     "content",
+						Encoding:    "utf-8",
+					}
+					resp, err := client.Post(path, upload)
+					if err != nil {
+						t.Fatalf("failed to POST file: %v", err)
+					}
+					if resp.StatusCode != http.StatusCreated {
+						b := ReadBody(t, resp)
+						t.Errorf("expected 201 for valid filename %q, got %d: %s", filename, resp.StatusCode, string(b))
+					} else {
+						ReadBody(t, resp)
+					}
+				})
+			}
+
+			invalidCases := []string{
+				".hidden",
+				"-leading",
+				" space",
+				"../traversal",
+			}
+			for _, filename := range invalidCases {
+				t.Run("invalid/"+filename, func(t *testing.T) {
+					upload := SkillFileCreate{
+						Filename:    filename,
+						ContentType: "text/plain",
+						Content:     "content",
+						Encoding:    "utf-8",
+					}
+					resp, err := client.Post(path, upload)
+					if err != nil {
+						t.Fatalf("failed to POST file: %v", err)
+					}
+					if resp.StatusCode != http.StatusBadRequest {
+						b := ReadBody(t, resp)
+						t.Errorf("expected 400 for invalid filename %q, got %d: %s", filename, resp.StatusCode, string(b))
+					} else {
+						ReadBody(t, resp)
+					}
+				})
+			}
 		})
 	}
 }
@@ -270,8 +706,36 @@ func TestUploadSkillFile_FilenameFormat(t *testing.T) {
 func TestGetSkillFile_Success(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			upload := SkillFileCreate{
+				Filename:    "get-me.txt",
+				ContentType: "text/plain",
+				Content:     "retrieve this content",
+				Encoding:    "utf-8",
+			}
+			upResp, err := client.Post(skillFilePath(skillName, ft.collection), upload)
+			if err != nil {
+				t.Fatalf("failed to upload file: %v", err)
+			}
+			AssertStatusCode(t, upResp, http.StatusCreated)
+			ReadBody(t, upResp)
+
+			resp, err := client.Get(skillFileItemPath(skillName, ft.collection, upload.Filename))
+			if err != nil {
+				t.Fatalf("failed to GET file: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusOK)
+			AssertRequestIDHeader(t, resp)
+
+			sf := ParseJSON[SkillFile](t, resp)
+			if sf.Filename != upload.Filename {
+				t.Errorf("expected filename %q, got %q", upload.Filename, sf.Filename)
+			}
+			if sf.Content != upload.Content {
+				t.Errorf("expected content %q, got %q", upload.Content, sf.Content)
+			}
 		})
 	}
 }
@@ -283,8 +747,15 @@ func TestGetSkillFile_Success(t *testing.T) {
 func TestGetSkillFile_SkillNotFound(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			nonExistent := GenerateUniqueName("skill")
+
+			resp, err := client.Get(skillFileItemPath(nonExistent, ft.collection, "any.txt"))
+			if err != nil {
+				t.Fatalf("failed to GET file: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusNotFound)
+			ReadBody(t, resp)
 		})
 	}
 }
@@ -297,8 +768,15 @@ func TestGetSkillFile_SkillNotFound(t *testing.T) {
 func TestGetSkillFile_FileNotFound(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			resp, err := client.Get(skillFileItemPath(skillName, ft.collection, "does-not-exist.txt"))
+			if err != nil {
+				t.Fatalf("failed to GET non-existent file: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusNotFound)
+			ReadBody(t, resp)
 		})
 	}
 }
@@ -318,8 +796,47 @@ func TestGetSkillFile_FileNotFound(t *testing.T) {
 func TestUpdateSkillFile_Success(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			// Upload the initial file.
+			upload := SkillFileCreate{
+				Filename:    "update-me.txt",
+				ContentType: "text/plain",
+				Content:     "original content",
+				Encoding:    "utf-8",
+			}
+			upResp, err := client.Post(skillFilePath(skillName, ft.collection), upload)
+			if err != nil {
+				t.Fatalf("failed to upload file: %v", err)
+			}
+			AssertStatusCode(t, upResp, http.StatusCreated)
+			created := ParseJSON[SkillFile](t, upResp)
+
+			// Replace the file.
+			update := SkillFileUpdate{
+				ContentType: "text/plain",
+				Content:     "updated content",
+				Encoding:    "utf-8",
+			}
+			putResp, err := client.Put(skillFileItemPath(skillName, ft.collection, upload.Filename), update)
+			if err != nil {
+				t.Fatalf("failed to PUT file: %v", err)
+			}
+			AssertStatusCode(t, putResp, http.StatusOK)
+
+			updated := ParseJSON[SkillFile](t, putResp)
+			if updated.Content != update.Content {
+				t.Errorf("expected updated content %q, got %q", update.Content, updated.Content)
+			}
+
+			// updated_at should change (or at least be present).
+			if updated.UpdatedAt == "" {
+				t.Error("expected updated_at to be present after update")
+			}
+			if created.CreatedAt != "" && updated.CreatedAt != "" && created.CreatedAt != updated.CreatedAt {
+				t.Errorf("created_at changed after update: was %q, now %q", created.CreatedAt, updated.CreatedAt)
+			}
 		})
 	}
 }
@@ -331,8 +848,20 @@ func TestUpdateSkillFile_Success(t *testing.T) {
 func TestUpdateSkillFile_SkillNotFound(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			nonExistent := GenerateUniqueName("skill")
+
+			update := SkillFileUpdate{
+				ContentType: "text/plain",
+				Content:     "content",
+				Encoding:    "utf-8",
+			}
+			resp, err := client.Put(skillFileItemPath(nonExistent, ft.collection, "any.txt"), update)
+			if err != nil {
+				t.Fatalf("failed to PUT file: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusNotFound)
+			ReadBody(t, resp)
 		})
 	}
 }
@@ -345,8 +874,20 @@ func TestUpdateSkillFile_SkillNotFound(t *testing.T) {
 func TestUpdateSkillFile_FileNotFound(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			update := SkillFileUpdate{
+				ContentType: "text/plain",
+				Content:     "content",
+				Encoding:    "utf-8",
+			}
+			resp, err := client.Put(skillFileItemPath(skillName, ft.collection, "ghost.txt"), update)
+			if err != nil {
+				t.Fatalf("failed to PUT non-existent file: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusNotFound)
+			ReadBody(t, resp)
 		})
 	}
 }
@@ -359,8 +900,36 @@ func TestUpdateSkillFile_FileNotFound(t *testing.T) {
 func TestUpdateSkillFile_FileSizeExceeded(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			// Create a valid file first.
+			upload := SkillFileCreate{
+				Filename:    "size-limit.txt",
+				ContentType: "text/plain",
+				Content:     "small content",
+				Encoding:    "utf-8",
+			}
+			upResp, err := client.Post(skillFilePath(skillName, ft.collection), upload)
+			if err != nil {
+				t.Fatalf("failed to upload file: %v", err)
+			}
+			AssertStatusCode(t, upResp, http.StatusCreated)
+			ReadBody(t, upResp)
+
+			// Try to replace with oversized content.
+			oversizedContent := strings.Repeat("x", ft.maxSizeBytes+1)
+			update := SkillFileUpdate{
+				ContentType: "text/plain",
+				Content:     oversizedContent,
+				Encoding:    "utf-8",
+			}
+			resp, err := client.Put(skillFileItemPath(skillName, ft.collection, upload.Filename), update)
+			if err != nil {
+				t.Fatalf("failed to PUT oversized file: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusRequestEntityTooLarge)
+			ReadBody(t, resp)
 		})
 	}
 }
@@ -375,8 +944,73 @@ func TestUpdateSkillFile_FileSizeExceeded(t *testing.T) {
 func TestUpdateSkillFile_ValidationErrors(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			// Upload a file to update.
+			upload := SkillFileCreate{
+				Filename:    "validate-update.txt",
+				ContentType: "text/plain",
+				Content:     "original",
+				Encoding:    "utf-8",
+			}
+			upResp, err := client.Post(skillFilePath(skillName, ft.collection), upload)
+			if err != nil {
+				t.Fatalf("failed to upload file: %v", err)
+			}
+			AssertStatusCode(t, upResp, http.StatusCreated)
+			ReadBody(t, upResp)
+
+			itemPath := skillFileItemPath(skillName, ft.collection, upload.Filename)
+
+			cases := []struct {
+				name   string
+				update SkillFileUpdate
+			}{
+				{
+					name: "missing content_type",
+					update: SkillFileUpdate{
+						ContentType: "",
+						Content:     "content",
+						Encoding:    "utf-8",
+					},
+				},
+				{
+					name: "missing content",
+					update: SkillFileUpdate{
+						ContentType: "text/plain",
+						Content:     "",
+						Encoding:    "utf-8",
+					},
+				},
+				{
+					name: "content_type too long",
+					update: SkillFileUpdate{
+						ContentType: strings.Repeat("x", 129),
+						Content:     "content",
+						Encoding:    "utf-8",
+					},
+				},
+				{
+					name: "invalid encoding",
+					update: SkillFileUpdate{
+						ContentType: "text/plain",
+						Content:     "content",
+						Encoding:    "binary",
+					},
+				},
+			}
+
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					resp, err := client.Put(itemPath, tc.update)
+					if err != nil {
+						t.Fatalf("failed to PUT file: %v", err)
+					}
+					AssertStatusCode(t, resp, http.StatusBadRequest)
+					ReadBody(t, resp)
+				})
+			}
 		})
 	}
 }
@@ -394,8 +1028,36 @@ func TestUpdateSkillFile_ValidationErrors(t *testing.T) {
 func TestDeleteSkillFile_Success(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			upload := SkillFileCreate{
+				Filename:    "delete-me.txt",
+				ContentType: "text/plain",
+				Content:     "goodbye",
+				Encoding:    "utf-8",
+			}
+			upResp, err := client.Post(skillFilePath(skillName, ft.collection), upload)
+			if err != nil {
+				t.Fatalf("failed to upload file: %v", err)
+			}
+			AssertStatusCode(t, upResp, http.StatusCreated)
+			ReadBody(t, upResp)
+
+			delResp, err := client.Delete(skillFileItemPath(skillName, ft.collection, upload.Filename))
+			if err != nil {
+				t.Fatalf("failed to DELETE file: %v", err)
+			}
+			AssertStatusCode(t, delResp, http.StatusNoContent)
+			ReadBody(t, delResp)
+
+			// Confirm it's gone.
+			getResp, err := client.Get(skillFileItemPath(skillName, ft.collection, upload.Filename))
+			if err != nil {
+				t.Fatalf("failed to GET deleted file: %v", err)
+			}
+			AssertStatusCode(t, getResp, http.StatusNotFound)
+			ReadBody(t, getResp)
 		})
 	}
 }
@@ -407,8 +1069,15 @@ func TestDeleteSkillFile_Success(t *testing.T) {
 func TestDeleteSkillFile_SkillNotFound(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			nonExistent := GenerateUniqueName("skill")
+
+			resp, err := client.Delete(skillFileItemPath(nonExistent, ft.collection, "any.txt"))
+			if err != nil {
+				t.Fatalf("failed to DELETE file: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusNotFound)
+			ReadBody(t, resp)
 		})
 	}
 }
@@ -421,8 +1090,15 @@ func TestDeleteSkillFile_SkillNotFound(t *testing.T) {
 func TestDeleteSkillFile_FileNotFound(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			resp, err := client.Delete(skillFileItemPath(skillName, ft.collection, "ghost.txt"))
+			if err != nil {
+				t.Fatalf("failed to DELETE non-existent file: %v", err)
+			}
+			AssertStatusCode(t, resp, http.StatusNotFound)
+			ReadBody(t, resp)
 		})
 	}
 }
@@ -435,8 +1111,39 @@ func TestDeleteSkillFile_FileNotFound(t *testing.T) {
 func TestDeleteSkillFile_Idempotent(t *testing.T) {
 	for _, ft := range fileTypes {
 		t.Run(ft.collection, func(t *testing.T) {
-			t.Skip("not implemented")
-			// TODO: implement
+			client := NewTestClient(t)
+			skillName := createTestSkill(t, client)
+
+			upload := SkillFileCreate{
+				Filename:    "idempotent-delete.txt",
+				ContentType: "text/plain",
+				Content:     "content",
+				Encoding:    "utf-8",
+			}
+			upResp, err := client.Post(skillFilePath(skillName, ft.collection), upload)
+			if err != nil {
+				t.Fatalf("failed to upload file: %v", err)
+			}
+			AssertStatusCode(t, upResp, http.StatusCreated)
+			ReadBody(t, upResp)
+
+			itemPath := skillFileItemPath(skillName, ft.collection, upload.Filename)
+
+			// First DELETE — 204.
+			del1, err := client.Delete(itemPath)
+			if err != nil {
+				t.Fatalf("failed first DELETE: %v", err)
+			}
+			AssertStatusCode(t, del1, http.StatusNoContent)
+			ReadBody(t, del1)
+
+			// Second DELETE — 404.
+			del2, err := client.Delete(itemPath)
+			if err != nil {
+				t.Fatalf("failed second DELETE: %v", err)
+			}
+			AssertStatusCode(t, del2, http.StatusNotFound)
+			ReadBody(t, del2)
 		})
 	}
 }
@@ -453,8 +1160,57 @@ func TestDeleteSkillFile_Idempotent(t *testing.T) {
 //   - All three uploads succeed with 201
 //   - Each file is independently retrievable and deletable
 func TestSkillFiles_SameFilenameAcrossCollections(t *testing.T) {
-	t.Skip("not implemented")
-	// TODO: implement
+	client := NewTestClient(t)
+	skillName := createTestSkill(t, client)
+
+	sharedFilename := "helper.py"
+
+	for _, ft := range fileTypes {
+		upload := SkillFileCreate{
+			Filename:    sharedFilename,
+			ContentType: "text/x-python",
+			Content:     fmt.Sprintf("# %s content", ft.collection),
+			Encoding:    "utf-8",
+		}
+		resp, err := client.Post(skillFilePath(skillName, ft.collection), upload)
+		if err != nil {
+			t.Fatalf("failed to upload %q to %s: %v", sharedFilename, ft.collection, err)
+		}
+		if resp.StatusCode != http.StatusCreated {
+			b := ReadBody(t, resp)
+			t.Errorf("expected 201 uploading %q to %s, got %d: %s", sharedFilename, ft.collection, resp.StatusCode, string(b))
+		} else {
+			ReadBody(t, resp)
+		}
+	}
+
+	// Each file is independently retrievable.
+	for _, ft := range fileTypes {
+		resp, err := client.Get(skillFileItemPath(skillName, ft.collection, sharedFilename))
+		if err != nil {
+			t.Fatalf("failed to GET %q from %s: %v", sharedFilename, ft.collection, err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			b := ReadBody(t, resp)
+			t.Errorf("expected 200 getting %q from %s, got %d: %s", sharedFilename, ft.collection, resp.StatusCode, string(b))
+		} else {
+			ReadBody(t, resp)
+		}
+	}
+
+	// Each file is independently deletable.
+	for _, ft := range fileTypes {
+		resp, err := client.Delete(skillFileItemPath(skillName, ft.collection, sharedFilename))
+		if err != nil {
+			t.Fatalf("failed to DELETE %q from %s: %v", sharedFilename, ft.collection, err)
+		}
+		if resp.StatusCode != http.StatusNoContent {
+			b := ReadBody(t, resp)
+			t.Errorf("expected 204 deleting %q from %s, got %d: %s", sharedFilename, ft.collection, resp.StatusCode, string(b))
+		} else {
+			ReadBody(t, resp)
+		}
+	}
 }
 
 // TestSkillFiles_DifferentSkillsSameFilename verifies that the same filename
@@ -464,6 +1220,29 @@ func TestSkillFiles_SameFilenameAcrossCollections(t *testing.T) {
 //   - Upload "main.py" to scripts for skill-a and skill-b
 //   - Both uploads succeed with 201
 func TestSkillFiles_DifferentSkillsSameFilename(t *testing.T) {
-	t.Skip("not implemented")
-	// TODO: implement
+	client := NewTestClient(t)
+	skillA := createTestSkill(t, client)
+	skillB := createTestSkill(t, client)
+
+	sharedFilename := "main.py"
+	collection := "scripts"
+
+	for _, skillName := range []string{skillA, skillB} {
+		upload := SkillFileCreate{
+			Filename:    sharedFilename,
+			ContentType: "text/x-python",
+			Content:     fmt.Sprintf("# skill %s main", skillName),
+			Encoding:    "utf-8",
+		}
+		resp, err := client.Post(skillFilePath(skillName, collection), upload)
+		if err != nil {
+			t.Fatalf("failed to upload %q to skill %s: %v", sharedFilename, skillName, err)
+		}
+		if resp.StatusCode != http.StatusCreated {
+			b := ReadBody(t, resp)
+			t.Errorf("expected 201 uploading %q to skill %s, got %d: %s", sharedFilename, skillName, resp.StatusCode, string(b))
+		} else {
+			ReadBody(t, resp)
+		}
+	}
 }

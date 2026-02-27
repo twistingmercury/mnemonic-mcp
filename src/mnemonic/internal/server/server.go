@@ -307,6 +307,14 @@ func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMet
 	// Recovery middleware (keep this)
 	router.Use(gin.Recovery())
 
+	// Correlation ID middleware: echo X-Request-ID from request to response.
+	router.Use(func(c *gin.Context) {
+		if rid := c.GetHeader("X-Request-ID"); rid != "" {
+			c.Header("X-Request-ID", rid)
+		}
+		c.Next()
+	})
+
 	// Use exported DefaultSkipPaths from middleware package
 	skipPaths := middleware.DefaultSkipPaths
 

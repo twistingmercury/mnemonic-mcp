@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"path"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +12,28 @@ import (
 	skillfilerepo "github.com/twistingmercury/mnemonic/internal/repository/skillfile"
 	skillfilesvc "github.com/twistingmercury/mnemonic/internal/service/skillfile"
 )
+
+// filenameRe matches valid filenames: start with letter/digit, then letters/digits/dot/hyphen/underscore.
+var filenameRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+
+// validEncodings lists the only accepted encoding values.
+var validEncodings = map[string]bool{
+	"utf-8":  true,
+	"base64": true,
+}
+
+// fileTypeConfig holds per-collection size and count limits.
+type fileTypeConfig struct {
+	maxSizeBytes int
+	maxFiles     int
+}
+
+// fileTypeLimits defines the limits for each skill file collection.
+var fileTypeLimits = map[string]fileTypeConfig{
+	"scripts":    {maxSizeBytes: 1048576, maxFiles: 20},  // 1MB, 20 files
+	"references": {maxSizeBytes: 1048576, maxFiles: 50},  // 1MB, 50 files
+	"assets":     {maxSizeBytes: 5242880, maxFiles: 50},  // 5MB, 50 files
+}
 
 // ValidFileTypes are the allowed file type path segments.
 var ValidFileTypes = map[string]bool{
@@ -141,6 +164,46 @@ func inferContentType(filename string) string {
 	}
 }
 
+// validateFileFields checks filename format, content_type length, and encoding.
+// filename is only checked when checkFilename is true (i.e. on create, not update).
+func validateFileFields(filename, contentType, encoding string, checkFilename bool) []handlers.FieldError {
+	var errs []handlers.FieldError
+
+	if checkFilename {
+		if len(filename) > 255 {
+			errs = append(errs, handlers.FieldError{
+				Field:   "filename",
+				Code:    "MAX_LENGTH",
+				Message: "filename must be 255 characters or fewer",
+			})
+		} else if !filenameRe.MatchString(filename) {
+			errs = append(errs, handlers.FieldError{
+				Field:   "filename",
+				Code:    "INVALID_FORMAT",
+				Message: "filename must start with a letter or digit and contain only letters, digits, dots, hyphens, and underscores",
+			})
+		}
+	}
+
+	if len(contentType) > 128 {
+		errs = append(errs, handlers.FieldError{
+			Field:   "content_type",
+			Code:    "MAX_LENGTH",
+			Message: "content_type must be 128 characters or fewer",
+		})
+	}
+
+	if encoding != "" && !validEncodings[encoding] {
+		errs = append(errs, handlers.FieldError{
+			Field:   "encoding",
+			Code:    "INVALID_VALUE",
+			Message: "encoding must be utf-8 or base64",
+		})
+	}
+
+	return errs
+}
+
 // --- Handler factories ---
 
 func (h *Handler) createFile(fileType string) gin.HandlerFunc {
@@ -151,6 +214,41 @@ func (h *Handler) createFile(fileType string) gin.HandlerFunc {
 		if err := c.ShouldBindJSON(&req); err != nil {
 			handlers.RespondValidationError(c, "The request body contains invalid fields", nil)
 			return
+		}
+
+		if fieldErrs := validateFileFields(req.Filename, req.ContentType, req.Encoding, true); len(fieldErrs) > 0 {
+			handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
+			return
+		}
+
+		// Content size limit.
+		if limits, ok := fileTypeLimits[fileType]; ok && len(req.Content) > limits.maxSizeBytes {
+			c.JSON(http.StatusRequestEntityTooLarge, handlers.ProblemDetail{
+				Type:     handlers.ProblemBaseURI + "payload-too-large",
+				Title:    "Payload Too Large",
+				Status:   http.StatusRequestEntityTooLarge,
+				Detail:   fmt.Sprintf("content exceeds the maximum size for %s", fileType),
+				Instance: c.Request.URL.Path,
+				TraceID:  c.GetHeader("X-Request-ID"),
+			})
+			return
+		}
+
+		// File count limit.
+		if limits, ok := fileTypeLimits[fileType]; ok {
+			ft := fileType
+			existing, listErr := h.svc.ListBySkill(c.Request.Context(), skillName, &ft)
+			if listErr == nil && len(existing) >= limits.maxFiles {
+				c.JSON(http.StatusUnprocessableEntity, handlers.ProblemDetail{
+					Type:     handlers.ProblemBaseURI + "unprocessable-entity",
+					Title:    "Unprocessable Entity",
+					Status:   http.StatusUnprocessableEntity,
+					Detail:   fmt.Sprintf("maximum file count (%d) exceeded for %s", limits.maxFiles, fileType),
+					Instance: c.Request.URL.Path,
+					TraceID:  c.GetHeader("X-Request-ID"),
+				})
+				return
+			}
 		}
 
 		encoding := req.Encoding
@@ -221,6 +319,24 @@ func (h *Handler) updateFile(fileType string) gin.HandlerFunc {
 		var req fileUpdateRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			handlers.RespondValidationError(c, "The request body contains invalid fields", nil)
+			return
+		}
+
+		if fieldErrs := validateFileFields("", req.ContentType, req.Encoding, false); len(fieldErrs) > 0 {
+			handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
+			return
+		}
+
+		// Content size limit.
+		if limits, ok := fileTypeLimits[fileType]; ok && len(req.Content) > limits.maxSizeBytes {
+			c.JSON(http.StatusRequestEntityTooLarge, handlers.ProblemDetail{
+				Type:     handlers.ProblemBaseURI + "payload-too-large",
+				Title:    "Payload Too Large",
+				Status:   http.StatusRequestEntityTooLarge,
+				Detail:   fmt.Sprintf("content exceeds the maximum size for %s", fileType),
+				Instance: c.Request.URL.Path,
+				TraceID:  c.GetHeader("X-Request-ID"),
+			})
 			return
 		}
 

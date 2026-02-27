@@ -69,10 +69,6 @@ e2e_tests(){
 main(){
     build_api
 
-    if [ "${LOCAL_BUILD}" -eq 1 ]; then
-        docker run --rm "${IMAGE_NAME}:${IMAGE_TAG}" --version
-    fi
-
     e2e_tests
 
     return 0

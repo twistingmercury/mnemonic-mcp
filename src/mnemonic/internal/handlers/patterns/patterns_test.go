@@ -159,6 +159,8 @@ func TestPatternCreate_Success(t *testing.T) {
 
 	pattern := makePattern("go-error-handling")
 	psvc.On("Create", mock.Anything, mock.AnythingOfType("pattern.CreateInput")).Return(pattern, nil)
+	psvc.On("GetAgentAssociations", mock.Anything, pattern.ID).Return([]patternrepo.AgentAssociation{}, nil)
+	psvc.On("ResolveAgentNames", mock.Anything, []uuid.UUID{}).Return(map[uuid.UUID]string{}, nil)
 
 	body := `{
 		"name": "go-error-handling",

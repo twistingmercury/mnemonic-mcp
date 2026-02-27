@@ -10,7 +10,10 @@ package patterns
 import (
 	"fmt"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -19,6 +22,9 @@ import (
 	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
 )
+
+// patternNameRe is the compiled pattern for valid pattern names.
+var patternNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 // Handler provides HTTP handlers for pattern CRUD and search operations.
 type Handler struct {
@@ -55,17 +61,17 @@ type associationRequest struct {
 }
 
 type patternCreateRequest struct {
-	Name              string               `json:"name" binding:"required"`
+	Name              string               `json:"name"`
 	Description       *string              `json:"description"`
-	Content           string               `json:"content" binding:"required"`
+	Content           string               `json:"content"`
 	Tags              []string             `json:"tags"`
 	AgentAssociations []associationRequest `json:"agent_associations"`
 }
 
 type patternUpdateRequest struct {
-	Name              string               `json:"name" binding:"required"`
+	Name              string               `json:"name"`
 	Description       *string              `json:"description"`
-	Content           string               `json:"content" binding:"required"`
+	Content           string               `json:"content"`
 	Tags              []string             `json:"tags"`
 	AgentAssociations []associationRequest `json:"agent_associations"`
 }
@@ -243,6 +249,58 @@ func toAssociationInputs(reqs []associationRequest) []patternsvc.AssociationInpu
 	return inputs
 }
 
+// validatePatternFields checks field-level constraints for create/update and
+// returns a non-nil slice of FieldErrors when any constraint is violated.
+func validatePatternFields(name, content string, description *string, tags []string) []handlers.FieldError {
+	var errs []handlers.FieldError
+
+	// name: must match ^[a-z][a-z0-9-]*$, length 1-128
+	nameLen := utf8.RuneCountInString(name)
+	if nameLen == 0 {
+		errs = append(errs, handlers.FieldError{Field: "name", Code: "REQUIRED", Message: "name is required"})
+	} else if nameLen > 128 {
+		errs = append(errs, handlers.FieldError{Field: "name", Code: "MAX_LENGTH", Message: "name must be 128 characters or fewer"})
+	} else if !patternNameRe.MatchString(name) {
+		errs = append(errs, handlers.FieldError{Field: "name", Code: "INVALID_FORMAT", Message: "name must match ^[a-z][a-z0-9-]*$"})
+	}
+
+	// content: 1-10240 bytes
+	contentLen := len(content)
+	if contentLen == 0 {
+		errs = append(errs, handlers.FieldError{Field: "content", Code: "REQUIRED", Message: "content is required"})
+	} else if contentLen > 10240 {
+		errs = append(errs, handlers.FieldError{Field: "content", Code: "MAX_LENGTH", Message: "content must be 10240 bytes or fewer"})
+	}
+
+	// description: optional, max 500 chars
+	if description != nil && utf8.RuneCountInString(*description) > 500 {
+		errs = append(errs, handlers.FieldError{Field: "description", Code: "MAX_LENGTH", Message: "description must be 500 characters or fewer"})
+	}
+
+	// tags: max 20 items
+	if len(tags) > 20 {
+		errs = append(errs, handlers.FieldError{Field: "tags", Code: "MAX_ITEMS", Message: "tags must contain 20 items or fewer"})
+	}
+
+	return errs
+}
+
+// validateAssociationRelevance checks that each association has a relevance value
+// in the range [0.0, 1.0] and returns FieldErrors for any that are out of range.
+func validateAssociationRelevance(assocs []associationRequest) []handlers.FieldError {
+	var errs []handlers.FieldError
+	for i, assoc := range assocs {
+		if assoc.Relevance < 0.0 || assoc.Relevance > 1.0 {
+			errs = append(errs, handlers.FieldError{
+				Field:   fmt.Sprintf("associations[%d].relevance", i),
+				Code:    "INVALID_VALUE",
+				Message: "relevance must be a number between 0 and 1",
+			})
+		}
+	}
+	return errs
+}
+
 // --- Handlers ---
 
 // Create handles POST /v1/api/patterns.
@@ -250,6 +308,16 @@ func (h *Handler) Create(c *gin.Context) {
 	var req patternCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		handlers.RespondValidationError(c, "The request body contains invalid fields", nil)
+		return
+	}
+
+	if fieldErrs := validatePatternFields(req.Name, req.Content, req.Description, req.Tags); len(fieldErrs) > 0 {
+		handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
+		return
+	}
+
+	if assocErrs := validateAssociationRelevance(req.AgentAssociations); len(assocErrs) > 0 {
+		handlers.RespondValidationError(c, "The request body contains invalid fields", assocErrs)
 		return
 	}
 
@@ -272,15 +340,44 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	resp := toPatternResponse(pattern, nil, nil)
+	// Fetch agent associations to include in the response.
+	ctx := c.Request.Context()
+	pgAssocs, err := h.patternSvc.GetAgentAssociations(ctx, pattern.ID)
+	if err != nil {
+		handlers.RespondError(c, err)
+		return
+	}
+	agentIDs := make([]uuid.UUID, len(pgAssocs))
+	for i, a := range pgAssocs {
+		agentIDs[i] = a.AgentID
+	}
+	names, err := h.patternSvc.ResolveAgentNames(ctx, agentIDs)
+	if err != nil {
+		handlers.RespondError(c, err)
+		return
+	}
+
+	resp := toPatternResponse(pattern, nil, toAssociationResponses(pgAssocs, names))
 	c.Header("Location", fmt.Sprintf("/v1/api/patterns/%s", pattern.ID))
 	c.JSON(http.StatusAccepted, resp)
 }
 
 // List handles GET /v1/api/patterns.
 func (h *Handler) List(c *gin.Context) {
-	limit := handlers.ParseIntQuery(c, "limit", 20, 1, 100)
-	offset := handlers.DecodeCursor(c.Query("cursor"))
+	limit, ok := handlers.ParseIntQueryStrict(c, "limit", 20, 1, 100)
+	if !ok {
+		handlers.RespondValidationError(c, "Invalid query parameter", []handlers.FieldError{
+			{Field: "limit", Code: "INVALID_VALUE", Message: "limit must be an integer between 1 and 100"},
+		})
+		return
+	}
+	offset, ok := handlers.DecodeCursorStrict(c.Query("cursor"))
+	if !ok {
+		handlers.RespondValidationError(c, "Invalid query parameter", []handlers.FieldError{
+			{Field: "cursor", Code: "INVALID_VALUE", Message: "cursor is not a valid pagination token"},
+		})
+		return
+	}
 
 	var tags []string
 	if raw := c.Query("tags"); raw != "" {
@@ -356,7 +453,6 @@ func (h *Handler) Get(c *gin.Context) {
 		return
 	}
 
-	// Resolve agent UUIDs to human-readable names for the REST response.
 	agentIDs := make([]uuid.UUID, len(pgAssocs))
 	for i, a := range pgAssocs {
 		agentIDs[i] = a.AgentID
@@ -383,6 +479,16 @@ func (h *Handler) Update(c *gin.Context) {
 	var req patternUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		handlers.RespondValidationError(c, "The request body contains invalid fields", nil)
+		return
+	}
+
+	if fieldErrs := validatePatternFields(req.Name, req.Content, req.Description, req.Tags); len(fieldErrs) > 0 {
+		handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
+		return
+	}
+
+	if assocErrs := validateAssociationRelevance(req.AgentAssociations); len(assocErrs) > 0 {
+		handlers.RespondValidationError(c, "The request body contains invalid fields", assocErrs)
 		return
 	}
 
@@ -442,7 +548,6 @@ func (h *Handler) GetAgentAssociations(c *gin.Context) {
 		return
 	}
 
-	// Resolve agent UUIDs to human-readable names for the REST response.
 	agentIDs := make([]uuid.UUID, len(pgAssocs))
 	for i, a := range pgAssocs {
 		agentIDs[i] = a.AgentID
@@ -469,6 +574,11 @@ func (h *Handler) SetAgentAssociations(c *gin.Context) {
 	var req associationsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		handlers.RespondValidationError(c, "The request body contains invalid fields", nil)
+		return
+	}
+
+	if assocErrs := validateAssociationRelevance(req.Associations); len(assocErrs) > 0 {
+		handlers.RespondValidationError(c, "The request body contains invalid fields", assocErrs)
 		return
 	}
 
@@ -504,8 +614,36 @@ func (h *Handler) Search(c *gin.Context) {
 		return
 	}
 
-	limit := handlers.ParseIntQuery(c, "limit", 10, 1, 50)
-	threshold := handlers.ParseFloatQuery(c, "threshold", 0.7, 0.0, 1.0)
+	if utf8.RuneCountInString(query) > 1000 {
+		handlers.RespondValidationError(c, "Invalid query parameter", []handlers.FieldError{
+			{Field: "query", Code: "MAX_LENGTH", Message: "query must be 1000 characters or fewer"},
+		})
+		return
+	}
+
+	limit := 10
+	if rawLimit := c.Query("limit"); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed < 1 || parsed > 50 {
+			handlers.RespondValidationError(c, "Invalid query parameter", []handlers.FieldError{
+				{Field: "limit", Code: "INVALID_VALUE", Message: "limit must be an integer between 1 and 50"},
+			})
+			return
+		}
+		limit = parsed
+	}
+
+	threshold := 0.7
+	if rawThreshold := c.Query("threshold"); rawThreshold != "" {
+		parsed, err := strconv.ParseFloat(rawThreshold, 64)
+		if err != nil || parsed < 0.0 || parsed > 1.0 {
+			handlers.RespondValidationError(c, "Invalid query parameter", []handlers.FieldError{
+				{Field: "threshold", Code: "INVALID_VALUE", Message: "threshold must be a number between 0 and 1"},
+			})
+			return
+		}
+		threshold = parsed
+	}
 
 	var tags []string
 	if raw := c.Query("tags"); raw != "" {
