@@ -44,8 +44,6 @@ jobs:
           fetch-depth: 0
 
       - name: Run build script
-        env:
-          LOCAL_BUILD: 0
         run: ./build/build.sh
 
       - name: Save Docker image

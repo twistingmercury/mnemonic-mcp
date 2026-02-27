@@ -98,6 +98,7 @@ func TestCreateScript_Success(t *testing.T) {
 	router := newTestRouter(svc)
 
 	file := makeSkillFile("scripts", "extract.py")
+	svc.On("ListBySkill", mock.Anything, "my-skill", mock.AnythingOfType("*string")).Return([]*skillfilerepo.SkillFile{}, nil)
 	svc.On("Create", mock.Anything, "my-skill", "scripts", mock.AnythingOfType("skillfile.CreateInput")).Return(file, nil)
 
 	body := `{
@@ -121,6 +122,7 @@ func TestCreateScript_SkillNotFound(t *testing.T) {
 	svc := new(mockSkillFileService)
 	router := newTestRouter(svc)
 
+	svc.On("ListBySkill", mock.Anything, "unknown-skill", mock.AnythingOfType("*string")).Return([]*skillfilerepo.SkillFile{}, nil)
 	svc.On("Create", mock.Anything, "unknown-skill", "scripts", mock.Anything).
 		Return(nil, fmt.Errorf("%w: skill %q", service.ErrNotFound, "unknown-skill"))
 
@@ -143,6 +145,7 @@ func TestCreateScript_Conflict(t *testing.T) {
 	svc := new(mockSkillFileService)
 	router := newTestRouter(svc)
 
+	svc.On("ListBySkill", mock.Anything, "my-skill", mock.AnythingOfType("*string")).Return([]*skillfilerepo.SkillFile{}, nil)
 	svc.On("Create", mock.Anything, "my-skill", "scripts", mock.Anything).
 		Return(nil, fmt.Errorf("%w: file %q in skill %q", service.ErrConflict, "scripts/extract.py", "my-skill"))
 
@@ -277,6 +280,7 @@ func TestCreateReference_Success(t *testing.T) {
 	router := newTestRouter(svc)
 
 	file := makeSkillFile("references", "REFERENCE.md")
+	svc.On("ListBySkill", mock.Anything, "my-skill", mock.AnythingOfType("*string")).Return([]*skillfilerepo.SkillFile{}, nil)
 	svc.On("Create", mock.Anything, "my-skill", "references", mock.AnythingOfType("skillfile.CreateInput")).Return(file, nil)
 
 	body := `{
@@ -299,6 +303,7 @@ func TestCreateAsset_Success(t *testing.T) {
 	router := newTestRouter(svc)
 
 	file := makeSkillFile("assets", "template.json")
+	svc.On("ListBySkill", mock.Anything, "my-skill", mock.AnythingOfType("*string")).Return([]*skillfilerepo.SkillFile{}, nil)
 	svc.On("Create", mock.Anything, "my-skill", "assets", mock.AnythingOfType("skillfile.CreateInput")).Return(file, nil)
 
 	body := `{

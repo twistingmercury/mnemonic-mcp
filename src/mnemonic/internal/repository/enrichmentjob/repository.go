@@ -116,6 +116,8 @@ func (r *pgxRepository) Create(ctx context.Context, job *Job) error {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
+			case repository.PgErrCodeUniqueViolation:
+				return ErrJobAlreadyPending
 			case repository.PgErrCodeForeignKeyViolation:
 				return ErrPatternNotFound
 			case repository.PgErrCodeCheckViolation:

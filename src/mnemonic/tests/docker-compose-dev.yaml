@@ -53,7 +53,10 @@ services:
       - mnemonic-network
 
   mnemonic_api:
-    image:  ghcr.io/twistingmercury/mnemonic:latest
+    build:
+      context: ..
+      dockerfile: build/Dockerfile
+    image: ghcr.io/twistingmercury/mnemonic:latest
     pull_policy: never
     container_name: mnemonic_api
     ports:
@@ -78,6 +81,20 @@ services:
       interval: 2s
       timeout: 5s
       retries: 5
+    networks:
+      - mnemonic-network
+
+  mnemonic_tests:
+    build:
+      context: ./e2e
+      dockerfile: Dockerfile
+    container_name: mnemonic_tests
+    environment:
+      - API_URL=http://mnemonic_api:8080
+      - METRICS_URL=http://mnemonic_api:9090
+    depends_on:
+      mnemonic_api:
+        condition: service_healthy
     networks:
       - mnemonic-network
 

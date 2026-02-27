@@ -278,7 +278,10 @@ func (s *patternService) Update(ctx context.Context, id uuid.UUID, input UpdateI
 		Status:    string(enrichmentrepo.StatusPending),
 	}
 	if err := s.enrichmentRepo.Create(ctx, &job); err != nil {
-		return nil, fmt.Errorf("update pattern: creating enrichment job: %w", err)
+		if !errors.Is(err, enrichmentrepo.ErrJobAlreadyPending) {
+			return nil, fmt.Errorf("update pattern: creating enrichment job: %w", err)
+		}
+		// A pending job already exists; skip creating a duplicate.
 	}
 
 	// Best-effort Neo4j sync for agent associations.
@@ -347,7 +350,15 @@ func (s *patternService) SetAgentAssociations(ctx context.Context, patternID uui
 }
 
 // GetAgentAssociations retrieves all agent associations for a pattern.
+// Returns service.ErrNotFound if the pattern does not exist.
 func (s *patternService) GetAgentAssociations(ctx context.Context, patternID uuid.UUID) ([]patternrepo.AgentAssociation, error) {
+	if _, err := s.patternRepo.Get(ctx, patternID); err != nil {
+		if errors.Is(err, patternrepo.ErrNotFound) {
+			return nil, fmt.Errorf("%w: pattern %s", service.ErrNotFound, patternID)
+		}
+		return nil, fmt.Errorf("get agent associations: %w", err)
+	}
+
 	assocs, err := s.patternRepo.GetAgentAssociations(ctx, patternID)
 	if err != nil {
 		return nil, fmt.Errorf("get agent associations: %w", err)

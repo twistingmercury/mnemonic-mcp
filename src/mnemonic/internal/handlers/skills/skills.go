@@ -4,13 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/twistingmercury/mnemonic/internal/handlers"
 	skillrepo "github.com/twistingmercury/mnemonic/internal/repository/skill"
 	skillsvc "github.com/twistingmercury/mnemonic/internal/service/skill"
 )
+
+var skillNameRe = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
 
 // Handler provides HTTP handlers for skill CRUD operations.
 type Handler struct {
@@ -35,27 +39,27 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 // --- Request/Response Types ---
 
 type skillCreateRequest struct {
-	Name          string            `json:"name" binding:"required"`
-	Description   string            `json:"description" binding:"required"`
-	Content       string            `json:"content" binding:"required"`
+	Name          string            `json:"name"`
+	Description   string            `json:"description"`
+	Content       string            `json:"content"`
 	Tags          []string          `json:"tags"`
 	License       *string           `json:"license"`
 	Compatibility *string           `json:"compatibility"`
 	Metadata      map[string]string `json:"metadata"`
 	AllowedTools  []string          `json:"allowed_tools"`
-	Version       string            `json:"version" binding:"required"`
+	Version       string            `json:"version"`
 }
 
 type skillUpdateRequest struct {
 	Name          string            `json:"name"`
-	Description   string            `json:"description" binding:"required"`
-	Content       string            `json:"content" binding:"required"`
+	Description   string            `json:"description"`
+	Content       string            `json:"content"`
 	Tags          []string          `json:"tags"`
 	License       *string           `json:"license"`
 	Compatibility *string           `json:"compatibility"`
 	Metadata      map[string]string `json:"metadata"`
 	AllowedTools  []string          `json:"allowed_tools"`
-	Version       string            `json:"version" binding:"required"`
+	Version       string            `json:"version"`
 }
 
 type fileCounts struct {
@@ -143,6 +147,65 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
+	var fieldErrs []handlers.FieldError
+
+	// Required field checks.
+	if req.Name == "" {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "name", Code: "REQUIRED", Message: "name is required"})
+	}
+	if req.Content == "" {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "content", Code: "REQUIRED", Message: "content is required"})
+	}
+
+	// Name format validation.
+	if req.Name != "" && (len(req.Name) > 64 || !skillNameRe.MatchString(req.Name)) {
+		fieldErrs = append(fieldErrs, handlers.FieldError{
+			Field:   "name",
+			Code:    "INVALID_FORMAT",
+			Message: "name must start with a lowercase letter, contain only lowercase letters, digits, and hyphens, with no leading, trailing, or consecutive hyphens, and be at most 64 characters",
+		})
+	}
+
+	// Content size validation (max 512 KB).
+	if len(req.Content) > 524288 {
+		fieldErrs = append(fieldErrs, handlers.FieldError{
+			Field:   "content",
+			Code:    "MAX_SIZE",
+			Message: "content must be 512 KB or fewer",
+		})
+	}
+
+	// Description length validation (max 1024 characters).
+	if utf8.RuneCountInString(req.Description) > 1024 {
+		fieldErrs = append(fieldErrs, handlers.FieldError{
+			Field:   "description",
+			Code:    "MAX_LENGTH",
+			Message: "description must be 1024 characters or fewer",
+		})
+	}
+
+	// Tags, license, compatibility, allowed_tools, version limits.
+	if len(req.Tags) > 20 {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "tags", Code: "MAX_ITEMS", Message: "tags must contain 20 or fewer items"})
+	}
+	if req.License != nil && utf8.RuneCountInString(*req.License) > 255 {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "license", Code: "MAX_LENGTH", Message: "license must be 255 characters or fewer"})
+	}
+	if req.Compatibility != nil && utf8.RuneCountInString(*req.Compatibility) > 500 {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "compatibility", Code: "MAX_LENGTH", Message: "compatibility must be 500 characters or fewer"})
+	}
+	if len(req.AllowedTools) > 50 {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "allowed_tools", Code: "MAX_ITEMS", Message: "allowed_tools must contain 50 or fewer items"})
+	}
+	if req.Version != "" && utf8.RuneCountInString(req.Version) > 50 {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "version", Code: "MAX_LENGTH", Message: "version must be 50 characters or fewer"})
+	}
+
+	if len(fieldErrs) > 0 {
+		handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
+		return
+	}
+
 	if req.Tags == nil {
 		req.Tags = []string{}
 	}
@@ -173,8 +236,20 @@ func (h *Handler) Create(c *gin.Context) {
 
 // List handles GET /v1/api/skills.
 func (h *Handler) List(c *gin.Context) {
-	limit := handlers.ParseIntQuery(c, "limit", 100, 1, 200)
-	offset := handlers.DecodeCursor(c.Query("cursor"))
+	limit, ok := handlers.ParseIntQueryStrict(c, "limit", 100, 1, 200)
+	if !ok {
+		handlers.RespondValidationError(c, "Invalid query parameter", []handlers.FieldError{
+			{Field: "limit", Code: "INVALID_VALUE", Message: "limit must be an integer between 1 and 200"},
+		})
+		return
+	}
+	offset, ok := handlers.DecodeCursorStrict(c.Query("cursor"))
+	if !ok {
+		handlers.RespondValidationError(c, "Invalid query parameter", []handlers.FieldError{
+			{Field: "cursor", Code: "INVALID_VALUE", Message: "cursor is not a valid pagination token"},
+		})
+		return
+	}
 
 	// The tags filter is documented in the OpenAPI spec but the skill service
 	// List method does not currently support tag filtering. For MVP we fetch
@@ -260,6 +335,59 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
+	var fieldErrs []handlers.FieldError
+
+	// Required field checks.
+	if req.Description == "" {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "description", Code: "REQUIRED", Message: "description is required"})
+	}
+	if req.Content == "" {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "content", Code: "REQUIRED", Message: "content is required"})
+	}
+	if req.Version == "" {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "version", Code: "REQUIRED", Message: "version is required"})
+	}
+
+	// Content size validation (max 512 KB).
+	if len(req.Content) > 524288 {
+		fieldErrs = append(fieldErrs, handlers.FieldError{
+			Field:   "content",
+			Code:    "MAX_SIZE",
+			Message: "content must be 512 KB or fewer",
+		})
+	}
+
+	// Description length validation (max 1024 characters).
+	if utf8.RuneCountInString(req.Description) > 1024 {
+		fieldErrs = append(fieldErrs, handlers.FieldError{
+			Field:   "description",
+			Code:    "MAX_LENGTH",
+			Message: "description must be 1024 characters or fewer",
+		})
+	}
+
+	// Tags, license, compatibility, allowed_tools, version limits.
+	if len(req.Tags) > 20 {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "tags", Code: "MAX_ITEMS", Message: "tags must contain 20 or fewer items"})
+	}
+	if req.License != nil && utf8.RuneCountInString(*req.License) > 255 {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "license", Code: "MAX_LENGTH", Message: "license must be 255 characters or fewer"})
+	}
+	if req.Compatibility != nil && utf8.RuneCountInString(*req.Compatibility) > 500 {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "compatibility", Code: "MAX_LENGTH", Message: "compatibility must be 500 characters or fewer"})
+	}
+	if len(req.AllowedTools) > 50 {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "allowed_tools", Code: "MAX_ITEMS", Message: "allowed_tools must contain 50 or fewer items"})
+	}
+	if req.Version != "" && utf8.RuneCountInString(req.Version) > 50 {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "version", Code: "MAX_LENGTH", Message: "version must be 50 characters or fewer"})
+	}
+
+	if len(fieldErrs) > 0 {
+		handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
+		return
+	}
+
 	if req.Tags == nil {
 		req.Tags = []string{}
 	}
@@ -314,11 +442,21 @@ func filterSkillsByTags(skills []*skillrepo.Skill, requestedTags []string) []*sk
 		if err := json.Unmarshal(s.Definition, &def); err != nil {
 			continue
 		}
+		// Build skill tag set.
+		skillTags := make(map[string]bool, len(def.Tags))
 		for _, t := range def.Tags {
-			if tagSet[t] {
-				filtered = append(filtered, s)
+			skillTags[t] = true
+		}
+		// AND logic: skill must have ALL requested tags.
+		hasAll := true
+		for tag := range tagSet {
+			if !skillTags[tag] {
+				hasAll = false
 				break
 			}
+		}
+		if hasAll {
+			filtered = append(filtered, s)
 		}
 	}
 	return filtered

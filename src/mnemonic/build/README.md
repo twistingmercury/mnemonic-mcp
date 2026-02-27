@@ -6,6 +6,7 @@ This directory contains build and deployment configurations for the Mnemonic ser
 
 - `Dockerfile` - Multi-stage build for production deployment
 - `build.sh` - Build script for CI/CD pipelines
+- [Build Pipeline Diagram](../../../docs/diagrams/build-pipeline.md) - End-to-end flow for local + CI/CD builds
 
 ## Local Development with Docker Compose
 

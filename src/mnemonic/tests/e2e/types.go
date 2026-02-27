@@ -85,7 +85,7 @@ type AgentList struct {
 // AgentAssociation represents association between pattern and agent.
 // OpenAPI: api/openapi/mnemonic-v1.yaml:529 (AgentAssociation)
 type AgentAssociation struct {
-	AgentID   string  `json:"agent_id"`
+	AgentName string  `json:"agent_name"`
 	Relevance float64 `json:"relevance"`
 }
 

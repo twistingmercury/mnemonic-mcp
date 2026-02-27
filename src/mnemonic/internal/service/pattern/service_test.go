@@ -934,10 +934,12 @@ func TestGetAgentAssociations(t *testing.T) {
 		tb := new(mockTxBeginner)
 		svc := newTestService(pr, er, gr, ar, tb)
 
+		existingPattern := &patternrepo.Pattern{ID: testPatternID, Name: "go-error-handling"}
 		expected := []patternrepo.AgentAssociation{
 			{AgentID: testAgentID, Relevance: 0.9},
 			{AgentID: testAgent2ID, Relevance: 0.7},
 		}
+		pr.On("Get", mock.Anything, testPatternID).Return(existingPattern, nil)
 		pr.On("GetAgentAssociations", mock.Anything, testPatternID).Return(expected, nil)
 
 		result, err := svc.GetAgentAssociations(context.Background(), testPatternID)
@@ -946,6 +948,27 @@ func TestGetAgentAssociations(t *testing.T) {
 		assert.Len(t, result, 2)
 		assert.Equal(t, testAgentID, result[0].AgentID)
 		assert.InDelta(t, 0.9, result[0].Relevance, 0.001)
+
+		pr.AssertExpectations(t)
+	})
+
+	t.Run("pattern not found returns ErrNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		pr := new(mockPatternRepo)
+		er := new(mockEnrichmentRepo)
+		gr := new(mockGraphRepo)
+		ar := new(mockAgentRepo)
+		tb := new(mockTxBeginner)
+		svc := newTestService(pr, er, gr, ar, tb)
+
+		pr.On("Get", mock.Anything, testPatternID).Return(nil, patternrepo.ErrNotFound)
+
+		result, err := svc.GetAgentAssociations(context.Background(), testPatternID)
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, service.ErrNotFound)
+		assert.Nil(t, result)
 
 		pr.AssertExpectations(t)
 	})

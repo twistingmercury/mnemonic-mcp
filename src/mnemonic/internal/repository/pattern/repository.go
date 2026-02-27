@@ -265,8 +265,8 @@ func (r *pgxRepository) List(ctx context.Context, filter Filter, opts repository
 	}
 
 	if len(filter.Tags) > 0 {
-		// Use ?| operator to check if tags contain any of the specified tags
-		whereConditions = append(whereConditions, fmt.Sprintf("tags ?| $%d", argNum))
+		// Use ?& operator to check if tags contain ALL of the specified tags (AND logic)
+		whereConditions = append(whereConditions, fmt.Sprintf("tags ?& $%d", argNum))
 		args = append(args, filter.Tags)
 		argNum++
 	}

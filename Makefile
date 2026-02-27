@@ -3,7 +3,7 @@
 default: help
 
 mnemonic: ## Run the build.sh script to build the mnemonic server
-	LOCAL_BUILD=1 ./src/mnemonic/build/build.sh
+	./src/mnemonic/build/build.sh
 	docker system prune -f
 
 help: ## Show this help

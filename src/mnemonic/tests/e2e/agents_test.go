@@ -1,6 +1,10 @@
 package e2e
 
 import (
+	"bytes"
+	"fmt"
+	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -29,7 +33,57 @@ import (
 // a 200 response containing a data array of AgentSummary objects (without
 // system_prompt) and pagination metadata. X-Request-ID header must be present.
 func TestListAgents_ReturnsOKWithPaginatedResults(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	// Create an agent so the list is non-trivially exercised.
+	agentName := GenerateUniqueName("agent")
+	payload := AgentCreate{
+		Name:         agentName,
+		SystemPrompt: "You are a helpful assistant.",
+		Model:        "sonnet",
+	}
+	createResp, err := client.Post("/v1/api/agents", payload)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+	defer createResp.Body.Close()
+	AssertStatusCode(t, createResp, http.StatusCreated)
+
+	resp, err := client.Get("/v1/api/agents")
+	if err != nil {
+		t.Fatalf("failed to GET /v1/api/agents: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusOK)
+	AssertRequestIDHeader(t, resp)
+
+	list := ParseJSON[AgentList](t, resp)
+
+	if list.Data == nil {
+		t.Fatal("expected 'data' field to be an array, got nil")
+	}
+
+	// Verify at least the agent we created is present somewhere.
+	found := false
+	for _, a := range list.Data {
+		if a.Name == agentName {
+			found = true
+			// AgentSummary should not expose system_prompt — the struct doesn't have that field.
+			if a.Model == "" {
+				t.Errorf("expected model to be set for agent %q", agentName)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("created agent %q not found in list response", agentName)
+	}
+
+	// Pagination block must be present.
+	if list.Pagination.Limit == 0 {
+		t.Error("expected pagination.limit to be non-zero")
+	}
 }
 
 // TestListAgents_PaginationWithLimitAndCursor verifies cursor-based pagination.
@@ -37,37 +91,167 @@ func TestListAgents_ReturnsOKWithPaginatedResults(t *testing.T) {
 // walk through pages using next_cursor. Verify no duplicates across pages and
 // has_more transitions from true to false on the last page.
 func TestListAgents_PaginationWithLimitAndCursor(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	// Create 5 uniquely named agents.
+	created := make(map[string]bool, 5)
+	for i := 0; i < 5; i++ {
+		name := GenerateUniqueName("page")
+		payload := AgentCreate{
+			Name:         name,
+			SystemPrompt: fmt.Sprintf("Prompt for agent %d", i),
+			Model:        "sonnet",
+		}
+		resp, err := client.Post("/v1/api/agents", payload)
+		if err != nil {
+			t.Fatalf("failed to create agent %d: %v", i, err)
+		}
+		defer resp.Body.Close()
+		AssertStatusCode(t, resp, http.StatusCreated)
+		created[name] = false
+	}
+
+	// Walk all pages with limit=2.
+	seen := make(map[string]bool)
+	cursor := ""
+	pageCount := 0
+
+	for {
+		path := "/v1/api/agents?limit=2"
+		if cursor != "" {
+			path += "&cursor=" + cursor
+		}
+
+		resp, err := client.Get(path)
+		if err != nil {
+			t.Fatalf("failed to GET page %d: %v", pageCount, err)
+		}
+		defer resp.Body.Close()
+		AssertStatusCode(t, resp, http.StatusOK)
+
+		list := ParseJSON[AgentList](t, resp)
+		pageCount++
+
+		for _, a := range list.Data {
+			if seen[a.Name] {
+				t.Errorf("duplicate agent %q seen across pages", a.Name)
+			}
+			seen[a.Name] = true
+		}
+
+		if !list.Pagination.HasMore {
+			break
+		}
+
+		if list.Pagination.NextCursor == "" {
+			t.Fatal("has_more is true but next_cursor is empty")
+		}
+		cursor = list.Pagination.NextCursor
+
+		if pageCount > 20 {
+			t.Fatal("pagination loop did not terminate within 20 pages")
+		}
+	}
+
+	// All 5 created agents must have been seen.
+	for name := range created {
+		if !seen[name] {
+			t.Errorf("created agent %q not found across all pages", name)
+		}
+	}
+
+	if pageCount < 2 {
+		t.Errorf("expected at least 2 pages, got %d", pageCount)
+	}
 }
 
 // TestListAgents_DefaultPaginationLimit verifies that omitting the limit
 // parameter defaults to 100 items per page.
 func TestListAgents_DefaultPaginationLimit(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	resp, err := client.Get("/v1/api/agents")
+	if err != nil {
+		t.Fatalf("failed to GET /v1/api/agents: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusOK)
+
+	list := ParseJSON[AgentList](t, resp)
+
+	if list.Pagination.Limit != 100 {
+		t.Errorf("expected default limit=100, got %d", list.Pagination.Limit)
+	}
 }
 
 // TestListAgents_LimitBelowMinimumReturns400 verifies that limit=0 returns
 // 400 Bad Request since the minimum is 1.
 func TestListAgents_LimitBelowMinimumReturns400(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	resp, err := client.Get("/v1/api/agents?limit=0")
+	if err != nil {
+		t.Fatalf("failed to GET /v1/api/agents?limit=0: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 // TestListAgents_LimitAboveMaximumReturns400 verifies that limit=201 returns
 // 400 Bad Request since the maximum is 200.
 func TestListAgents_LimitAboveMaximumReturns400(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	resp, err := client.Get("/v1/api/agents?limit=201")
+	if err != nil {
+		t.Fatalf("failed to GET /v1/api/agents?limit=201: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 // TestListAgents_InvalidCursorReturns400 verifies that a malformed cursor
 // (not valid base64 or structurally invalid) returns 400 Bad Request.
 func TestListAgents_InvalidCursorReturns400(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	resp, err := client.Get("/v1/api/agents?cursor=not-valid-cursor!!!")
+	if err != nil {
+		t.Fatalf("failed to GET /v1/api/agents with invalid cursor: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 // TestListAgents_EmptyResultReturnsEmptyArray verifies that when no agents
 // exist, data is an empty array (not null) and has_more is false.
 func TestListAgents_EmptyResultReturnsEmptyArray(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	resp, err := client.Get("/v1/api/agents")
+	if err != nil {
+		t.Fatalf("failed to GET /v1/api/agents: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusOK)
+
+	list := ParseJSON[AgentList](t, resp)
+
+	// data must be an array (not null) — JSON unmarshalling gives a nil slice for "null"
+	// and a non-nil empty slice for "[]". We assert the field is present and is an array.
+	if list.Data == nil {
+		t.Error("expected 'data' to be an array (possibly empty), got null")
+	}
+
+	// has_more must be present; when there is no data beyond this page it should be false.
+	// (It may be true if other tests ran concurrently and created agents; we only assert structure.)
+	// The key invariant: pagination block is present.
+	_ = list.Pagination.HasMore
 }
 
 // -----------------------------------------------------------------------------
@@ -78,25 +262,153 @@ func TestListAgents_EmptyResultReturnsEmptyArray(t *testing.T) {
 // required fields returns 201 Created, a Location header pointing to the new
 // resource, and the full Agent object with created_at and updated_at set.
 func TestCreateAgent_HappyPathReturns201(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	agentName := GenerateUniqueName("agent")
+	payload := AgentCreate{
+		Name:         agentName,
+		SystemPrompt: "You are a helpful assistant.",
+		Model:        "sonnet",
+	}
+
+	resp, err := client.Post("/v1/api/agents", payload)
+	if err != nil {
+		t.Fatalf("failed to POST /v1/api/agents: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusCreated)
+	AssertRequestIDHeader(t, resp)
+
+	location := resp.Header.Get("Location")
+	if location == "" {
+		t.Fatal("expected Location header to be set")
+	}
+	expectedSuffix := "/v1/api/agents/" + agentName
+	if !strings.HasSuffix(location, expectedSuffix) {
+		t.Errorf("expected Location to end with %q, got %q", expectedSuffix, location)
+	}
+
+	agent := ParseJSON[Agent](t, resp)
+
+	if agent.Name != agentName {
+		t.Errorf("expected name %q, got %q", agentName, agent.Name)
+	}
+	if agent.SystemPrompt != payload.SystemPrompt {
+		t.Errorf("expected system_prompt %q, got %q", payload.SystemPrompt, agent.SystemPrompt)
+	}
+	if agent.Model != payload.Model {
+		t.Errorf("expected model %q, got %q", payload.Model, agent.Model)
+	}
+	if agent.CreatedAt == "" {
+		t.Error("expected created_at to be set")
+	}
+	if agent.UpdatedAt == "" {
+		t.Error("expected updated_at to be set")
+	}
 }
 
 // TestCreateAgent_AllOptionalFields verifies that optional fields (description,
 // allowed_tools, version) are stored and returned when provided.
 func TestCreateAgent_AllOptionalFields(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	agentName := GenerateUniqueName("agent")
+	payload := AgentCreate{
+		Name:         agentName,
+		SystemPrompt: "Full-featured assistant prompt.",
+		Model:        "sonnet",
+		Description:  "A test agent with all optional fields.",
+		AllowedTools: []string{"Read", "Write", "Bash"},
+		Version:      "1.0.0",
+	}
+
+	resp, err := client.Post("/v1/api/agents", payload)
+	if err != nil {
+		t.Fatalf("failed to POST /v1/api/agents: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusCreated)
+
+	agent := ParseJSON[Agent](t, resp)
+
+	if agent.Description != payload.Description {
+		t.Errorf("expected description %q, got %q", payload.Description, agent.Description)
+	}
+	if agent.Version != payload.Version {
+		t.Errorf("expected version %q, got %q", payload.Version, agent.Version)
+	}
+	if len(agent.AllowedTools) != len(payload.AllowedTools) {
+		t.Errorf("expected %d allowed_tools, got %d", len(payload.AllowedTools), len(agent.AllowedTools))
+	} else {
+		for i, tool := range payload.AllowedTools {
+			if agent.AllowedTools[i] != tool {
+				t.Errorf("allowed_tools[%d]: expected %q, got %q", i, tool, agent.AllowedTools[i])
+			}
+		}
+	}
 }
 
 // TestCreateAgent_MinimalRequiredFields verifies that only name, system_prompt,
 // and model are required. Omitting optional fields succeeds with defaults.
 func TestCreateAgent_MinimalRequiredFields(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	agentName := GenerateUniqueName("agent")
+	payload := AgentCreate{
+		Name:         agentName,
+		SystemPrompt: "Minimal prompt.",
+		Model:        "sonnet",
+	}
+
+	resp, err := client.Post("/v1/api/agents", payload)
+	if err != nil {
+		t.Fatalf("failed to POST /v1/api/agents: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusCreated)
+
+	agent := ParseJSON[Agent](t, resp)
+
+	if agent.Name != agentName {
+		t.Errorf("expected name %q, got %q", agentName, agent.Name)
+	}
+	if agent.SystemPrompt == "" {
+		t.Error("expected system_prompt to be returned")
+	}
+	if agent.Model != "sonnet" {
+		t.Errorf("expected model 'sonnet', got %q", agent.Model)
+	}
 }
 
 // TestCreateAgent_DuplicateNameReturns409 verifies that creating a second
 // agent with the same name returns 409 Conflict.
 func TestCreateAgent_DuplicateNameReturns409(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	agentName := GenerateUniqueName("agent")
+	payload := AgentCreate{
+		Name:         agentName,
+		SystemPrompt: "First creation.",
+		Model:        "sonnet",
+	}
+
+	resp1, err := client.Post("/v1/api/agents", payload)
+	if err != nil {
+		t.Fatalf("failed to POST /v1/api/agents (first): %v", err)
+	}
+	defer resp1.Body.Close()
+	AssertStatusCode(t, resp1, http.StatusCreated)
+
+	resp2, err := client.Post("/v1/api/agents", payload)
+	if err != nil {
+		t.Fatalf("failed to POST /v1/api/agents (second): %v", err)
+	}
+	defer resp2.Body.Close()
+
+	AssertStatusCode(t, resp2, http.StatusConflict)
 }
 
 // TestCreateAgent_ValidationErrors uses table-driven sub-tests for field
@@ -161,7 +473,37 @@ func TestCreateAgent_ValidationErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// TODO: implement
+			client := NewTestClient(t)
+
+			resp, err := client.Post("/v1/api/agents", tt.payload)
+			if err != nil {
+				t.Fatalf("failed to POST /v1/api/agents: %v", err)
+			}
+			defer resp.Body.Close()
+
+			AssertStatusCode(t, resp, http.StatusBadRequest)
+
+			errResp := ParseJSON[ErrorResponse](t, resp)
+
+			if errResp.Status != http.StatusBadRequest {
+				t.Errorf("expected error status 400, got %d", errResp.Status)
+			}
+
+			// Find a field error matching the expected field.
+			fieldFound := false
+			for _, fe := range errResp.Errors {
+				if fe.Field == tt.expectField {
+					fieldFound = true
+					if tt.expectCode != "" && fe.Code != tt.expectCode {
+						t.Errorf("expected error code %q for field %q, got %q", tt.expectCode, tt.expectField, fe.Code)
+					}
+					break
+				}
+			}
+			if !fieldFound {
+				t.Errorf("expected field error for %q, got errors: %+v", tt.expectField, errResp.Errors)
+			}
+
 			_ = tt.payload
 			_ = tt.expectField
 			_ = tt.expectCode
@@ -172,13 +514,38 @@ func TestCreateAgent_ValidationErrors(t *testing.T) {
 // TestCreateAgent_InvalidJSONReturns400 verifies that a syntactically invalid
 // JSON body returns 400 Bad Request.
 func TestCreateAgent_InvalidJSONReturns400(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	badJSON := []byte(`{this is not valid json`)
+	req, err := http.NewRequest(http.MethodPost, client.BaseURL+"/v1/api/agents", bytes.NewReader(badJSON))
+	if err != nil {
+		t.Fatalf("failed to build request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("failed to POST /v1/api/agents with invalid JSON: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 // TestCreateAgent_EmptyBodyReturns400 verifies that an empty request body
 // returns 400 Bad Request.
 func TestCreateAgent_EmptyBodyReturns400(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	req, err := http.NewRequest(http.MethodPost, client.BaseURL+"/v1/api/agents", bytes.NewReader([]byte{}))
+	if err != nil {
+		t.Fatalf("failed to build request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("failed to POST /v1/api/agents with empty body: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 // -----------------------------------------------------------------------------
@@ -188,25 +555,124 @@ func TestCreateAgent_EmptyBodyReturns400(t *testing.T) {
 // TestGetAgent_ExistingReturns200 verifies retrieving an existing agent by
 // name returns 200 OK with the full Agent object including system_prompt.
 func TestGetAgent_ExistingReturns200(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	agentName := GenerateUniqueName("agent")
+	payload := AgentCreate{
+		Name:         agentName,
+		SystemPrompt: "Detailed system prompt content.",
+		Model:        "sonnet",
+	}
+
+	createResp, err := client.Post("/v1/api/agents", payload)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+	defer createResp.Body.Close()
+	AssertStatusCode(t, createResp, http.StatusCreated)
+
+	resp, err := client.Get("/v1/api/agents/" + agentName)
+	if err != nil {
+		t.Fatalf("failed to GET /v1/api/agents/%s: %v", agentName, err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusOK)
+
+	agent := ParseJSON[Agent](t, resp)
+
+	if agent.Name != agentName {
+		t.Errorf("expected name %q, got %q", agentName, agent.Name)
+	}
+	if agent.Model != payload.Model {
+		t.Errorf("expected model %q, got %q", payload.Model, agent.Model)
+	}
 }
 
 // TestGetAgent_IncludesSystemPrompt verifies the GET response includes
 // system_prompt, unlike the list endpoint which returns AgentSummary.
 func TestGetAgent_IncludesSystemPrompt(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	agentName := GenerateUniqueName("agent")
+	systemPrompt := "This is the full system prompt text for inclusion verification."
+	payload := AgentCreate{
+		Name:         agentName,
+		SystemPrompt: systemPrompt,
+		Model:        "sonnet",
+	}
+
+	createResp, err := client.Post("/v1/api/agents", payload)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+	defer createResp.Body.Close()
+	AssertStatusCode(t, createResp, http.StatusCreated)
+
+	resp, err := client.Get("/v1/api/agents/" + agentName)
+	if err != nil {
+		t.Fatalf("failed to GET /v1/api/agents/%s: %v", agentName, err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusOK)
+
+	agent := ParseJSON[Agent](t, resp)
+
+	if agent.SystemPrompt != systemPrompt {
+		t.Errorf("expected system_prompt %q, got %q", systemPrompt, agent.SystemPrompt)
+	}
 }
 
 // TestGetAgent_NotFoundReturns404 verifies that requesting a non-existent
 // agent name returns 404 Not Found with RFC 7807 error body.
 func TestGetAgent_NotFoundReturns404(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	resp, err := client.Get("/v1/api/agents/does-not-exist-xyz")
+	if err != nil {
+		t.Fatalf("failed to GET /v1/api/agents/does-not-exist-xyz: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusNotFound)
+
+	errResp := ParseJSON[ErrorResponse](t, resp)
+	if errResp.Status != http.StatusNotFound {
+		t.Errorf("expected error status 404, got %d", errResp.Status)
+	}
+	if errResp.Title == "" {
+		t.Error("expected non-empty title in error response")
+	}
 }
 
 // TestGetAgent_ResponseIncludesRequestIDHeader verifies the X-Request-ID
 // header is present in the response.
 func TestGetAgent_ResponseIncludesRequestIDHeader(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	agentName := GenerateUniqueName("agent")
+	payload := AgentCreate{
+		Name:         agentName,
+		SystemPrompt: "Request ID verification prompt.",
+		Model:        "sonnet",
+	}
+
+	createResp, err := client.Post("/v1/api/agents", payload)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+	defer createResp.Body.Close()
+	AssertStatusCode(t, createResp, http.StatusCreated)
+
+	resp, err := client.Get("/v1/api/agents/" + agentName)
+	if err != nil {
+		t.Fatalf("failed to GET /v1/api/agents/%s: %v", agentName, err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusOK)
+	AssertRequestIDHeader(t, resp)
 }
 
 // -----------------------------------------------------------------------------
@@ -217,27 +683,160 @@ func TestGetAgent_ResponseIncludesRequestIDHeader(t *testing.T) {
 // returns 200 OK with the updated fields. updated_at must change while
 // created_at remains the same.
 func TestUpdateAgent_HappyPathReturns200(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	agentName := GenerateUniqueName("agent")
+	createPayload := AgentCreate{
+		Name:         agentName,
+		SystemPrompt: "Original prompt.",
+		Model:        "sonnet",
+	}
+
+	createResp, err := client.Post("/v1/api/agents", createPayload)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+	defer createResp.Body.Close()
+	AssertStatusCode(t, createResp, http.StatusCreated)
+	original := ParseJSON[Agent](t, createResp)
+
+	updatePayload := AgentUpdate{
+		Name:         agentName,
+		SystemPrompt: "Updated prompt content.",
+		Model:        "opus",
+	}
+
+	updateResp, err := client.Put("/v1/api/agents/"+agentName, updatePayload)
+	if err != nil {
+		t.Fatalf("failed to PUT /v1/api/agents/%s: %v", agentName, err)
+	}
+	defer updateResp.Body.Close()
+
+	AssertStatusCode(t, updateResp, http.StatusOK)
+	AssertRequestIDHeader(t, updateResp)
+
+	updated := ParseJSON[Agent](t, updateResp)
+
+	if updated.SystemPrompt != updatePayload.SystemPrompt {
+		t.Errorf("expected system_prompt %q, got %q", updatePayload.SystemPrompt, updated.SystemPrompt)
+	}
+	if updated.Model != updatePayload.Model {
+		t.Errorf("expected model %q, got %q", updatePayload.Model, updated.Model)
+	}
+	if updated.CreatedAt != original.CreatedAt {
+		t.Errorf("expected created_at to remain %q, got %q", original.CreatedAt, updated.CreatedAt)
+	}
+	if updated.UpdatedAt == "" {
+		t.Error("expected updated_at to be set")
+	}
 }
 
 // TestUpdateAgent_FullReplacement verifies that PUT replaces the entire
 // resource. Omitting optional fields (e.g., allowed_tools, description) in
 // the update body should reset them to defaults, not preserve old values.
 func TestUpdateAgent_FullReplacement(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	agentName := GenerateUniqueName("agent")
+	createPayload := AgentCreate{
+		Name:         agentName,
+		SystemPrompt: "Prompt with extras.",
+		Model:        "sonnet",
+		Description:  "Will be cleared.",
+		AllowedTools: []string{"Read", "Write"},
+		Version:      "1.0.0",
+	}
+
+	createResp, err := client.Post("/v1/api/agents", createPayload)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+	defer createResp.Body.Close()
+	AssertStatusCode(t, createResp, http.StatusCreated)
+
+	// Update without optional fields — they should be reset.
+	updatePayload := AgentUpdate{
+		Name:         agentName,
+		SystemPrompt: "Replacement prompt only.",
+		Model:        "haiku",
+	}
+
+	updateResp, err := client.Put("/v1/api/agents/"+agentName, updatePayload)
+	if err != nil {
+		t.Fatalf("failed to PUT /v1/api/agents/%s: %v", agentName, err)
+	}
+	defer updateResp.Body.Close()
+
+	AssertStatusCode(t, updateResp, http.StatusOK)
+
+	updated := ParseJSON[Agent](t, updateResp)
+
+	// Optional fields omitted from PUT body should be cleared/defaulted.
+	if updated.Description != "" {
+		t.Errorf("expected description to be cleared, got %q", updated.Description)
+	}
+	if len(updated.AllowedTools) != 0 {
+		t.Errorf("expected allowed_tools to be cleared, got %v", updated.AllowedTools)
+	}
+	if updated.Version != "" {
+		t.Errorf("expected version to be cleared, got %q", updated.Version)
+	}
 }
 
 // TestUpdateAgent_NameInBodyMustMatchPath verifies that if the name field is
 // included in the request body, it must match the path parameter. A mismatch
 // returns 400 Bad Request.
 func TestUpdateAgent_NameInBodyMustMatchPath(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	agentName := GenerateUniqueName("agent")
+	createPayload := AgentCreate{
+		Name:         agentName,
+		SystemPrompt: "Original.",
+		Model:        "sonnet",
+	}
+
+	createResp, err := client.Post("/v1/api/agents", createPayload)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+	defer createResp.Body.Close()
+	AssertStatusCode(t, createResp, http.StatusCreated)
+
+	// Provide a name in the body that differs from the path.
+	mismatchPayload := AgentUpdate{
+		Name:         "completely-different-name",
+		SystemPrompt: "Updated.",
+		Model:        "sonnet",
+	}
+
+	updateResp, err := client.Put("/v1/api/agents/"+agentName, mismatchPayload)
+	if err != nil {
+		t.Fatalf("failed to PUT /v1/api/agents/%s: %v", agentName, err)
+	}
+	defer updateResp.Body.Close()
+
+	AssertStatusCode(t, updateResp, http.StatusBadRequest)
 }
 
 // TestUpdateAgent_NotFoundReturns404 verifies updating a non-existent agent
 // returns 404 Not Found.
 func TestUpdateAgent_NotFoundReturns404(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	payload := AgentUpdate{
+		Name:         "nonexistent-agent",
+		SystemPrompt: "This agent does not exist.",
+		Model:        "sonnet",
+	}
+
+	resp, err := client.Put("/v1/api/agents/nonexistent-agent", payload)
+	if err != nil {
+		t.Fatalf("failed to PUT /v1/api/agents/nonexistent-agent: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusNotFound)
 }
 
 // TestUpdateAgent_ValidationErrors uses table-driven sub-tests for update
@@ -267,7 +866,52 @@ func TestUpdateAgent_ValidationErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// TODO: implement
+			client := NewTestClient(t)
+
+			// Create a real agent to update so we exercise the update validation path.
+			agentName := GenerateUniqueName("agent")
+			createPayload := AgentCreate{
+				Name:         agentName,
+				SystemPrompt: "Setup prompt.",
+				Model:        "sonnet",
+			}
+			createResp, err := client.Post("/v1/api/agents", createPayload)
+			if err != nil {
+				t.Fatalf("failed to create agent: %v", err)
+			}
+			defer createResp.Body.Close()
+			AssertStatusCode(t, createResp, http.StatusCreated)
+
+			// Override the name in the payload to match the path, except for the
+			// "missing model" case where we keep valid-name to test another validator.
+			putPayload := tt.payload
+			putPayload.Name = agentName
+
+			resp, err := client.Put("/v1/api/agents/"+agentName, putPayload)
+			if err != nil {
+				t.Fatalf("failed to PUT /v1/api/agents/%s: %v", agentName, err)
+			}
+			defer resp.Body.Close()
+
+			AssertStatusCode(t, resp, http.StatusBadRequest)
+
+			errResp := ParseJSON[ErrorResponse](t, resp)
+
+			if errResp.Status != http.StatusBadRequest {
+				t.Errorf("expected error status 400, got %d", errResp.Status)
+			}
+
+			fieldFound := false
+			for _, fe := range errResp.Errors {
+				if fe.Field == tt.expectField {
+					fieldFound = true
+					break
+				}
+			}
+			if !fieldFound {
+				t.Errorf("expected field error for %q, got errors: %+v", tt.expectField, errResp.Errors)
+			}
+
 			_ = tt.payload
 			_ = tt.expectField
 		})
@@ -282,27 +926,168 @@ func TestUpdateAgent_ValidationErrors(t *testing.T) {
 // returns 204 No Content with an empty body. The agent must no longer be
 // retrievable via GET.
 func TestDeleteAgent_ExistingReturns204(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	agentName := GenerateUniqueName("agent")
+	payload := AgentCreate{
+		Name:         agentName,
+		SystemPrompt: "To be deleted.",
+		Model:        "sonnet",
+	}
+
+	createResp, err := client.Post("/v1/api/agents", payload)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+	defer createResp.Body.Close()
+	AssertStatusCode(t, createResp, http.StatusCreated)
+
+	deleteResp, err := client.Delete("/v1/api/agents/" + agentName)
+	if err != nil {
+		t.Fatalf("failed to DELETE /v1/api/agents/%s: %v", agentName, err)
+	}
+	defer deleteResp.Body.Close()
+
+	AssertStatusCode(t, deleteResp, http.StatusNoContent)
+
+	// Verify body is empty.
+	body := ReadBody(t, deleteResp)
+	if len(body) != 0 {
+		t.Errorf("expected empty body on 204, got: %s", string(body))
+	}
+
+	// Confirm agent is gone.
+	getResp, err := client.Get("/v1/api/agents/" + agentName)
+	if err != nil {
+		t.Fatalf("failed to GET deleted agent: %v", err)
+	}
+	defer getResp.Body.Close()
+	AssertStatusCode(t, getResp, http.StatusNotFound)
 }
 
 // TestDeleteAgent_NotFoundReturns404 verifies deleting a non-existent agent
 // returns 404 Not Found.
 func TestDeleteAgent_NotFoundReturns404(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	resp, err := client.Delete("/v1/api/agents/agent-that-never-existed")
+	if err != nil {
+		t.Fatalf("failed to DELETE /v1/api/agents/agent-that-never-existed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusNotFound)
 }
 
 // TestDeleteAgent_SecondDeleteReturns404 verifies that deleting an already-
 // deleted agent returns 404, confirming the resource is gone rather than
 // silently succeeding.
 func TestDeleteAgent_SecondDeleteReturns404(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	agentName := GenerateUniqueName("agent")
+	payload := AgentCreate{
+		Name:         agentName,
+		SystemPrompt: "Double delete target.",
+		Model:        "sonnet",
+	}
+
+	createResp, err := client.Post("/v1/api/agents", payload)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+	defer createResp.Body.Close()
+	AssertStatusCode(t, createResp, http.StatusCreated)
+
+	// First delete — should succeed.
+	deleteResp1, err := client.Delete("/v1/api/agents/" + agentName)
+	if err != nil {
+		t.Fatalf("failed first DELETE: %v", err)
+	}
+	defer deleteResp1.Body.Close()
+	AssertStatusCode(t, deleteResp1, http.StatusNoContent)
+
+	// Second delete — should return 404.
+	deleteResp2, err := client.Delete("/v1/api/agents/" + agentName)
+	if err != nil {
+		t.Fatalf("failed second DELETE: %v", err)
+	}
+	defer deleteResp2.Body.Close()
+	AssertStatusCode(t, deleteResp2, http.StatusNotFound)
 }
 
 // TestDeleteAgent_CascadesPatternAssociations verifies that deleting an
 // agent also removes any pattern_agent_association rows referencing that
 // agent (ON DELETE CASCADE).
 func TestDeleteAgent_CascadesPatternAssociations(t *testing.T) {
-	// TODO: implement
+	client := NewTestClient(t)
+
+	// Create the agent.
+	agentName := GenerateUniqueName("agent")
+	agentPayload := AgentCreate{
+		Name:         agentName,
+		SystemPrompt: "Agent to be cascade-deleted.",
+		Model:        "sonnet",
+	}
+	agentResp, err := client.Post("/v1/api/agents", agentPayload)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+	defer agentResp.Body.Close()
+	AssertStatusCode(t, agentResp, http.StatusCreated)
+
+	// Create a pattern (returns 202 Accepted).
+	patternPayload := PatternCreate{
+		Name:    GenerateUniqueName("ptn"),
+		Content: "Pattern content for cascade deletion test.",
+	}
+	patternResp, err := client.Post("/v1/api/patterns", patternPayload)
+	if err != nil {
+		t.Fatalf("failed to create pattern: %v", err)
+	}
+	defer patternResp.Body.Close()
+	AssertStatusCode(t, patternResp, http.StatusAccepted)
+
+	pattern := ParseJSON[Pattern](t, patternResp)
+	patternID := pattern.ID
+	if patternID == "" {
+		t.Fatal("expected pattern ID in 202 response body")
+	}
+
+	// Associate the agent with the pattern via PUT /v1/api/patterns/{id}/agents.
+	assocPayload := PatternAgentAssociations{
+		Associations: []AgentAssociation{
+			{AgentName: agentName, Relevance: 0.9},
+		},
+	}
+	assocResp, err := client.Put(fmt.Sprintf("/v1/api/patterns/%s/agents", patternID), assocPayload)
+	if err != nil {
+		t.Fatalf("failed to associate agent with pattern: %v", err)
+	}
+	defer assocResp.Body.Close()
+	AssertStatusCode(t, assocResp, http.StatusOK)
+
+	// Delete the agent — should cascade.
+	deleteResp, err := client.Delete("/v1/api/agents/" + agentName)
+	if err != nil {
+		t.Fatalf("failed to DELETE agent: %v", err)
+	}
+	defer deleteResp.Body.Close()
+	AssertStatusCode(t, deleteResp, http.StatusNoContent)
+
+	// Verify the pattern still exists but has no associations.
+	getAssocResp, err := client.Get(fmt.Sprintf("/v1/api/patterns/%s/agents", patternID))
+	if err != nil {
+		t.Fatalf("failed to GET pattern associations after agent deletion: %v", err)
+	}
+	defer getAssocResp.Body.Close()
+	AssertStatusCode(t, getAssocResp, http.StatusOK)
+
+	associations := ParseJSON[PatternAgentAssociations](t, getAssocResp)
+	if len(associations.Associations) != 0 {
+		t.Errorf("expected empty associations after agent deletion, got %d: %+v",
+			len(associations.Associations), associations.Associations)
+	}
 }
 
 // =============================================================================

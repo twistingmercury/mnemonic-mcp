@@ -41,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Build script supports `LOCAL_BUILD` flag for CI vs local behavior
+- Build script now uses identical behavior for local and CI execution
 - Push logic moved from build script to CD workflow
 - Server now initializes telemetry and registers observability middleware
 - Configuration validation includes log level validation (fail-fast on invalid level)
