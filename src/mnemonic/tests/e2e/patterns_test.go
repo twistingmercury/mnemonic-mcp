@@ -1,460 +1,559 @@
 package e2e
 
 import (
+	"fmt"
+	"net/http"
+	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 // =============================================================================
-// Pattern Endpoint Tests (/ace/patterns, /ace/patterns/{id})
+// Pattern Endpoint Tests
 // =============================================================================
 //
-// Patterns contain reusable knowledge/guidance for agents. Each pattern has:
+// Covers all pattern-related endpoints from the OpenAPI specification:
+//
+//   GET    /v1/api/patterns              List patterns (paginated, filterable)
+//   POST   /v1/api/patterns              Create pattern (returns 202, async enrichment)
+//   GET    /v1/api/patterns/search       Semantic search (vector similarity)
+//   GET    /v1/api/patterns/{id}         Get pattern by ID (full content + graph)
+//   PUT    /v1/api/patterns/{id}         Update pattern (full replacement)
+//   DELETE /v1/api/patterns/{id}         Delete pattern
+//   GET    /v1/api/patterns/{id}/agents  Get agent associations
+//   PUT    /v1/api/patterns/{id}/agents  Set agent associations
+//
+// Pattern resource:
 //   - id: UUID (server-generated)
-//   - name: Pattern name (max 128 chars)
-//   - description: Optional short description (max 500 chars)
-//   - content: Markdown content (max 10KB)
-//   - tags: Optional categorization tags (max 20)
+//   - name: Pattern name (^[a-z][a-z0-9-]*$, 1-128 chars)
+//   - description: Optional (max 500 chars)
+//   - content: Markdown (1-10240 bytes)
+//   - tags: Optional (max 20 items)
 //   - agent_associations: Links to agents with relevance scores
-//   - enrichment_status: pending, enriched, or failed (async processing)
+//   - enrichment_status: pending | enriched | failed (async processing)
 //
-// Authorization:
-//   - GET operations: Any authenticated user
-//   - POST/PUT/DELETE operations: Admin role required
-//
-// Special behavior:
-//   - POST returns 202 Accepted (enrichment is async)
-//   - Pattern must be 'enriched' status for semantic search
+// Create returns 202 Accepted because enrichment (embedding generation,
+// concept extraction) runs asynchronously. Patterns must reach "enriched"
+// status before they appear in semantic search results.
 
 // -----------------------------------------------------------------------------
-// List Patterns Tests (GET /ace/patterns)
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1776 (GET /ace/patterns)
+// List Patterns (GET /v1/api/patterns)
 // -----------------------------------------------------------------------------
 
-// TestListPatterns_Success verifies listing patterns returns paginated results.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1776 (GET /ace/patterns)
-//
-// Expected behavior:
-//   - Returns 200 OK
-//   - Response contains data array with PatternSummary objects
-//   - PatternSummary does NOT include content field
-//   - Response contains pagination metadata
-func TestListPatterns_Success(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
-	// 1. Create authenticated client
-	// 2. GET /ace/patterns
-	// 3. Assert status code 200
-	// 4. Parse response as PatternList
-	// 5. Assert data is an array
-	// 6. Verify content field is NOT in PatternSummary
+func TestListPatterns_ReturnsOKWithPaginatedSummaries(t *testing.T) {
+	// TODO: implement
 }
 
-// TestListPatterns_FilterByTags verifies filtering by comma-separated tags.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1776 (GET /ace/patterns)
-//
-// Expected behavior:
-//   - GET /ace/patterns?tags=go,best-practices returns matching patterns
-//   - Patterns must have ALL specified tags (AND logic)
+func TestListPatterns_DefaultPaginationValues(t *testing.T) {
+	// TODO: implement
+}
+
+func TestListPatterns_CustomLimit(t *testing.T) {
+	// TODO: implement
+}
+
+func TestListPatterns_CursorPaginationWalksAllPages(t *testing.T) {
+	// TODO: implement
+}
+
+func TestListPatterns_SummaryExcludesContentField(t *testing.T) {
+	// TODO: implement
+}
+
+func TestListPatterns_ResponseIncludesRequestIDHeader(t *testing.T) {
+	// TODO: implement
+}
+
 func TestListPatterns_FilterByTags(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
-	// 1. Create patterns with various tags
-	// 2. GET /ace/patterns?tags=go
-	// 3. Assert all returned patterns have "go" tag
-	// 4. GET /ace/patterns?tags=go,errors
-	// 5. Assert all returned patterns have BOTH tags
-	// 6. Clean up
+	// TODO: implement
 }
 
-// TestListPatterns_Search verifies full-text search in name and content.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1776 (GET /ace/patterns)
-//
-// Expected behavior:
-//   - GET /ace/patterns?search=error handling returns matching patterns
-//   - Search matches in both name and content fields
-func TestListPatterns_Search(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
-	// 1. Create patterns with searchable content
-	// 2. GET /ace/patterns?search=specific-term
-	// 3. Assert returned patterns contain the search term
-	// 4. Clean up
+func TestListPatterns_FilterByMultipleTagsUsesANDLogic(t *testing.T) {
+	// TODO: implement
 }
 
-// TestListPatterns_Pagination verifies cursor-based pagination.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1776 (GET /ace/patterns)
-//
-// Expected behavior:
-//   - Same pagination behavior as agents
-func TestListPatterns_Pagination(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test (similar to agents pagination test)
+func TestListPatterns_FullTextSearchByNameAndDescription(t *testing.T) {
+	// TODO: implement
 }
 
-// TestListPatterns_Unauthorized verifies 401 when auth headers missing.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1776 (GET /ace/patterns)
-//
-// Expected behavior:
-//   - Returns 401 Unauthorized
-func TestListPatterns_Unauthorized(t *testing.T) {
-	t.Skip("not implemented")
+func TestListPatterns_CombinedTagAndSearchFilters(t *testing.T) {
+	// TODO: implement
+}
 
-	// TODO: Implement test
+func TestListPatterns_InvalidLimitReturns400(t *testing.T) {
+	t.Run("limit below minimum", func(t *testing.T) {
+		// TODO: implement
+	})
+	t.Run("limit above maximum", func(t *testing.T) {
+		// TODO: implement
+	})
+	t.Run("limit non-numeric", func(t *testing.T) {
+		// TODO: implement
+	})
+}
+
+func TestListPatterns_InvalidCursorReturns400(t *testing.T) {
+	// TODO: implement
 }
 
 // -----------------------------------------------------------------------------
-// Get Pattern Tests (GET /ace/patterns/{id})
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1900 (GET /ace/patterns/{id})
+// Create Pattern (POST /v1/api/patterns)
 // -----------------------------------------------------------------------------
 
-// TestGetPattern_Success verifies retrieving a pattern by ID.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1900 (GET /ace/patterns/{id})
-//
-// Expected behavior:
-//   - Returns 200 OK for existing pattern
-//   - Response includes full Pattern with content
-//   - Response includes enrichment_status field
-func TestGetPattern_Success(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
-	// 1. Create a pattern
-	// 2. GET /ace/patterns/{id}
-	// 3. Assert status code 200
-	// 4. Parse response as Pattern
-	// 5. Assert content IS included (unlike list)
-	// 6. Assert enrichment_status is present
-	// 7. Clean up
+func TestCreatePattern_ReturnsAcceptedWithPendingEnrichment(t *testing.T) {
+	// TODO: implement
 }
 
-// TestGetPattern_NotFound verifies 404 for non-existent pattern.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1900 (GET /ace/patterns/{id})
-//
-// Expected behavior:
-//   - Returns 404 Not Found
-func TestGetPattern_NotFound(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
-	// 1. GET /ace/patterns/550e8400-e29b-41d4-a716-446655440099
-	// 2. Assert status code 404
+func TestCreatePattern_ResponseIncludesLocationHeader(t *testing.T) {
+	// TODO: implement
 }
 
-// TestGetPattern_InvalidUUID verifies invalid UUID format handling.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1900 (GET /ace/patterns/{id})
-//
-// Expected behavior:
-//   - Returns 400 Bad Request for invalid UUID
-func TestGetPattern_InvalidUUID(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
-	// 1. GET /ace/patterns/not-a-valid-uuid
-	// 2. Assert status code 400
+func TestCreatePattern_ServerGeneratesUUID(t *testing.T) {
+	// TODO: implement
 }
 
-// TestGetPattern_Unauthorized verifies 401 when auth headers missing.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1900 (GET /ace/patterns/{id})
-//
-// Expected behavior:
-//   - Returns 401 Unauthorized
-func TestGetPattern_Unauthorized(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
+func TestCreatePattern_MinimalFieldsOnlyNameAndContent(t *testing.T) {
+	// TODO: implement
 }
 
-// -----------------------------------------------------------------------------
-// Create Pattern Tests (POST /ace/patterns)
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1831 (POST /ace/patterns)
-// -----------------------------------------------------------------------------
-
-// TestCreatePattern_Success verifies creating a new pattern.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1831 (POST /ace/patterns)
-//
-// Expected behavior:
-//   - Returns 202 Accepted (NOT 201 - enrichment is async)
-//   - Location header points to new resource
-//   - Response contains Pattern with enrichment_status: "pending"
-//   - id field is populated with server-generated UUID
-func TestCreatePattern_Success(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
-	// 1. Create admin client
-	// 2. POST /ace/patterns with valid PatternCreate
-	// 3. Assert status code 202 (NOT 201!)
-	// 4. Assert Location header is /v1/ace/patterns/{id}
-	// 5. Parse response as Pattern
-	// 6. Assert enrichment_status == "pending"
-	// 7. Assert id is a valid UUID
-	// 8. Clean up
+func TestCreatePattern_AllFieldsIncludingDescriptionTagsAssociations(t *testing.T) {
+	// TODO: implement
 }
 
-// TestCreatePattern_AllFields verifies creating pattern with all fields.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1831 (POST /ace/patterns)
-//
-// Expected behavior:
-//   - description, tags, agent_associations are stored correctly
-func TestCreatePattern_AllFields(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
-	// 1. POST with all optional fields
-	// 2. Assert 202 Accepted
-	// 3. GET and verify all fields
-	// 4. Clean up
+func TestCreatePattern_DuplicateNameReturns409(t *testing.T) {
+	// TODO: implement
 }
 
-// TestCreatePattern_MinimalFields verifies creating with only required fields.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1831 (POST /ace/patterns)
-//
-// Expected behavior:
-//   - Only name and content are required
-//   - description defaults to empty
-//   - tags defaults to empty array
-//   - agent_associations defaults to empty array
-func TestCreatePattern_MinimalFields(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
-}
-
-// TestCreatePattern_Forbidden verifies non-admin cannot create patterns.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1831 (POST /ace/patterns)
-//
-// Expected behavior:
-//   - Returns 403 Forbidden
-func TestCreatePattern_Forbidden(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
-}
-
-// TestCreatePattern_Unauthorized verifies 401 when auth headers missing.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1831 (POST /ace/patterns)
-//
-// Expected behavior:
-//   - Returns 401 Unauthorized
-func TestCreatePattern_Unauthorized(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
-}
-
-// TestCreatePattern_DuplicateName verifies conflict on duplicate name.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1831 (POST /ace/patterns)
-//
-// Expected behavior:
-//   - Returns 409 Conflict
-func TestCreatePattern_DuplicateName(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
-}
-
-// TestCreatePattern_ValidationErrors verifies field validation.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1831 (POST /ace/patterns)
-//
-// Expected behavior:
-//   - Missing name returns 400
-//   - Missing content returns 400
-//   - name too long (>128 chars) returns 400
-//   - content too long (>10240 chars) returns 400
-//   - description too long (>500 chars) returns 400
-//   - tags array too long (>20 items) returns 400
 func TestCreatePattern_ValidationErrors(t *testing.T) {
-	t.Skip("not implemented")
+	cases := []struct {
+		name        string
+		body        interface{}
+		expectField string
+	}{
+		{
+			name:        "missing name",
+			body:        PatternCreate{Content: "some content"},
+			expectField: "name",
+		},
+		{
+			name:        "missing content",
+			body:        PatternCreate{Name: "valid-name"},
+			expectField: "content",
+		},
+		{
+			name:        "name too long",
+			body:        PatternCreate{Name: strings.Repeat("a", 129), Content: "content"},
+			expectField: "name",
+		},
+		{
+			name:        "name invalid format uppercase",
+			body:        PatternCreate{Name: "Invalid-Name", Content: "content"},
+			expectField: "name",
+		},
+		{
+			name:        "name invalid format starts with number",
+			body:        PatternCreate{Name: "1-bad-name", Content: "content"},
+			expectField: "name",
+		},
+		{
+			name:        "name invalid format underscores",
+			body:        PatternCreate{Name: "bad_name", Content: "content"},
+			expectField: "name",
+		},
+		{
+			name:        "content exceeds max size",
+			body:        PatternCreate{Name: "valid-name", Content: strings.Repeat("x", 10241)},
+			expectField: "content",
+		},
+		{
+			name:        "description too long",
+			body:        PatternCreate{Name: "valid-name", Content: "content", Description: strings.Repeat("d", 501)},
+			expectField: "description",
+		},
+		{
+			name: "too many tags",
+			body: PatternCreate{
+				Name:    "valid-name",
+				Content: "content",
+				Tags:    makeTags(21),
+			},
+			expectField: "tags",
+		},
+	}
 
-	// TODO: Implement test
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// TODO: implement
+			_ = tc.body
+			_ = tc.expectField
+		})
+	}
 }
 
-// TestCreatePattern_InvalidAgentAssociation verifies agent association validation.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1831 (POST /ace/patterns)
-//
-// Expected behavior:
-//   - Non-existent agent_name in association may return 400 or 409
-//   - Relevance score outside 0-1 range returns 400
 func TestCreatePattern_InvalidAgentAssociation(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
+	t.Run("non-existent agent name", func(t *testing.T) {
+		// TODO: implement
+	})
+	t.Run("relevance below zero", func(t *testing.T) {
+		// TODO: implement
+	})
+	t.Run("relevance above one", func(t *testing.T) {
+		// TODO: implement
+	})
 }
 
-// TestCreatePattern_InvalidJSON verifies malformed JSON handling.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1831 (POST /ace/patterns)
-//
-// Expected behavior:
-//   - Returns 400 Bad Request
-func TestCreatePattern_InvalidJSON(t *testing.T) {
-	t.Skip("not implemented")
+func TestCreatePattern_InvalidJSONReturns400(t *testing.T) {
+	// TODO: implement
+}
 
-	// TODO: Implement test
+func TestCreatePattern_EmptyBodyReturns400(t *testing.T) {
+	// TODO: implement
 }
 
 // -----------------------------------------------------------------------------
-// Update Pattern Tests (PUT /ace/patterns/{id})
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1938 (PUT /ace/patterns/{id})
+// Semantic Search (GET /v1/api/patterns/search)
 // -----------------------------------------------------------------------------
 
-// TestUpdatePattern_Success verifies updating an existing pattern.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1938 (PUT /ace/patterns/{id})
-//
-// Expected behavior:
-//   - Returns 200 OK
-//   - Response contains updated Pattern
-//   - updated_at timestamp is changed
-//   - enrichment_status may reset to "pending" if content changed
-func TestUpdatePattern_Success(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
+func TestSearchPatterns_ReturnsRankedResultsWithSimilarity(t *testing.T) {
+	// TODO: implement
 }
 
-// TestUpdatePattern_FullReplacement verifies PUT is full replacement.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1938 (PUT /ace/patterns/{id})
-//
-// Expected behavior:
-//   - Omitted optional fields are reset to defaults
-func TestUpdatePattern_FullReplacement(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
+func TestSearchPatterns_ResultsIncludeContentAndScores(t *testing.T) {
+	// TODO: implement
 }
 
-// TestUpdatePattern_NotFound verifies 404 for non-existent pattern.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1938 (PUT /ace/patterns/{id})
-//
-// Expected behavior:
-//   - Returns 404 Not Found
-func TestUpdatePattern_NotFound(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
+func TestSearchPatterns_ResponseIncludesMetadata(t *testing.T) {
+	// TODO: implement
 }
 
-// TestUpdatePattern_Forbidden verifies non-admin cannot update patterns.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1938 (PUT /ace/patterns/{id})
-//
-// Expected behavior:
-//   - Returns 403 Forbidden
-func TestUpdatePattern_Forbidden(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
+func TestSearchPatterns_MetadataEchoesQueryString(t *testing.T) {
+	// TODO: implement
 }
 
-// TestUpdatePattern_Unauthorized verifies 401 when auth headers missing.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1938 (PUT /ace/patterns/{id})
-//
-// Expected behavior:
-//   - Returns 401 Unauthorized
-func TestUpdatePattern_Unauthorized(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
+func TestSearchPatterns_DefaultLimit(t *testing.T) {
+	// TODO: implement
 }
 
-// TestUpdatePattern_ValidationErrors verifies field validation on update.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1938 (PUT /ace/patterns/{id})
-//
-// Expected behavior:
-//   - Same validation rules as create
+func TestSearchPatterns_CustomLimit(t *testing.T) {
+	// TODO: implement
+}
+
+func TestSearchPatterns_CustomThreshold(t *testing.T) {
+	// TODO: implement
+}
+
+func TestSearchPatterns_FilterByTags(t *testing.T) {
+	// TODO: implement
+}
+
+func TestSearchPatterns_FilterByAgent(t *testing.T) {
+	// TODO: implement
+}
+
+func TestSearchPatterns_OnlyEnrichedPatternsAppear(t *testing.T) {
+	// TODO: implement
+}
+
+func TestSearchPatterns_MissingQueryReturns400(t *testing.T) {
+	// TODO: implement
+}
+
+func TestSearchPatterns_EmptyQueryReturns400(t *testing.T) {
+	// TODO: implement
+}
+
+func TestSearchPatterns_QueryTooLongReturns400(t *testing.T) {
+	// TODO: implement
+}
+
+func TestSearchPatterns_InvalidLimitReturns400(t *testing.T) {
+	t.Run("limit below minimum", func(t *testing.T) {
+		// TODO: implement
+	})
+	t.Run("limit above maximum", func(t *testing.T) {
+		// TODO: implement
+	})
+}
+
+func TestSearchPatterns_InvalidThresholdReturns400(t *testing.T) {
+	t.Run("threshold below zero", func(t *testing.T) {
+		// TODO: implement
+	})
+	t.Run("threshold above one", func(t *testing.T) {
+		// TODO: implement
+	})
+}
+
+func TestSearchPatterns_ServiceUnavailableReturns503(t *testing.T) {
+	// TODO: implement
+}
+
+// -----------------------------------------------------------------------------
+// Get Pattern (GET /v1/api/patterns/{id})
+// -----------------------------------------------------------------------------
+
+func TestGetPattern_ReturnsFullPatternWithContent(t *testing.T) {
+	// TODO: implement
+}
+
+func TestGetPattern_IncludesEnrichmentStatus(t *testing.T) {
+	// TODO: implement
+}
+
+func TestGetPattern_NotFoundReturns404(t *testing.T) {
+	// TODO: implement
+}
+
+func TestGetPattern_InvalidUUIDReturns400(t *testing.T) {
+	t.Run("not a uuid", func(t *testing.T) {
+		// TODO: implement
+	})
+	t.Run("empty id", func(t *testing.T) {
+		// TODO: implement
+	})
+}
+
+func TestGetPattern_ResponseIncludesRequestIDHeader(t *testing.T) {
+	// TODO: implement
+}
+
+// -----------------------------------------------------------------------------
+// Update Pattern (PUT /v1/api/patterns/{id})
+// -----------------------------------------------------------------------------
+
+func TestUpdatePattern_ReturnsOKWithUpdatedPattern(t *testing.T) {
+	// TODO: implement
+}
+
+func TestUpdatePattern_UpdatedAtChangesCreatedAtPreserved(t *testing.T) {
+	// TODO: implement
+}
+
+func TestUpdatePattern_FullReplacementResetsOmittedFields(t *testing.T) {
+	// TODO: implement
+}
+
+func TestUpdatePattern_ContentChangeResetsEnrichmentToPending(t *testing.T) {
+	// TODO: implement
+}
+
+func TestUpdatePattern_NotFoundReturns404(t *testing.T) {
+	// TODO: implement
+}
+
 func TestUpdatePattern_ValidationErrors(t *testing.T) {
-	t.Skip("not implemented")
+	cases := []struct {
+		name        string
+		body        interface{}
+		expectField string
+	}{
+		{
+			name:        "missing name",
+			body:        PatternUpdate{Content: "content"},
+			expectField: "name",
+		},
+		{
+			name:        "missing content",
+			body:        PatternUpdate{Name: "valid-name"},
+			expectField: "content",
+		},
+		{
+			name:        "name too long",
+			body:        PatternUpdate{Name: strings.Repeat("a", 129), Content: "content"},
+			expectField: "name",
+		},
+		{
+			name:        "name invalid format",
+			body:        PatternUpdate{Name: "BAD_NAME", Content: "content"},
+			expectField: "name",
+		},
+		{
+			name:        "content exceeds max size",
+			body:        PatternUpdate{Name: "valid-name", Content: strings.Repeat("x", 10241)},
+			expectField: "content",
+		},
+		{
+			name:        "description too long",
+			body:        PatternUpdate{Name: "valid-name", Content: "content", Description: strings.Repeat("d", 501)},
+			expectField: "description",
+		},
+		{
+			name: "too many tags",
+			body: PatternUpdate{
+				Name:    "valid-name",
+				Content: "content",
+				Tags:    makeTags(21),
+			},
+			expectField: "tags",
+		},
+	}
 
-	// TODO: Implement test
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// TODO: implement
+			_ = tc.body
+			_ = tc.expectField
+		})
+	}
+}
+
+func TestUpdatePattern_InvalidUUIDReturns400(t *testing.T) {
+	// TODO: implement
 }
 
 // -----------------------------------------------------------------------------
-// Delete Pattern Tests (DELETE /ace/patterns/{id})
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1972 (DELETE /ace/patterns/{id})
+// Delete Pattern (DELETE /v1/api/patterns/{id})
 // -----------------------------------------------------------------------------
 
-// TestDeletePattern_Success verifies deleting a pattern.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1972 (DELETE /ace/patterns/{id})
-//
-// Expected behavior:
-//   - Returns 204 No Content
-//   - Pattern is no longer retrievable
-func TestDeletePattern_Success(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
+func TestDeletePattern_ReturnsNoContent(t *testing.T) {
+	// TODO: implement
 }
 
-// TestDeletePattern_NotFound verifies 404 for non-existent pattern.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1972 (DELETE /ace/patterns/{id})
-//
-// Expected behavior:
-//   - Returns 404 Not Found
-func TestDeletePattern_NotFound(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
+func TestDeletePattern_PatternNoLongerRetrievable(t *testing.T) {
+	// TODO: implement
 }
 
-// TestDeletePattern_Forbidden verifies non-admin cannot delete patterns.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1972 (DELETE /ace/patterns/{id})
-//
-// Expected behavior:
-//   - Returns 403 Forbidden
-func TestDeletePattern_Forbidden(t *testing.T) {
-	t.Skip("not implemented")
-
-	// TODO: Implement test
+func TestDeletePattern_NotFoundReturns404(t *testing.T) {
+	// TODO: implement
 }
 
-// TestDeletePattern_Unauthorized verifies 401 when auth headers missing.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1972 (DELETE /ace/patterns/{id})
-//
-// Expected behavior:
-//   - Returns 401 Unauthorized
-func TestDeletePattern_Unauthorized(t *testing.T) {
-	t.Skip("not implemented")
+func TestDeletePattern_SecondDeleteReturns404(t *testing.T) {
+	// TODO: implement
+}
 
-	// TODO: Implement test
+func TestDeletePattern_InvalidUUIDReturns400(t *testing.T) {
+	// TODO: implement
 }
 
 // -----------------------------------------------------------------------------
-// Pattern Enrichment Tests
+// Get Agent Associations (GET /v1/api/patterns/{id}/agents)
 // -----------------------------------------------------------------------------
 
-// TestPatternEnrichment_StatusTransitions verifies enrichment status flow.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1831 (POST /ace/patterns) - enrichment_status field
-//
-// Expected behavior:
-//   - New pattern starts with enrichment_status: "pending"
-//   - After processing, status becomes "enriched" or "failed"
-//   - enriched_at is set when status becomes "enriched"
-//   - enrichment_error is set when status becomes "failed"
-//
-// Note: This may require waiting for async processing or mocking.
-func TestPatternEnrichment_StatusTransitions(t *testing.T) {
-	t.Skip("not implemented - requires async processing verification")
-
-	// TODO: Implement test (may need polling or longer timeout)
-	// 1. Create a pattern
-	// 2. Assert initial status is "pending"
-	// 3. Poll GET endpoint until status changes (with timeout)
-	// 4. Assert final status is "enriched" or "failed"
-	// 5. If "enriched", verify enriched_at is set
-	// 6. If "failed", verify enrichment_error is set
-	// 7. Clean up
+func TestGetPatternAgentAssociations_ReturnsAssociations(t *testing.T) {
+	// TODO: implement
 }
 
-// TestPatternEnrichment_UpdateTriggersReenrichment verifies content update resets status.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1938 (PUT /ace/patterns/{id}) - enrichment_status reset
-//
-// Expected behavior:
-//   - When content is updated, enrichment_status may reset to "pending"
-//   - This triggers re-enrichment for semantic search
-func TestPatternEnrichment_UpdateTriggersReenrichment(t *testing.T) {
-	t.Skip("not implemented - requires async processing verification")
-
-	// TODO: Implement test
+func TestGetPatternAgentAssociations_EmptyListWhenNoAssociations(t *testing.T) {
+	// TODO: implement
 }
+
+func TestGetPatternAgentAssociations_PatternNotFoundReturns404(t *testing.T) {
+	// TODO: implement
+}
+
+func TestGetPatternAgentAssociations_InvalidUUIDReturns400(t *testing.T) {
+	// TODO: implement
+}
+
+func TestGetPatternAgentAssociations_ResponseIncludesRequestIDHeader(t *testing.T) {
+	// TODO: implement
+}
+
+// -----------------------------------------------------------------------------
+// Set Agent Associations (PUT /v1/api/patterns/{id}/agents)
+// -----------------------------------------------------------------------------
+
+func TestSetPatternAgentAssociations_ReplacesAllAssociations(t *testing.T) {
+	// TODO: implement
+}
+
+func TestSetPatternAgentAssociations_ClearAssociationsWithEmptyArray(t *testing.T) {
+	// TODO: implement
+}
+
+func TestSetPatternAgentAssociations_PatternNotFoundReturns404(t *testing.T) {
+	// TODO: implement
+}
+
+func TestSetPatternAgentAssociations_ValidationErrors(t *testing.T) {
+	t.Run("non-existent agent name", func(t *testing.T) {
+		// TODO: implement
+	})
+	t.Run("relevance below zero", func(t *testing.T) {
+		// TODO: implement
+	})
+	t.Run("relevance above one", func(t *testing.T) {
+		// TODO: implement
+	})
+	t.Run("missing associations field", func(t *testing.T) {
+		// TODO: implement
+	})
+}
+
+func TestSetPatternAgentAssociations_InvalidUUIDReturns400(t *testing.T) {
+	// TODO: implement
+}
+
+// -----------------------------------------------------------------------------
+// Pattern Enrichment (cross-cutting async behavior)
+// -----------------------------------------------------------------------------
+
+func TestPatternEnrichment_NewPatternStartsWithPendingStatus(t *testing.T) {
+	// TODO: implement
+}
+
+func TestPatternEnrichment_StatusTransitionsToPendingOrFailed(t *testing.T) {
+	// TODO: implement
+}
+
+func TestPatternEnrichment_EnrichedAtSetWhenEnriched(t *testing.T) {
+	// TODO: implement
+}
+
+func TestPatternEnrichment_ErrorSetWhenFailed(t *testing.T) {
+	// TODO: implement
+}
+
+func TestPatternEnrichment_ContentUpdateTriggersReenrichment(t *testing.T) {
+	// TODO: implement
+}
+
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
+// makeTags generates n unique tag strings for table-driven tests.
+func makeTags(n int) []string {
+	tags := make([]string, n)
+	for i := range tags {
+		tags[i] = fmt.Sprintf("tag-%d", i)
+	}
+	return tags
+}
+
+// patternPath returns the API path for a specific pattern ID.
+func patternPath(id string) string {
+	return fmt.Sprintf("/v1/api/patterns/%s", id)
+}
+
+// patternAgentsPath returns the API path for a pattern's agent associations.
+func patternAgentsPath(id string) string {
+	return fmt.Sprintf("/v1/api/patterns/%s/agents", id)
+}
+
+// Compile-time interface assertions to ensure test types from types.go are used.
+// These prevent the types from appearing unused if no test body references them yet.
+var (
+	_ = PatternCreate{}
+	_ = PatternUpdate{}
+	_ = PatternList{}
+	_ = PatternSearchResponse{}
+	_ = PatternAgentAssociations{}
+	_ = Pattern{}
+	_ = ErrorResponse{}
+)
+
+// Compile-time assertions for helpers, uuid, http, and strings packages.
+var (
+	_ = NewTestClient
+	_ = NewReadOnlyTestClient
+	_ = NewUnauthenticatedClient
+	_ = AssertStatusCode
+	_ = AssertContentType
+	_ = AssertRequestIDHeader
+	_ = GenerateUniqueName
+	_ = uuid.New
+	_ = http.StatusOK
+	_ = strings.Repeat
+)

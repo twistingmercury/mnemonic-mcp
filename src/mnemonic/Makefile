@@ -35,7 +35,11 @@ tests-db-graph: ## Run graph repository integration tests
 	./internal/repository/tests/run-graph-integration-tests.sh
 	
 tests-e2e: ## Runs the end-to-end tests
-	echo "make tests-e2e not implemented"
+	docker compose -f "./tests/docker-compose.yaml" up \
+        --build \
+        --abort-on-container-exit \
+        --exit-code-from mnemonic_tests \
+        mnemonic_api mnemonic_tests
 
 tests-unit: ## Run the unit tests
 	go test ./internal/... -coverprofile=coverage.out

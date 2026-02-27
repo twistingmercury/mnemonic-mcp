@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-API_URL="${API_URL:-http://mnemonic:8080}"
+API_URL="${API_URL:-http://mnemonic_api:8080}"
 MAX_RETRIES="${MAX_RETRIES:-30}"
 RETRY_INTERVAL="${RETRY_INTERVAL:-1}"
 
@@ -28,7 +28,7 @@ echo "Running E2E tests..."
 echo ""
 
 cd /e2e
-go test ./...
+stdbuf -oL go test -v -count=1 ./...
 
 echo ""
 echo "=== E2E Tests Complete ==="

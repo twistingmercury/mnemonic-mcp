@@ -34,39 +34,42 @@ type Pagination struct {
 // OpenAPI: api/openapi/mnemonic-v1.yaml:315 (Agent)
 type Agent struct {
 	Name         string   `json:"name"`
-	Description  string   `json:"description"`
+	Description  string   `json:"description,omitempty"`
 	SystemPrompt string   `json:"system_prompt"`
 	Model        string   `json:"model"`
 	AllowedTools []string `json:"allowed_tools,omitempty"`
+	Version      string   `json:"version,omitempty"`
 	CreatedAt    string   `json:"created_at,omitempty"`
 	UpdatedAt    string   `json:"updated_at,omitempty"`
 }
 
 // AgentCreate represents request body for creating a new agent.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:390 (AgentCreate)
+// Required: name, system_prompt, model.
+// Optional: description, allowed_tools, version.
 type AgentCreate struct {
 	Name         string   `json:"name"`
-	Description  string   `json:"description"`
+	Description  string   `json:"description,omitempty"`
 	SystemPrompt string   `json:"system_prompt"`
 	Model        string   `json:"model"`
 	AllowedTools []string `json:"allowed_tools,omitempty"`
+	Version      string   `json:"version,omitempty"`
 }
 
 // AgentUpdate represents request body for updating an agent.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:447 (AgentUpdate)
+// Same structure as AgentCreate.
 type AgentUpdate struct {
 	Name         string   `json:"name"`
-	Description  string   `json:"description"`
+	Description  string   `json:"description,omitempty"`
 	SystemPrompt string   `json:"system_prompt"`
 	Model        string   `json:"model"`
 	AllowedTools []string `json:"allowed_tools,omitempty"`
+	Version      string   `json:"version,omitempty"`
 }
 
-// AgentSummary represents agent summary without system_prompt.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:483 (AgentSummary)
+// AgentSummary represents agent summary without system_prompt, returned in list responses.
 type AgentSummary struct {
 	Name        string `json:"name"`
-	Description string `json:"description"`
+	Description string `json:"description,omitempty"`
 	Model       string `json:"model"`
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
@@ -140,6 +143,125 @@ type PatternList struct {
 	Pagination Pagination       `json:"pagination"`
 }
 
+// PatternSearchResult represents a single semantic search result.
+// OpenAPI: api/openapi/mnemonic-v1.yaml:705 (PatternSearchResult)
+type PatternSearchResult struct {
+	ID                string             `json:"id"`
+	Name              string             `json:"name"`
+	Description       string             `json:"description,omitempty"`
+	Content           string             `json:"content"`
+	Tags              []string           `json:"tags,omitempty"`
+	Similarity        float64            `json:"similarity"`
+	AgentAssociations []AgentAssociation `json:"agent_associations,omitempty"`
+}
+
+// PatternSearchMetadata contains metadata about a semantic search operation.
+// OpenAPI: api/openapi/mnemonic-v1.yaml:752 (PatternSearchResponse.metadata)
+type PatternSearchMetadata struct {
+	Query            string `json:"query"`
+	TotalCandidates  int    `json:"total_candidates"`
+	SearchDurationMs int    `json:"search_duration_ms"`
+}
+
+// PatternSearchResponse represents the full semantic search response.
+// OpenAPI: api/openapi/mnemonic-v1.yaml:740 (PatternSearchResponse)
+type PatternSearchResponse struct {
+	Results  []PatternSearchResult `json:"results"`
+	Metadata PatternSearchMetadata `json:"metadata"`
+}
+
+// PatternAgentAssociations represents the request/response for pattern-agent associations.
+// OpenAPI: api/openapi/mnemonic-v1.yaml:768 (PatternAgentAssociations)
+type PatternAgentAssociations struct {
+	Associations []AgentAssociation `json:"associations"`
+}
+
+// Skill represents the full skill definition.
+// OpenAPI: api/openapi/mnemonic-v1.yaml (Skill)
+type Skill struct {
+	Name          string            `json:"name"`
+	Description   string            `json:"description,omitempty"`
+	Content       string            `json:"content"`
+	Tags          []string          `json:"tags,omitempty"`
+	License       string            `json:"license,omitempty"`
+	Compatibility string            `json:"compatibility,omitempty"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+	AllowedTools  []string          `json:"allowed_tools,omitempty"`
+	Version       string            `json:"version,omitempty"`
+	CreatedAt     string            `json:"created_at,omitempty"`
+	UpdatedAt     string            `json:"updated_at,omitempty"`
+}
+
+// SkillCreate represents request body for creating a new skill.
+// OpenAPI: api/openapi/mnemonic-v1.yaml (SkillCreate)
+type SkillCreate struct {
+	Name          string            `json:"name"`
+	Description   string            `json:"description,omitempty"`
+	Content       string            `json:"content"`
+	Tags          []string          `json:"tags,omitempty"`
+	License       string            `json:"license,omitempty"`
+	Compatibility string            `json:"compatibility,omitempty"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+	AllowedTools  []string          `json:"allowed_tools,omitempty"`
+	Version       string            `json:"version,omitempty"`
+}
+
+// SkillUpdate represents request body for updating a skill.
+// OpenAPI: api/openapi/mnemonic-v1.yaml (SkillUpdate)
+type SkillUpdate struct {
+	Name          string            `json:"name"`
+	Description   string            `json:"description,omitempty"`
+	Content       string            `json:"content"`
+	Tags          []string          `json:"tags,omitempty"`
+	License       string            `json:"license,omitempty"`
+	Compatibility string            `json:"compatibility,omitempty"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+	AllowedTools  []string          `json:"allowed_tools,omitempty"`
+	Version       string            `json:"version,omitempty"`
+}
+
+// SkillList represents paginated list of skills.
+// OpenAPI: api/openapi/mnemonic-v1.yaml (SkillList)
+type SkillList struct {
+	Data       []Skill    `json:"data"`
+	Pagination Pagination `json:"pagination"`
+}
+
+// SkillFile represents a file (script, reference, or asset) attached to a skill.
+// OpenAPI: api/openapi/mnemonic-v1.yaml (SkillFile)
+type SkillFile struct {
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	Content     string `json:"content,omitempty"`
+	Encoding    string `json:"encoding,omitempty"`
+	Size        int64  `json:"size,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
+	UpdatedAt   string `json:"updated_at,omitempty"`
+}
+
+// SkillFileCreate represents request body for uploading a skill file.
+// OpenAPI: api/openapi/mnemonic-v1.yaml (SkillFileCreate)
+type SkillFileCreate struct {
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	Content     string `json:"content"`
+	Encoding    string `json:"encoding,omitempty"`
+}
+
+// SkillFileUpdate represents request body for replacing a skill file.
+// OpenAPI: api/openapi/mnemonic-v1.yaml (SkillFileUpdate)
+type SkillFileUpdate struct {
+	ContentType string `json:"content_type"`
+	Content     string `json:"content"`
+	Encoding    string `json:"encoding,omitempty"`
+}
+
+// SkillFileList represents list of skill file summaries.
+// OpenAPI: api/openapi/mnemonic-v1.yaml (SkillFileList)
+type SkillFileList struct {
+	Data []SkillFile `json:"data"`
+}
+
 // HealthResponse represents health check response.
 // OpenAPI: api/openapi/mnemonic-v1.yaml:1185 (HealthResponse)
 type HealthResponse struct {
@@ -148,12 +270,11 @@ type HealthResponse struct {
 	Reason string            `json:"reason,omitempty"`
 }
 
-// VersionResponse represents version information response.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:1209 (VersionResponse)
+// VersionResponse represents version information response from GET /version.
+// Fields match the handler in internal/handlers/operations/operations.go.
 type VersionResponse struct {
-	Version     string `json:"version"`
-	APIVersion  string `json:"api_version"`
-	BuildCommit string `json:"build_commit,omitempty"`
-	BuildTime   string `json:"build_time,omitempty"`
-	GoVersion   string `json:"go_version,omitempty"`
+	Service   string `json:"service"`
+	Version   string `json:"version"`
+	BuildDate string `json:"build_date"`
+	Commit    string `json:"commit"`
 }
