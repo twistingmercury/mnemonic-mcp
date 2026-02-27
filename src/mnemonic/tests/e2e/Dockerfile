@@ -2,7 +2,7 @@ FROM golang:1.26-alpine
 
 ENV GOTOOLCHAIN=auto
 
-RUN apk add --no-cache curl bash
+RUN apk add --no-cache curl bash coreutils
 
 WORKDIR /e2e
 

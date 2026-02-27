@@ -1,10 +1,17 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	"github.com/twistingmercury/mnemonic/internal/config"
 	"github.com/twistingmercury/mnemonic/internal/server"
 	"github.com/twistingmercury/mnemonic/internal/version"
@@ -41,12 +48,64 @@ func main() {
 	}
 }
 
-func checkHealth() (exitCode int) {
-	exitCode = 0
-	//--> TODO: this will need to be implemented in Phase 19
-	// The CLI health check requires opening database connections to ping
-	// dependencies. For now, this is a placeholder that always returns 0.
-	// <--
+// healthCheckTimeout is the HTTP client timeout for the CLI health probe.
+// Kept short because Docker healthcheck has its own outer timeout.
+const healthCheckTimeout = 3 * time.Second
 
-	return
+// checkHealth makes an HTTP GET request to the running server's /health
+// endpoint and reports the result. It is designed for use as a Docker
+// HEALTHCHECK command in scratch/static containers where curl is unavailable.
+func checkHealth() (exitCode int) {
+	port := resolveServerPort()
+	url := fmt.Sprintf("http://localhost:%d%s", port, config.DefaultHealthPath)
+
+	client := &http.Client{Timeout: healthCheckTimeout}
+
+	resp, err := client.Get(url) // #nosec G107 -- URL is constructed from local config, not user input
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "unhealthy: %v\n", err)
+		return 1
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode == http.StatusOK {
+		fmt.Println(formatHealthStatus(body))
+		return 0
+	}
+
+	fmt.Fprintf(os.Stderr, "unhealthy: HTTP %d\n", resp.StatusCode)
+	if len(body) > 0 {
+		fmt.Fprintln(os.Stderr, formatHealthStatus(body))
+	}
+	return 1
+}
+
+// resolveServerPort reads the server port from config sources (env vars,
+// config file, defaults) without performing full validation. This avoids
+// requiring database credentials just to run a health probe.
+func resolveServerPort() int {
+	v := viper.New()
+	config.SetDefaults(v)
+
+	// Allow env-var override (e.g. MNEMONIC_SERVER_PORT maps to server.port).
+	v.SetEnvPrefix(config.EnvPrefix)
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+
+	return v.GetInt("server.port")
+}
+
+// formatHealthStatus returns a human-readable one-line summary from the
+// heartbeat JSON response. Falls back to the raw body on parse failure.
+func formatHealthStatus(body []byte) string {
+	var resp struct {
+		Status string `json:"status"`
+		Name   string `json:"name"`
+	}
+	if err := json.Unmarshal(body, &resp); err == nil && resp.Status != "" {
+		return fmt.Sprintf("%s: %s", resp.Name, resp.Status)
+	}
+	return string(body)
 }
