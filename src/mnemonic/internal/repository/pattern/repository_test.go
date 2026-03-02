@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pashagolub/pgxmock/v4"
-	"github.com/pgvector/pgvector-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/twistingmercury/mnemonic/internal/repository"
@@ -27,17 +26,11 @@ func testPattern() *pattern.Pattern {
 		Description:      &desc,
 		Content:          "This is test content for the pattern.",
 		Tags:             []string{"test", "example"},
+		EntityType:       "go-pattern",
+		Language:         "go",
+		Domain:           "backend",
 		EnrichmentStatus: "pending",
 	}
-}
-
-// testEmbedding returns a sample embedding vector for testing.
-func testEmbedding() []float32 {
-	emb := make([]float32, 1536)
-	for i := range emb {
-		emb[i] = float32(i) * 0.001
-	}
-	return emb
 }
 
 func TestRepository_Create(t *testing.T) {
@@ -60,6 +53,11 @@ func TestRepository_Create(t *testing.T) {
 						pgxmock.AnyArg(), // description
 						"This is test content for the pattern.",
 						pgxmock.AnyArg(), // tags JSON
+						"go-pattern",     // entity_type
+						"go",             // language
+						"backend",        // domain
+						pgxmock.AnyArg(), // version (nil)
+						pgxmock.AnyArg(), // related_patterns JSON
 						"pending",
 						pgxmock.AnyArg(), // created_at
 						pgxmock.AnyArg(), // updated_at
@@ -74,6 +72,11 @@ func TestRepository_Create(t *testing.T) {
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("INSERT INTO patterns").
 					WithArgs(
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
 						pgxmock.AnyArg(),
 						pgxmock.AnyArg(),
 						pgxmock.AnyArg(),
@@ -101,7 +104,12 @@ func TestRepository_Create(t *testing.T) {
 						"no-desc-pattern",
 						pgxmock.AnyArg(), // description (nil *string)
 						"Content without description",
-						pgxmock.AnyArg(),
+						pgxmock.AnyArg(), // tags JSON
+						pgxmock.AnyArg(), // entity_type
+						pgxmock.AnyArg(), // language
+						pgxmock.AnyArg(), // domain
+						pgxmock.AnyArg(), // version
+						pgxmock.AnyArg(), // related_patterns JSON
 						"pending",
 						pgxmock.AnyArg(),
 						pgxmock.AnyArg(),
@@ -145,9 +153,8 @@ func TestRepository_Get(t *testing.T) {
 	now := time.Now()
 	patternID := uuid.New()
 	tagsJSON, _ := json.Marshal([]string{"tag1", "tag2"})
+	relatedPatternsJSON, _ := json.Marshal([]string{})
 	desc := "Test description"
-	embedding := testEmbedding()
-	vec := pgvector.NewVector(embedding)
 
 	tests := []struct {
 		name        string
@@ -157,15 +164,17 @@ func TestRepository_Get(t *testing.T) {
 		wantErr     error
 	}{
 		{
-			name:      "successful retrieval with embedding",
+			name:      "successful retrieval",
 			patternID: patternID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "name", "description", "content", "tags", "embedding",
+					"id", "name", "description", "content", "tags",
+					"entity_type", "language", "domain", "version", "related_patterns",
 					"enrichment_status", "enrichment_error", "enriched_at",
 					"created_at", "updated_at",
 				}).AddRow(
-					patternID, "test-pattern", &desc, "Test content", tagsJSON, &vec,
+					patternID, "test-pattern", &desc, "Test content", tagsJSON,
+					"go-pattern", "go", "backend", nil, relatedPatternsJSON,
 					"enriched", nil, &now, now, now,
 				)
 				mock.ExpectQuery("SELECT .* FROM patterns").
@@ -178,7 +187,9 @@ func TestRepository_Get(t *testing.T) {
 				Description:      &desc,
 				Content:          "Test content",
 				Tags:             []string{"tag1", "tag2"},
-				Embedding:        embedding,
+				EntityType:       "go-pattern",
+				Language:         "go",
+				Domain:           "backend",
 				EnrichmentStatus: "enriched",
 				EnrichedAt:       &now,
 				CreatedAt:        now,
@@ -187,15 +198,17 @@ func TestRepository_Get(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:      "successful retrieval without embedding (pending)",
+			name:      "successful retrieval with pending status",
 			patternID: patternID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "name", "description", "content", "tags", "embedding",
+					"id", "name", "description", "content", "tags",
+					"entity_type", "language", "domain", "version", "related_patterns",
 					"enrichment_status", "enrichment_error", "enriched_at",
 					"created_at", "updated_at",
 				}).AddRow(
-					patternID, "test-pattern", &desc, "Test content", tagsJSON, (*pgvector.Vector)(nil),
+					patternID, "test-pattern", &desc, "Test content", tagsJSON,
+					"go-pattern", "go", "backend", nil, relatedPatternsJSON,
 					"pending", nil, nil, now, now,
 				)
 				mock.ExpectQuery("SELECT .* FROM patterns").
@@ -208,7 +221,9 @@ func TestRepository_Get(t *testing.T) {
 				Description:      &desc,
 				Content:          "Test content",
 				Tags:             []string{"tag1", "tag2"},
-				Embedding:        nil,
+				EntityType:       "go-pattern",
+				Language:         "go",
+				Domain:           "backend",
 				EnrichmentStatus: "pending",
 				CreatedAt:        now,
 				UpdatedAt:        now,
@@ -263,6 +278,7 @@ func TestRepository_GetByName(t *testing.T) {
 	now := time.Now()
 	patternID := uuid.New()
 	tagsJSON, _ := json.Marshal([]string{"tag1"})
+	relatedPatternsJSON, _ := json.Marshal([]string{})
 	desc := "Test description"
 
 	tests := []struct {
@@ -276,11 +292,13 @@ func TestRepository_GetByName(t *testing.T) {
 			patternName: "test-pattern",
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "name", "description", "content", "tags", "embedding",
+					"id", "name", "description", "content", "tags",
+					"entity_type", "language", "domain", "version", "related_patterns",
 					"enrichment_status", "enrichment_error", "enriched_at",
 					"created_at", "updated_at",
 				}).AddRow(
-					patternID, "test-pattern", &desc, "Content", tagsJSON, (*pgvector.Vector)(nil),
+					patternID, "test-pattern", &desc, "Content", tagsJSON,
+					"go-pattern", "go", "backend", nil, relatedPatternsJSON,
 					"pending", nil, nil, now, now,
 				)
 				mock.ExpectQuery("SELECT .* FROM patterns").
@@ -346,7 +364,12 @@ func TestRepository_Update(t *testing.T) {
 						"test-pattern",
 						pgxmock.AnyArg(), // description
 						pgxmock.AnyArg(), // content
-						pgxmock.AnyArg(), // tags
+						pgxmock.AnyArg(), // tags JSON
+						"go-pattern",     // entity_type
+						"go",             // language
+						"backend",        // domain
+						pgxmock.AnyArg(), // version (nil)
+						pgxmock.AnyArg(), // related_patterns JSON
 						pgxmock.AnyArg(), // updated_at
 					).
 					WillReturnResult(pgxmock.NewResult("UPDATE", 1))
@@ -365,6 +388,11 @@ func TestRepository_Update(t *testing.T) {
 						pgxmock.AnyArg(),
 						pgxmock.AnyArg(),
 						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
 					).
 					WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 			},
@@ -376,6 +404,11 @@ func TestRepository_Update(t *testing.T) {
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("UPDATE patterns SET").
 					WithArgs(
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
 						pgxmock.AnyArg(),
 						pgxmock.AnyArg(),
 						pgxmock.AnyArg(),
@@ -430,7 +463,9 @@ func TestRepository_Update_ResetsEnrichmentStatus(t *testing.T) {
 		Description:      ptrString("Description"),
 		Content:          "Original content",
 		Tags:             []string{"tag1"},
-		Embedding:        testEmbedding(),
+		EntityType:       "go-pattern",
+		Language:         "go",
+		Domain:           "backend",
 		EnrichmentStatus: "enriched",
 		EnrichmentError:  &errMsg,
 		EnrichedAt:       &enrichedAt,
@@ -444,6 +479,11 @@ func TestRepository_Update_ResetsEnrichmentStatus(t *testing.T) {
 			p.Description,
 			p.Content,
 			pgxmock.AnyArg(), // tags JSON
+			"go-pattern",     // entity_type
+			"go",             // language
+			"backend",        // domain
+			pgxmock.AnyArg(), // version (nil)
+			pgxmock.AnyArg(), // related_patterns JSON
 			pgxmock.AnyArg(), // updated_at
 		).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
@@ -455,7 +495,6 @@ func TestRepository_Update_ResetsEnrichmentStatus(t *testing.T) {
 
 	// Verify the pattern struct was updated to reflect reset enrichment fields
 	assert.Equal(t, "pending", p.EnrichmentStatus, "enrichment_status should be reset to pending")
-	assert.Nil(t, p.Embedding, "embedding should be cleared")
 	assert.Nil(t, p.EnrichmentError, "enrichment_error should be cleared")
 	assert.Nil(t, p.EnrichedAt, "enriched_at should be cleared")
 	assert.False(t, p.UpdatedAt.IsZero(), "updated_at should be set")
@@ -528,6 +567,7 @@ func TestRepository_List(t *testing.T) {
 
 	now := time.Now()
 	tagsJSON, _ := json.Marshal([]string{"tag1"})
+	relatedPatternsJSON, _ := json.Marshal([]string{})
 	desc := "Description"
 
 	tests := []struct {
@@ -546,13 +586,16 @@ func TestRepository_List(t *testing.T) {
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "name", "description", "content", "tags", "embedding",
+					"id", "name", "description", "content", "tags",
+					"entity_type", "language", "domain", "version", "related_patterns",
 					"enrichment_status", "enrichment_error", "enriched_at",
 					"created_at", "updated_at", "total_count",
 				}).
-					AddRow(uuid.New(), "pattern-a", &desc, "Content A", tagsJSON, (*pgvector.Vector)(nil),
+					AddRow(uuid.New(), "pattern-a", &desc, "Content A", tagsJSON,
+						"go-pattern", "go", "backend", nil, relatedPatternsJSON,
 						"pending", nil, nil, now, now, int64(2)).
-					AddRow(uuid.New(), "pattern-b", &desc, "Content B", tagsJSON, (*pgvector.Vector)(nil),
+					AddRow(uuid.New(), "pattern-b", &desc, "Content B", tagsJSON,
+						"go-pattern", "go", "backend", nil, relatedPatternsJSON,
 						"enriched", nil, &now, now, now, int64(2))
 				mock.ExpectQuery("SELECT .* FROM patterns ORDER BY name").
 					WillReturnRows(rows)
@@ -567,11 +610,13 @@ func TestRepository_List(t *testing.T) {
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "name", "description", "content", "tags", "embedding",
+					"id", "name", "description", "content", "tags",
+					"entity_type", "language", "domain", "version", "related_patterns",
 					"enrichment_status", "enrichment_error", "enriched_at",
 					"created_at", "updated_at", "total_count",
 				}).
-					AddRow(uuid.New(), "enriched-pattern", &desc, "Content", tagsJSON, (*pgvector.Vector)(nil),
+					AddRow(uuid.New(), "enriched-pattern", &desc, "Content", tagsJSON,
+						"go-pattern", "go", "backend", nil, relatedPatternsJSON,
 						"enriched", nil, &now, now, now, int64(1))
 				mock.ExpectQuery("SELECT .* FROM patterns.*WHERE enrichment_status").
 					WithArgs("enriched").
@@ -587,11 +632,13 @@ func TestRepository_List(t *testing.T) {
 			opts:   repository.ListOptions{Limit: 1, Offset: 1},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "name", "description", "content", "tags", "embedding",
+					"id", "name", "description", "content", "tags",
+					"entity_type", "language", "domain", "version", "related_patterns",
 					"enrichment_status", "enrichment_error", "enriched_at",
 					"created_at", "updated_at", "total_count",
 				}).
-					AddRow(uuid.New(), "pattern-b", &desc, "Content", tagsJSON, (*pgvector.Vector)(nil),
+					AddRow(uuid.New(), "pattern-b", &desc, "Content", tagsJSON,
+						"go-pattern", "go", "backend", nil, relatedPatternsJSON,
 						"pending", nil, nil, now, now, int64(3))
 				mock.ExpectQuery("SELECT .* FROM patterns.*LIMIT.*OFFSET").
 					WithArgs(1, 1).
@@ -607,7 +654,8 @@ func TestRepository_List(t *testing.T) {
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "name", "description", "content", "tags", "embedding",
+					"id", "name", "description", "content", "tags",
+					"entity_type", "language", "domain", "version", "related_patterns",
 					"enrichment_status", "enrichment_error", "enriched_at",
 					"created_at", "updated_at", "total_count",
 				})
@@ -624,11 +672,13 @@ func TestRepository_List(t *testing.T) {
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "name", "description", "content", "tags", "embedding",
+					"id", "name", "description", "content", "tags",
+					"entity_type", "language", "domain", "version", "related_patterns",
 					"enrichment_status", "enrichment_error", "enriched_at",
 					"created_at", "updated_at", "total_count",
 				}).
-					AddRow(uuid.New(), "auth-pattern", &desc, "Content about auth", tagsJSON, (*pgvector.Vector)(nil),
+					AddRow(uuid.New(), "auth-pattern", &desc, "Content about auth", tagsJSON,
+						"go-pattern", "go", "backend", nil, relatedPatternsJSON,
 						"pending", nil, nil, now, now, int64(1))
 				// Query should include to_tsvector and plainto_tsquery for full-text search
 				mock.ExpectQuery("SELECT .* FROM patterns.*to_tsvector.*plainto_tsquery").
@@ -664,72 +714,6 @@ func TestRepository_List(t *testing.T) {
 				for i, expectedName := range tt.wantNames {
 					assert.Equal(t, expectedName, patterns[i].Name)
 				}
-			}
-
-			assert.NoError(t, mock.ExpectationsWereMet())
-		})
-	}
-}
-
-func TestRepository_UpdateEmbedding(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		patternID uuid.UUID
-		embedding []float32
-		setupMock func(mock pgxmock.PgxPoolIface)
-		wantErr   error
-	}{
-		{
-			name:      "successful embedding update",
-			patternID: uuid.New(),
-			embedding: testEmbedding(),
-			setupMock: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectExec("UPDATE patterns SET").
-					WithArgs(
-						pgxmock.AnyArg(), // id
-						pgxmock.AnyArg(), // embedding
-						pgxmock.AnyArg(), // updated_at
-					).
-					WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-			},
-			wantErr: nil,
-		},
-		{
-			name:      "pattern not found",
-			patternID: uuid.New(),
-			embedding: testEmbedding(),
-			setupMock: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectExec("UPDATE patterns SET").
-					WithArgs(
-						pgxmock.AnyArg(),
-						pgxmock.AnyArg(),
-						pgxmock.AnyArg(),
-					).
-					WillReturnResult(pgxmock.NewResult("UPDATE", 0))
-			},
-			wantErr: pattern.ErrNotFound,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			mock, err := pgxmock.NewPool()
-			require.NoError(t, err)
-			defer mock.Close()
-
-			tt.setupMock(mock)
-
-			repo := pattern.NewRepository(mock)
-			err = repo.UpdateEmbedding(context.Background(), tt.patternID, tt.embedding)
-
-			if tt.wantErr != nil {
-				assert.ErrorIs(t, err, tt.wantErr)
-			} else {
-				assert.NoError(t, err)
 			}
 
 			assert.NoError(t, mock.ExpectationsWereMet())
@@ -836,244 +820,6 @@ func TestRepository_UpdateEnrichmentStatus(t *testing.T) {
 				assert.ErrorIs(t, err, tt.wantErr)
 			} else {
 				assert.NoError(t, err)
-			}
-
-			assert.NoError(t, mock.ExpectationsWereMet())
-		})
-	}
-}
-
-func TestRepository_FindSimilar(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now()
-	tagsJSON, _ := json.Marshal([]string{"tag1"})
-	desc := "Description"
-	embedding := testEmbedding()
-	vec := pgvector.NewVector(embedding)
-
-	// Named UUIDs for PatternIDs test cases (matches existing convention in other test functions).
-	patternIDA := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-	patternIDB := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
-
-	tests := []struct {
-		name         string
-		embedding    []float32
-		opts         pattern.SimilarityOptions
-		setupMock    func(mock pgxmock.PgxPoolIface)
-		wantCount    int
-		wantErr      error
-		checkResults func(t *testing.T, matches []*pattern.Match)
-	}{
-		{
-			name:      "find similar patterns",
-			embedding: embedding,
-			opts: pattern.SimilarityOptions{
-				MaxResults: 5,
-			},
-			setupMock: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{
-					"id", "name", "description", "content", "tags", "embedding",
-					"enrichment_status", "enrichment_error", "enriched_at",
-					"created_at", "updated_at", "similarity",
-				}).
-					AddRow(uuid.New(), "similar-pattern-1", &desc, "Content 1", tagsJSON, &vec,
-						"enriched", nil, &now, now, now, 0.95).
-					AddRow(uuid.New(), "similar-pattern-2", &desc, "Content 2", tagsJSON, &vec,
-						"enriched", nil, &now, now, now, 0.85)
-				mock.ExpectQuery("SELECT .* FROM patterns.*ORDER BY embedding").
-					WithArgs(pgxmock.AnyArg(), 5).
-					WillReturnRows(rows)
-			},
-			wantCount: 2,
-			checkResults: func(t *testing.T, matches []*pattern.Match) {
-				assert.Equal(t, "similar-pattern-1", matches[0].Pattern.Name)
-				assert.InDelta(t, 0.95, matches[0].Similarity, 0.001)
-				assert.Equal(t, "similar-pattern-2", matches[1].Pattern.Name)
-				assert.InDelta(t, 0.85, matches[1].Similarity, 0.001)
-			},
-		},
-		{
-			name:      "find with minimum similarity threshold",
-			embedding: embedding,
-			opts: pattern.SimilarityOptions{
-				MinSimilarity: 0.8,
-				MaxResults:    10,
-			},
-			setupMock: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{
-					"id", "name", "description", "content", "tags", "embedding",
-					"enrichment_status", "enrichment_error", "enriched_at",
-					"created_at", "updated_at", "similarity",
-				}).
-					AddRow(uuid.New(), "high-sim-pattern", &desc, "Content", tagsJSON, &vec,
-						"enriched", nil, &now, now, now, 0.9)
-				// Distance threshold = 1 - 0.8 = 0.2
-				// Args: embedding (vector), distance threshold (float64), limit (int)
-				mock.ExpectQuery("SELECT .* FROM patterns.*ORDER BY embedding").
-					WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 10).
-					WillReturnRows(rows)
-			},
-			wantCount: 1,
-		},
-		{
-			name:      "empty results",
-			embedding: embedding,
-			opts: pattern.SimilarityOptions{
-				MaxResults: 5,
-			},
-			setupMock: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{
-					"id", "name", "description", "content", "tags", "embedding",
-					"enrichment_status", "enrichment_error", "enriched_at",
-					"created_at", "updated_at", "similarity",
-				})
-				mock.ExpectQuery("SELECT .* FROM patterns.*ORDER BY embedding").
-					WithArgs(pgxmock.AnyArg(), 5).
-					WillReturnRows(rows)
-			},
-			wantCount: 0,
-		},
-		{
-			name:      "find similar with PatternIDs filter",
-			embedding: embedding,
-			opts: pattern.SimilarityOptions{
-				MaxResults: 10,
-				PatternIDs: []uuid.UUID{patternIDA, patternIDB},
-			},
-			setupMock: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{
-					"id", "name", "description", "content", "tags", "embedding",
-					"enrichment_status", "enrichment_error", "enriched_at",
-					"created_at", "updated_at", "similarity",
-				}).
-					AddRow(patternIDA, "pattern-a", &desc, "Content A", tagsJSON, &vec,
-						"enriched", nil, &now, now, now, 0.92)
-				// Args: embedding (vector), patternIDs ([]uuid.UUID), limit (int)
-				mock.ExpectQuery("SELECT .* FROM patterns.*id = ANY.*ORDER BY embedding").
-					WithArgs(
-						pgxmock.AnyArg(), // embedding vector
-						[]uuid.UUID{patternIDA, patternIDB},
-						10,
-					).
-					WillReturnRows(rows)
-			},
-			wantCount: 1,
-			checkResults: func(t *testing.T, matches []*pattern.Match) {
-				assert.Equal(t, "pattern-a", matches[0].Pattern.Name)
-				assert.InDelta(t, 0.92, matches[0].Similarity, 0.001)
-			},
-		},
-		{
-			name:      "find similar with PatternIDs and MinSimilarity combined",
-			embedding: embedding,
-			opts: pattern.SimilarityOptions{
-				MaxResults:    10,
-				MinSimilarity: 0.7,
-				PatternIDs:    []uuid.UUID{patternIDA, patternIDB},
-			},
-			setupMock: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{
-					"id", "name", "description", "content", "tags", "embedding",
-					"enrichment_status", "enrichment_error", "enriched_at",
-					"created_at", "updated_at", "similarity",
-				}).
-					AddRow(patternIDA, "pattern-a", &desc, "Content A", tagsJSON, &vec,
-						"enriched", nil, &now, now, now, 0.91)
-				// Args: embedding ($1), distance threshold ($2), patternIDs ($3), limit ($4)
-				mock.ExpectQuery("SELECT .* FROM patterns.*id = ANY.*ORDER BY embedding").
-					WithArgs(
-						pgxmock.AnyArg(),                    // embedding vector
-						pgxmock.AnyArg(),                    // distance threshold (1 - 0.7 = 0.3)
-						[]uuid.UUID{patternIDA, patternIDB}, // patternIDs
-						10,
-					).
-					WillReturnRows(rows)
-			},
-			wantCount: 1,
-			checkResults: func(t *testing.T, matches []*pattern.Match) {
-				assert.Equal(t, "pattern-a", matches[0].Pattern.Name)
-				assert.InDelta(t, 0.91, matches[0].Similarity, 0.001)
-			},
-		},
-		{
-			name:      "find similar with PatternIDs and Tags combined",
-			embedding: embedding,
-			opts: pattern.SimilarityOptions{
-				MaxResults: 10,
-				Tags:       []string{"go"},
-				PatternIDs: []uuid.UUID{patternIDA},
-			},
-			setupMock: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{
-					"id", "name", "description", "content", "tags", "embedding",
-					"enrichment_status", "enrichment_error", "enriched_at",
-					"created_at", "updated_at", "similarity",
-				}).
-					AddRow(patternIDA, "pattern-a", &desc, "Content A", tagsJSON, &vec,
-						"enriched", nil, &now, now, now, 0.88)
-				// Args: embedding (vector), tags ([]string), patternIDs ([]uuid.UUID), limit (int)
-				mock.ExpectQuery("SELECT .* FROM patterns.*tags.*id = ANY.*ORDER BY embedding").
-					WithArgs(
-						pgxmock.AnyArg(),        // embedding vector
-						[]string{"go"},          // tags
-						[]uuid.UUID{patternIDA}, // patternIDs
-						10,
-					).
-					WillReturnRows(rows)
-			},
-			wantCount: 1,
-			checkResults: func(t *testing.T, matches []*pattern.Match) {
-				assert.Equal(t, "pattern-a", matches[0].Pattern.Name)
-				assert.InDelta(t, 0.88, matches[0].Similarity, 0.001)
-			},
-		},
-		{
-			name:      "find similar with empty PatternIDs behaves like unset",
-			embedding: embedding,
-			opts: pattern.SimilarityOptions{
-				MaxResults: 5,
-				PatternIDs: []uuid.UUID{},
-			},
-			setupMock: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{
-					"id", "name", "description", "content", "tags", "embedding",
-					"enrichment_status", "enrichment_error", "enriched_at",
-					"created_at", "updated_at", "similarity",
-				}).
-					AddRow(uuid.New(), "any-pattern", &desc, "Content", tagsJSON, &vec,
-						"enriched", nil, &now, now, now, 0.80)
-				// Empty PatternIDs should NOT generate ANY clause; same args as basic query
-				mock.ExpectQuery("SELECT .* FROM patterns.*ORDER BY embedding").
-					WithArgs(pgxmock.AnyArg(), 5).
-					WillReturnRows(rows)
-			},
-			wantCount: 1,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			mock, err := pgxmock.NewPool()
-			require.NoError(t, err)
-			defer mock.Close()
-
-			tt.setupMock(mock)
-
-			repo := pattern.NewRepository(mock)
-			matches, err := repo.FindSimilar(context.Background(), tt.embedding, tt.opts)
-
-			if tt.wantErr != nil {
-				assert.ErrorIs(t, err, tt.wantErr)
-			} else {
-				assert.NoError(t, err)
-				assert.Len(t, matches, tt.wantCount)
-
-				if tt.checkResults != nil {
-					tt.checkResults(t, matches)
-				}
 			}
 
 			assert.NoError(t, mock.ExpectationsWereMet())
@@ -1497,7 +1243,12 @@ func TestRepository_Create_GeneratesUUID(t *testing.T) {
 			"test-pattern",
 			pgxmock.AnyArg(), // nil description (*string)
 			"Test content",
-			pgxmock.AnyArg(),
+			pgxmock.AnyArg(), // tags JSON
+			pgxmock.AnyArg(), // entity_type
+			pgxmock.AnyArg(), // language
+			pgxmock.AnyArg(), // domain
+			pgxmock.AnyArg(), // version
+			pgxmock.AnyArg(), // related_patterns JSON
 			"pending",
 			pgxmock.AnyArg(),
 			pgxmock.AnyArg(),
@@ -1532,7 +1283,12 @@ func TestRepository_Create_NilTagsHandled(t *testing.T) {
 			"pattern-with-nil-tags",
 			pgxmock.AnyArg(), // description
 			"Content",
-			[]byte("[]"), // tags should be marshaled as empty array, not "null"
+			[]byte("[]"),     // tags should be marshaled as empty array, not "null"
+			pgxmock.AnyArg(), // entity_type
+			pgxmock.AnyArg(), // language
+			pgxmock.AnyArg(), // domain
+			pgxmock.AnyArg(), // version
+			pgxmock.AnyArg(), // related_patterns JSON
 			"pending",
 			pgxmock.AnyArg(), // created_at
 			pgxmock.AnyArg(), // updated_at

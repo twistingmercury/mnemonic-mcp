@@ -14,6 +14,7 @@ import (
 	"github.com/twistingmercury/mnemonic/internal/config"
 	"github.com/twistingmercury/mnemonic/internal/repository"
 	agentrepo "github.com/twistingmercury/mnemonic/internal/repository/agent"
+	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	enrichmentjob "github.com/twistingmercury/mnemonic/internal/repository/enrichmentjob"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
@@ -327,6 +328,66 @@ func (m *mockExtractionSvc) Extract(ctx context.Context, text string) ([]openais
 	return args.Get(0).([]openaisvc.Concept), args.Error(1)
 }
 
+// --- Mock: chunkrepo.Repository ---
+
+type mockChunkRepo struct {
+	mock.Mock
+}
+
+func (m *mockChunkRepo) Create(ctx context.Context, c *chunkrepo.Chunk) error {
+	return m.Called(ctx, c).Error(0)
+}
+
+func (m *mockChunkRepo) CreateBatch(ctx context.Context, chunks []*chunkrepo.Chunk) error {
+	return m.Called(ctx, chunks).Error(0)
+}
+
+func (m *mockChunkRepo) Get(ctx context.Context, id uuid.UUID) (*chunkrepo.Chunk, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*chunkrepo.Chunk), args.Error(1)
+}
+
+func (m *mockChunkRepo) ListByPatternID(ctx context.Context, patternID uuid.UUID) ([]*chunkrepo.Chunk, error) {
+	args := m.Called(ctx, patternID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*chunkrepo.Chunk), args.Error(1)
+}
+
+func (m *mockChunkRepo) DeleteByPatternID(ctx context.Context, patternID uuid.UUID) error {
+	return m.Called(ctx, patternID).Error(0)
+}
+
+func (m *mockChunkRepo) UpdateEmbedding(ctx context.Context, id uuid.UUID, embedding []float32) error {
+	return m.Called(ctx, id, embedding).Error(0)
+}
+
+func (m *mockChunkRepo) UpdateEnrichmentStatus(ctx context.Context, id uuid.UUID, status string, errMsg *string) error {
+	return m.Called(ctx, id, status, errMsg).Error(0)
+}
+
+func (m *mockChunkRepo) FindSimilar(ctx context.Context, embedding []float32, opts chunkrepo.SimilarityOptions) ([]*chunkrepo.Match, error) {
+	args := m.Called(ctx, embedding, opts)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*chunkrepo.Match), args.Error(1)
+}
+
+func (m *mockChunkRepo) AllEnrichedForPattern(ctx context.Context, patternID uuid.UUID) (bool, error) {
+	args := m.Called(ctx, patternID)
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *mockChunkRepo) AnyFailedForPattern(ctx context.Context, patternID uuid.UUID) (bool, error) {
+	args := m.Called(ctx, patternID)
+	return args.Bool(0), args.Error(1)
+}
+
 // --- Test Fixtures ---
 
 func testConfig() config.EnrichmentConfig {
@@ -346,14 +407,25 @@ var (
 	testPatternID = uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	testJobID     = uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	testAgentID   = uuid.MustParse("33333333-3333-3333-3333-333333333333")
+	testChunkID   = uuid.MustParse("44444444-4444-4444-4444-444444444444")
 )
 
 func testJob() *enrichmentjob.Job {
+	pid := testPatternID
 	return &enrichmentjob.Job{
 		ID:        testJobID,
-		PatternID: testPatternID,
+		PatternID: &pid,
 		Status:    "processing",
 		Attempts:  0,
+	}
+}
+
+func testChunkJob() *enrichmentjob.Job {
+	cid := testChunkID
+	return &enrichmentjob.Job{
+		ID:      testJobID,
+		ChunkID: &cid,
+		Status:  "processing",
 	}
 }
 
@@ -366,6 +438,14 @@ func testPattern() *patternrepo.Pattern {
 		Content:          "This is test pattern content for enrichment.",
 		Tags:             []string{"test"},
 		EnrichmentStatus: "pending",
+	}
+}
+
+func testChunk() *chunkrepo.Chunk {
+	return &chunkrepo.Chunk{
+		ID:        testChunkID,
+		PatternID: testPatternID,
+		Content:   "Test chunk content for embedding.",
 	}
 }
 
@@ -394,9 +474,11 @@ type testDeps struct {
 	graphRepo     *mockGraphRepo
 	embeddingSvc  *mockEmbeddingSvc
 	extractionSvc *mockExtractionSvc
+	chunkRepo     *mockChunkRepo
 }
 
-func newTestService() (enrichment.Service, *testDeps) {
+func newTestService(t *testing.T) (enrichment.Service, *testDeps) {
+	t.Helper()
 	deps := &testDeps{
 		jobRepo:       new(mockJobRepo),
 		patternRepo:   new(mockPatternRepo),
@@ -404,6 +486,7 @@ func newTestService() (enrichment.Service, *testDeps) {
 		graphRepo:     new(mockGraphRepo),
 		embeddingSvc:  new(mockEmbeddingSvc),
 		extractionSvc: new(mockExtractionSvc),
+		chunkRepo:     new(mockChunkRepo),
 	}
 
 	svc := enrichment.New(
@@ -414,21 +497,21 @@ func newTestService() (enrichment.Service, *testDeps) {
 		deps.embeddingSvc,
 		deps.extractionSvc,
 		testConfig(),
+		deps.chunkRepo,
 		zerolog.Nop(),
 	)
 
 	return svc, deps
 }
 
-// setupHappyPathMocks configures all mocks for a successful ProcessJob call.
+// setupHappyPathMocks configures all mocks for a successful ProcessJob call
+// on a pattern-level job.
 func setupHappyPathMocks(deps *testDeps) {
 	pattern := testPattern()
-	embedding := testEmbedding()
 	concepts := testConcepts()
 
 	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(pattern, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, pattern.Content).Return(embedding, nil)
-	deps.patternRepo.On("UpdateEmbedding", mock.Anything, testPatternID, embedding).Return(nil)
+	// Steps 2-3 (embedding) removed; rewritten in Task 6 with chunk-based pipeline.
 	deps.extractionSvc.On("Extract", mock.Anything, pattern.Content).Return(concepts, nil)
 	deps.graphRepo.On("SyncPattern", mock.Anything, mock.MatchedBy(func(p *graphrepo.Pattern) bool {
 		return p.ID == testPatternID && p.Name == "test-pattern"
@@ -468,6 +551,7 @@ func assertExpectations(t *testing.T, deps *testDeps) {
 	deps.graphRepo.AssertExpectations(t)
 	deps.embeddingSvc.AssertExpectations(t)
 	deps.extractionSvc.AssertExpectations(t)
+	deps.chunkRepo.AssertExpectations(t)
 }
 
 // ---------- ClaimNextJob ----------
@@ -478,7 +562,7 @@ func TestClaimNextJob(t *testing.T) {
 	t.Run("happy path returns claimed job", func(t *testing.T) {
 		t.Parallel()
 
-		svc, deps := newTestService()
+		svc, deps := newTestService(t)
 		job := testJob()
 		deps.jobRepo.On("ClaimPending", mock.Anything).Return(job, nil)
 
@@ -487,14 +571,15 @@ func TestClaimNextJob(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		assert.Equal(t, testJobID, result.ID)
-		assert.Equal(t, testPatternID, result.PatternID)
+		require.NotNil(t, result.PatternID)
+		assert.Equal(t, testPatternID, *result.PatternID)
 		assertExpectations(t, deps)
 	})
 
 	t.Run("no jobs available returns nil nil", func(t *testing.T) {
 		t.Parallel()
 
-		svc, deps := newTestService()
+		svc, deps := newTestService(t)
 		deps.jobRepo.On("ClaimPending", mock.Anything).Return(nil, nil)
 
 		result, err := svc.ClaimNextJob(context.Background())
@@ -505,12 +590,12 @@ func TestClaimNextJob(t *testing.T) {
 	})
 }
 
-// ---------- ProcessJob ----------
+// ---------- ProcessJob (pattern-level) ----------
 
 func TestProcessJob_HappyPath(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 	setupHappyPathMocks(deps)
 
 	err := svc.ProcessJob(context.Background(), testJob())
@@ -522,41 +607,8 @@ func TestProcessJob_HappyPath(t *testing.T) {
 func TestProcessJob_Step1_LoadPatternFails(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(nil, patternrepo.ErrNotFound)
-	setupFailJobMocks(deps)
-
-	err := svc.ProcessJob(context.Background(), testJob())
-
-	require.NoError(t, err, "pipeline failure should return nil when failJob succeeds")
-	assertExpectations(t, deps)
-}
-
-func TestProcessJob_Step2_EmbeddingFails(t *testing.T) {
-	t.Parallel()
-
-	svc, deps := newTestService()
-	pattern := testPattern()
-	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(pattern, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, pattern.Content).Return(nil, errors.New("openai unavailable"))
-	setupFailJobMocks(deps)
-
-	err := svc.ProcessJob(context.Background(), testJob())
-
-	require.NoError(t, err, "pipeline failure should return nil when failJob succeeds")
-	assertExpectations(t, deps)
-}
-
-func TestProcessJob_Step3_StoreEmbeddingFails(t *testing.T) {
-	t.Parallel()
-
-	svc, deps := newTestService()
-	pattern := testPattern()
-	embedding := testEmbedding()
-	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(pattern, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, pattern.Content).Return(embedding, nil)
-	deps.patternRepo.On("UpdateEmbedding", mock.Anything, testPatternID, embedding).
-		Return(errors.New("db error"))
 	setupFailJobMocks(deps)
 
 	err := svc.ProcessJob(context.Background(), testJob())
@@ -568,12 +620,9 @@ func TestProcessJob_Step3_StoreEmbeddingFails(t *testing.T) {
 func TestProcessJob_Step4_ExtractionFails(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 	pattern := testPattern()
-	embedding := testEmbedding()
 	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(pattern, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, pattern.Content).Return(embedding, nil)
-	deps.patternRepo.On("UpdateEmbedding", mock.Anything, testPatternID, embedding).Return(nil)
 	deps.extractionSvc.On("Extract", mock.Anything, pattern.Content).
 		Return(nil, errors.New("extraction failed"))
 	setupFailJobMocks(deps)
@@ -587,13 +636,10 @@ func TestProcessJob_Step4_ExtractionFails(t *testing.T) {
 func TestProcessJob_Step5_SyncPatternFails(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 	pattern := testPattern()
-	embedding := testEmbedding()
 	concepts := testConcepts()
 	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(pattern, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, pattern.Content).Return(embedding, nil)
-	deps.patternRepo.On("UpdateEmbedding", mock.Anything, testPatternID, embedding).Return(nil)
 	deps.extractionSvc.On("Extract", mock.Anything, pattern.Content).Return(concepts, nil)
 	deps.graphRepo.On("SyncPattern", mock.Anything, mock.Anything).
 		Return(errors.New("neo4j unavailable"))
@@ -608,13 +654,10 @@ func TestProcessJob_Step5_SyncPatternFails(t *testing.T) {
 func TestProcessJob_Step6_SyncConceptsFails(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 	pattern := testPattern()
-	embedding := testEmbedding()
 	concepts := testConcepts()
 	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(pattern, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, pattern.Content).Return(embedding, nil)
-	deps.patternRepo.On("UpdateEmbedding", mock.Anything, testPatternID, embedding).Return(nil)
 	deps.extractionSvc.On("Extract", mock.Anything, pattern.Content).Return(concepts, nil)
 	deps.graphRepo.On("SyncPattern", mock.Anything, mock.Anything).Return(nil)
 	deps.graphRepo.On("SyncConcepts", mock.Anything, testPatternID, testGraphConcepts()).
@@ -630,13 +673,10 @@ func TestProcessJob_Step6_SyncConceptsFails(t *testing.T) {
 func TestProcessJob_Step7_GetAgentAssociationsFails(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 	pattern := testPattern()
-	embedding := testEmbedding()
 	concepts := testConcepts()
 	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(pattern, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, pattern.Content).Return(embedding, nil)
-	deps.patternRepo.On("UpdateEmbedding", mock.Anything, testPatternID, embedding).Return(nil)
 	deps.extractionSvc.On("Extract", mock.Anything, pattern.Content).Return(concepts, nil)
 	deps.graphRepo.On("SyncPattern", mock.Anything, mock.Anything).Return(nil)
 	deps.graphRepo.On("SyncConcepts", mock.Anything, testPatternID, testGraphConcepts()).Return(nil)
@@ -653,13 +693,10 @@ func TestProcessJob_Step7_GetAgentAssociationsFails(t *testing.T) {
 func TestProcessJob_Step7_SetPatternAgentRelevanceFails(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 	pattern := testPattern()
-	embedding := testEmbedding()
 	concepts := testConcepts()
 	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(pattern, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, pattern.Content).Return(embedding, nil)
-	deps.patternRepo.On("UpdateEmbedding", mock.Anything, testPatternID, embedding).Return(nil)
 	deps.extractionSvc.On("Extract", mock.Anything, pattern.Content).Return(concepts, nil)
 	deps.graphRepo.On("SyncPattern", mock.Anything, mock.Anything).Return(nil)
 	deps.graphRepo.On("SyncConcepts", mock.Anything, testPatternID, testGraphConcepts()).Return(nil)
@@ -682,13 +719,10 @@ func TestProcessJob_Step7_SetPatternAgentRelevanceFails(t *testing.T) {
 func TestProcessJob_Step8_ComputeRelatedToEdgesFails(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 	pattern := testPattern()
-	embedding := testEmbedding()
 	concepts := testConcepts()
 	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(pattern, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, pattern.Content).Return(embedding, nil)
-	deps.patternRepo.On("UpdateEmbedding", mock.Anything, testPatternID, embedding).Return(nil)
 	deps.extractionSvc.On("Extract", mock.Anything, pattern.Content).Return(concepts, nil)
 	deps.graphRepo.On("SyncPattern", mock.Anything, mock.Anything).Return(nil)
 	deps.graphRepo.On("SyncConcepts", mock.Anything, testPatternID, testGraphConcepts()).Return(nil)
@@ -712,15 +746,14 @@ func TestProcessJob_Step8_ComputeRelatedToEdgesFails(t *testing.T) {
 func TestProcessJob_MarkCompletedFails(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 
-	// Set up the full happy path through step 8, but fail on MarkCompleted.
+	// Set up the full happy path through step 8.
+	// UpdateEnrichmentStatus now runs before MarkCompleted (step 9 then 10).
+	// UpdateEnrichmentStatus succeeds; MarkCompleted fails.
 	pattern := testPattern()
-	embedding := testEmbedding()
 	concepts := testConcepts()
 	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(pattern, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, pattern.Content).Return(embedding, nil)
-	deps.patternRepo.On("UpdateEmbedding", mock.Anything, testPatternID, embedding).Return(nil)
 	deps.extractionSvc.On("Extract", mock.Anything, pattern.Content).Return(concepts, nil)
 	deps.graphRepo.On("SyncPattern", mock.Anything, mock.Anything).Return(nil)
 	deps.graphRepo.On("SyncConcepts", mock.Anything, testPatternID, testGraphConcepts()).Return(nil)
@@ -732,6 +765,7 @@ func TestProcessJob_MarkCompletedFails(t *testing.T) {
 	)
 	deps.graphRepo.On("SetPatternAgentRelevance", mock.Anything, testPatternID, mock.Anything).Return(nil)
 	deps.graphRepo.On("ComputeRelatedToEdges", mock.Anything, testPatternID, 0.3).Return(nil)
+	deps.patternRepo.On("UpdateEnrichmentStatus", mock.Anything, testPatternID, "enriched", (*string)(nil)).Return(nil)
 	deps.jobRepo.On("MarkCompleted", mock.Anything, testJobID).Return(errors.New("db error"))
 
 	err := svc.ProcessJob(context.Background(), testJob())
@@ -744,15 +778,13 @@ func TestProcessJob_MarkCompletedFails(t *testing.T) {
 func TestProcessJob_UpdateEnrichmentStatusAfterCompletionFails(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 
-	// Set up the full happy path through MarkCompleted, but fail on UpdateEnrichmentStatus.
+	// Set up the full happy path through step 8, but fail on UpdateEnrichmentStatus (step 9).
+	// UpdateEnrichmentStatus now runs before MarkCompleted, so MarkCompleted is never reached.
 	pattern := testPattern()
-	embedding := testEmbedding()
 	concepts := testConcepts()
 	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(pattern, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, pattern.Content).Return(embedding, nil)
-	deps.patternRepo.On("UpdateEmbedding", mock.Anything, testPatternID, embedding).Return(nil)
 	deps.extractionSvc.On("Extract", mock.Anything, pattern.Content).Return(concepts, nil)
 	deps.graphRepo.On("SyncPattern", mock.Anything, mock.Anything).Return(nil)
 	deps.graphRepo.On("SyncConcepts", mock.Anything, testPatternID, testGraphConcepts()).Return(nil)
@@ -764,7 +796,6 @@ func TestProcessJob_UpdateEnrichmentStatusAfterCompletionFails(t *testing.T) {
 	)
 	deps.graphRepo.On("SetPatternAgentRelevance", mock.Anything, testPatternID, mock.Anything).Return(nil)
 	deps.graphRepo.On("ComputeRelatedToEdges", mock.Anything, testPatternID, 0.3).Return(nil)
-	deps.jobRepo.On("MarkCompleted", mock.Anything, testJobID).Return(nil)
 	deps.patternRepo.On("UpdateEnrichmentStatus", mock.Anything, testPatternID, "enriched", (*string)(nil)).
 		Return(errors.New("db error"))
 
@@ -780,7 +811,7 @@ func TestProcessJob_UpdateEnrichmentStatusAfterCompletionFails(t *testing.T) {
 func TestFailJob_MarkFailedFails(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 
 	// Step 1 fails (pattern not found), triggering failJob.
 	// failJob's MarkFailed also fails => returns error.
@@ -798,7 +829,7 @@ func TestFailJob_MarkFailedFails(t *testing.T) {
 func TestFailJob_UpdateEnrichmentStatusFails(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 
 	// Step 1 fails, triggering failJob. MarkFailed succeeds,
 	// but UpdateEnrichmentStatus fails => returns error.
@@ -819,15 +850,12 @@ func TestFailJob_UpdateEnrichmentStatusFails(t *testing.T) {
 func TestProcessJob_AgentNotFoundSkippedDuringAssociationSync(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 	pattern := testPattern()
-	embedding := testEmbedding()
 	concepts := testConcepts()
-	missingAgentID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	missingAgentID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
 
 	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(pattern, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, pattern.Content).Return(embedding, nil)
-	deps.patternRepo.On("UpdateEmbedding", mock.Anything, testPatternID, embedding).Return(nil)
 	deps.extractionSvc.On("Extract", mock.Anything, pattern.Content).Return(concepts, nil)
 	deps.graphRepo.On("SyncPattern", mock.Anything, mock.Anything).Return(nil)
 	deps.graphRepo.On("SyncConcepts", mock.Anything, testPatternID, testGraphConcepts()).Return(nil)
@@ -859,12 +887,213 @@ func TestProcessJob_AgentNotFoundSkippedDuringAssociationSync(t *testing.T) {
 	assertExpectations(t, deps)
 }
 
+// ---------- ProcessJob: chunk-based pipeline ----------
+
+// setupChunkGraphMocks wires the graph pipeline mocks for a chunk job that
+// triggers concept extraction (all chunks enriched path). The pattern has no
+// agent associations (empty slice) to keep the setup minimal.
+func setupChunkGraphMocks(deps *testDeps) {
+	pattern := testPattern()
+	concepts := testConcepts()
+
+	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(pattern, nil)
+	deps.extractionSvc.On("Extract", mock.Anything, pattern.Content).Return(concepts, nil)
+	deps.graphRepo.On("SyncPattern", mock.Anything, mock.MatchedBy(func(p *graphrepo.Pattern) bool {
+		return p.ID == testPatternID
+	})).Return(nil)
+	deps.graphRepo.On("SyncConcepts", mock.Anything, testPatternID, testGraphConcepts()).Return(nil)
+	deps.patternRepo.On("GetAgentAssociations", mock.Anything, testPatternID).Return(
+		[]patternrepo.AgentAssociation{}, nil,
+	)
+	deps.graphRepo.On("SetPatternAgentRelevance", mock.Anything, testPatternID,
+		[]graphrepo.AgentAssociation{},
+	).Return(nil)
+	deps.graphRepo.On("ComputeRelatedToEdges", mock.Anything, testPatternID, 0.3).Return(nil)
+}
+
+func TestProcessJob_ChunkJob_HappyPath_AllEnriched(t *testing.T) {
+	t.Parallel()
+
+	svc, deps := newTestService(t)
+	chunk := testChunk()
+
+	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, chunk.Content).Return(testEmbedding(), nil)
+	deps.chunkRepo.On("UpdateEmbedding", mock.Anything, testChunkID, testEmbedding()).Return(nil)
+	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "enriched", (*string)(nil)).Return(nil)
+	deps.chunkRepo.On("AnyFailedForPattern", mock.Anything, testPatternID).Return(false, nil)
+	deps.chunkRepo.On("AllEnrichedForPattern", mock.Anything, testPatternID).Return(true, nil)
+
+	// All chunks enriched: triggers concept extraction + graph sync.
+	setupChunkGraphMocks(deps)
+	deps.patternRepo.On("UpdateEnrichmentStatus", mock.Anything, testPatternID, "enriched", (*string)(nil)).Return(nil)
+	deps.jobRepo.On("MarkCompleted", mock.Anything, testJobID).Return(nil)
+
+	err := svc.ProcessJob(context.Background(), testChunkJob())
+
+	require.NoError(t, err)
+	assertExpectations(t, deps)
+}
+
+func TestProcessJob_ChunkJob_HappyPath_NotAllEnriched(t *testing.T) {
+	t.Parallel()
+
+	svc, deps := newTestService(t)
+	chunk := testChunk()
+
+	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, chunk.Content).Return(testEmbedding(), nil)
+	deps.chunkRepo.On("UpdateEmbedding", mock.Anything, testChunkID, testEmbedding()).Return(nil)
+	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "enriched", (*string)(nil)).Return(nil)
+	deps.chunkRepo.On("AnyFailedForPattern", mock.Anything, testPatternID).Return(false, nil)
+	deps.chunkRepo.On("AllEnrichedForPattern", mock.Anything, testPatternID).Return(false, nil)
+
+	// Other chunks still pending: no concept extraction, no patternRepo.UpdateEnrichmentStatus.
+	deps.jobRepo.On("MarkCompleted", mock.Anything, testJobID).Return(nil)
+
+	err := svc.ProcessJob(context.Background(), testChunkJob())
+
+	require.NoError(t, err)
+	assertExpectations(t, deps)
+}
+
+func TestProcessJob_ChunkJob_Step1_LoadChunkFails(t *testing.T) {
+	t.Parallel()
+
+	svc, deps := newTestService(t)
+
+	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(nil, errors.New("not found"))
+	// failJob is called: job has no PatternID so only MarkFailed is called.
+	deps.jobRepo.On("MarkFailed", mock.Anything, testJobID, mock.Anything, 30*time.Second).Return(nil)
+
+	err := svc.ProcessJob(context.Background(), testChunkJob())
+
+	require.NoError(t, err, "pipeline failure should return nil when failJob succeeds")
+	assertExpectations(t, deps)
+}
+
+func TestProcessJob_ChunkJob_Step2_EmbeddingFails(t *testing.T) {
+	t.Parallel()
+
+	svc, deps := newTestService(t)
+	chunk := testChunk()
+
+	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, chunk.Content).Return(nil, errors.New("openai unavailable"))
+
+	// failChunkJob: update chunk status, update pattern status, mark job failed.
+	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "failed", mock.AnythingOfType("*string")).Return(nil)
+	deps.patternRepo.On("UpdateEnrichmentStatus", mock.Anything, testPatternID, "failed", mock.AnythingOfType("*string")).Return(nil)
+	deps.jobRepo.On("MarkFailed", mock.Anything, testJobID, mock.Anything, 30*time.Second).Return(nil)
+
+	err := svc.ProcessJob(context.Background(), testChunkJob())
+
+	require.NoError(t, err, "pipeline failure should return nil when failChunkJob succeeds")
+	assertExpectations(t, deps)
+}
+
+func TestProcessJob_ChunkJob_Step3_UpdateEmbeddingFails(t *testing.T) {
+	t.Parallel()
+
+	svc, deps := newTestService(t)
+	chunk := testChunk()
+
+	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, chunk.Content).Return(testEmbedding(), nil)
+	deps.chunkRepo.On("UpdateEmbedding", mock.Anything, testChunkID, testEmbedding()).Return(errors.New("db error"))
+
+	// failChunkJob.
+	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "failed", mock.AnythingOfType("*string")).Return(nil)
+	deps.patternRepo.On("UpdateEnrichmentStatus", mock.Anything, testPatternID, "failed", mock.AnythingOfType("*string")).Return(nil)
+	deps.jobRepo.On("MarkFailed", mock.Anything, testJobID, mock.Anything, 30*time.Second).Return(nil)
+
+	err := svc.ProcessJob(context.Background(), testChunkJob())
+
+	require.NoError(t, err, "pipeline failure should return nil when failChunkJob succeeds")
+	assertExpectations(t, deps)
+}
+
+func TestProcessJob_ChunkJob_Step4_UpdateChunkStatusFails(t *testing.T) {
+	t.Parallel()
+
+	svc, deps := newTestService(t)
+	chunk := testChunk()
+
+	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, chunk.Content).Return(testEmbedding(), nil)
+	deps.chunkRepo.On("UpdateEmbedding", mock.Anything, testChunkID, testEmbedding()).Return(nil)
+	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "enriched", (*string)(nil)).Return(errors.New("db error"))
+
+	// failChunkJob.
+	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "failed", mock.AnythingOfType("*string")).Return(nil)
+	deps.patternRepo.On("UpdateEnrichmentStatus", mock.Anything, testPatternID, "failed", mock.AnythingOfType("*string")).Return(nil)
+	deps.jobRepo.On("MarkFailed", mock.Anything, testJobID, mock.Anything, 30*time.Second).Return(nil)
+
+	err := svc.ProcessJob(context.Background(), testChunkJob())
+
+	require.NoError(t, err, "pipeline failure should return nil when failChunkJob succeeds")
+	assertExpectations(t, deps)
+}
+
+func TestProcessJob_ChunkJob_AnyFailed_PatternMarkedFailed(t *testing.T) {
+	t.Parallel()
+
+	svc, deps := newTestService(t)
+	chunk := testChunk()
+
+	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, chunk.Content).Return(testEmbedding(), nil)
+	deps.chunkRepo.On("UpdateEmbedding", mock.Anything, testChunkID, testEmbedding()).Return(nil)
+	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "enriched", (*string)(nil)).Return(nil)
+	deps.chunkRepo.On("AnyFailedForPattern", mock.Anything, testPatternID).Return(true, nil)
+
+	// Pattern is marked failed; job is still completed (this chunk succeeded).
+	deps.patternRepo.On("UpdateEnrichmentStatus", mock.Anything, testPatternID, "failed", mock.AnythingOfType("*string")).Return(nil)
+	deps.jobRepo.On("MarkCompleted", mock.Anything, testJobID).Return(nil)
+
+	err := svc.ProcessJob(context.Background(), testChunkJob())
+
+	require.NoError(t, err)
+	assertExpectations(t, deps)
+}
+
+func TestProcessJob_ChunkJob_GraphPipelineFails(t *testing.T) {
+	t.Parallel()
+
+	svc, deps := newTestService(t)
+	chunk := testChunk()
+
+	// Steps 1-4: chunk load, embed, store embedding, mark chunk enriched — all succeed.
+	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, chunk.Content).Return(testEmbedding(), nil)
+	deps.chunkRepo.On("UpdateEmbedding", mock.Anything, testChunkID, testEmbedding()).Return(nil)
+	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "enriched", (*string)(nil)).Return(nil)
+
+	// Aggregate checks: no prior failures, all chunks enriched → triggers graph pipeline.
+	deps.chunkRepo.On("AnyFailedForPattern", mock.Anything, testPatternID).Return(false, nil)
+	deps.chunkRepo.On("AllEnrichedForPattern", mock.Anything, testPatternID).Return(true, nil)
+
+	// Graph pipeline: pattern loads successfully, but extraction fails.
+	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(testPattern(), nil)
+	deps.extractionSvc.On("Extract", mock.Anything, testPattern().Content).Return(nil, errors.New("openai down"))
+
+	// runGraphPipeline calls failJob (not failChunkJob) on pipeline failure.
+	// The chunk job has no PatternID, so failJob only calls MarkFailed.
+	// processChunkJob then sees errPipelineFailed and returns nil.
+	deps.jobRepo.On("MarkFailed", mock.Anything, testJobID, mock.Anything, 30*time.Second).Return(nil)
+
+	err := svc.ProcessJob(context.Background(), testChunkJob())
+
+	require.NoError(t, err, "pipeline failure should return nil when failJob records it successfully")
+	assertExpectations(t, deps)
+}
+
 // ---------- ReclaimStaleJobs ----------
 
 func TestReclaimStaleJobs(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 	deps.jobRepo.On("ReclaimStale", mock.Anything, 5*time.Minute).Return(int64(3), nil)
 
 	count, err := svc.ReclaimStaleJobs(context.Background())
@@ -877,7 +1106,7 @@ func TestReclaimStaleJobs(t *testing.T) {
 func TestReclaimStaleJobs_Error(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 	deps.jobRepo.On("ReclaimStale", mock.Anything, 5*time.Minute).Return(int64(0), errors.New("db error"))
 
 	count, err := svc.ReclaimStaleJobs(context.Background())
@@ -892,7 +1121,7 @@ func TestReclaimStaleJobs_Error(t *testing.T) {
 func TestCleanupCompletedJobs(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 	deps.jobRepo.On("DeleteCompleted", mock.Anything, 168*time.Hour).Return(int64(5), nil)
 
 	count, err := svc.CleanupCompletedJobs(context.Background())
@@ -905,7 +1134,7 @@ func TestCleanupCompletedJobs(t *testing.T) {
 func TestCleanupCompletedJobs_Error(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 	deps.jobRepo.On("DeleteCompleted", mock.Anything, 168*time.Hour).Return(int64(0), errors.New("db error"))
 
 	count, err := svc.CleanupCompletedJobs(context.Background())
@@ -920,7 +1149,7 @@ func TestCleanupCompletedJobs_Error(t *testing.T) {
 func TestCleanupFailedJobs(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 	deps.jobRepo.On("DeleteFailed", mock.Anything, 720*time.Hour).Return(int64(2), nil)
 
 	count, err := svc.CleanupFailedJobs(context.Background())
@@ -933,7 +1162,7 @@ func TestCleanupFailedJobs(t *testing.T) {
 func TestCleanupFailedJobs_Error(t *testing.T) {
 	t.Parallel()
 
-	svc, deps := newTestService()
+	svc, deps := newTestService(t)
 	deps.jobRepo.On("DeleteFailed", mock.Anything, 720*time.Hour).Return(int64(0), errors.New("db error"))
 
 	count, err := svc.CleanupFailedJobs(context.Background())

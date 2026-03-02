@@ -121,7 +121,7 @@ graph TB
 
 **Stores:**
 
-- Pattern content embeddings (1536 dimensions, OpenAI text-embedding-3-small)
+- Pattern chunk embeddings (one vector per H2 section, 1536 dimensions, OpenAI text-embedding-3-small)
 - Prompt embeddings for semantic search (generated at query time)
 
 **Why PGVector over Dedicated Vector DB:**
@@ -170,6 +170,7 @@ erDiagram
     AGENT ||--o{ PATTERN_AGENT_ASSOC : "associated with"
     PATTERN ||--o{ PATTERN_AGENT_ASSOC : "associated with"
     PATTERN ||--o{ ENRICHMENT_JOB : "processed by"
+    PATTERN ||--o{ PATTERN_CHUNKS : "split into"
     SKILL ||--o{ SKILL_FILE : "contains"
 
     AGENT {
@@ -185,8 +186,26 @@ erDiagram
         uuid id PK
         string name UK
         string description
-        text content "up to 10KB"
+        text content
         jsonb tags "array of strings"
+        string entity_type
+        string language
+        string domain
+        string version
+        jsonb related_patterns "array of strings"
+        enum enrichment_status "pending|enriched|failed"
+        text enrichment_error
+        timestamptz enriched_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    PATTERN_CHUNKS {
+        uuid id PK
+        uuid pattern_id FK
+        string section_title
+        int chunk_index
+        text content
         vector embedding "1536 dimensions"
         enum enrichment_status "pending|enriched|failed"
         text enrichment_error
@@ -203,7 +222,8 @@ erDiagram
 
     ENRICHMENT_JOB {
         uuid id PK
-        uuid pattern_id FK
+        uuid pattern_id FK "nullable"
+        uuid chunk_id FK "nullable"
         enum status "pending|processing|completed|failed"
         int attempts
         int max_attempts
@@ -245,7 +265,11 @@ Agent definitions stored as JSONB documents. See [ADR-003](00-architectural-deci
 
 #### Patterns
 
-Patterns use relational columns (not JSONB) for vector search and enrichment tracking. See [ADR-004](00-architectural-decisions.md#adr-004) for the design rationale.
+Patterns use relational columns (not JSONB) for enrichment tracking and metadata filtering. See [ADR-004](00-architectural-decisions.md#adr-004) for the design rationale.
+
+**Schema:** Columns include `id`, `name`, `description`, `content`, `tags` (JSONB), `entity_type`, `language`, `domain`, `version`, `related_patterns` (JSONB), `enrichment_status`, `enrichment_error`, `enriched_at`, `created_at`, `updated_at`. The `embedding` column was removed in migration 000009; vector embeddings now live in `pattern_chunks`.
+
+**Pattern chunks:** Each pattern is split at H2 headings into one or more rows in `pattern_chunks`. Each chunk holds its own `embedding vector(1536)` for section-level semantic search. If a pattern has no H2 headings it is stored as a single chunk. The `enrichment_status` on the pattern reflects aggregate chunk status: a pattern is `enriched` when all its chunks are enriched.
 
 **Enrichment States:**
 
@@ -273,7 +297,7 @@ Skills may have child files (scripts, references, assets) stored in the `skill_f
 
 Background processing queue for pattern enrichment. See [ADR-004](00-architectural-decisions.md#adr-004) for the queue design.
 
-**Schema:** Postgres-backed queue using `FOR UPDATE SKIP LOCKED` for safe concurrent processing. Retry with exponential backoff (max 3 attempts). CASCADE delete on parent pattern.
+**Schema:** Postgres-backed queue using `FOR UPDATE SKIP LOCKED` for safe concurrent processing. Retry with exponential backoff (max 3 attempts). `pattern_id` is nullable (was NOT NULL prior to migration 000009). `chunk_id` (FK to `pattern_chunks.id`, nullable) is set for chunk-level enrichment jobs; `pattern_id` is set for legacy jobs. CASCADE delete on parent pattern or chunk.
 
 **Uniqueness:** A partial unique index prevents duplicate pending or processing jobs for the same pattern:
 
@@ -307,39 +331,31 @@ CREATE UNIQUE INDEX idx_enrichment_jobs_unique_pending
 
 **Recommended Index (MVP scale):**
 
-See [Index Strategies](#index-strategies) for the IVFFlat index definition.
+See [Index Strategies](#index-strategies) for the IVFFlat index definition. The index is now on `pattern_chunks.embedding`, not `patterns.embedding`.
 
 **Similarity Search Query:**
 
 ```sql
--- search_patterns: semantic search with optional tag and agent filtering
+-- search_patterns: chunk-level semantic search
 -- Parameters:
---   $1 = query embedding vector (generated at query time from the search query)
---   $2 = similarity threshold (default 0.7, range 0.0-1.0)
+--   $1 = query embedding vector
+--   $2 = similarity threshold (default 0.7)
 --   $3 = result limit (default 10, max 50)
---   $4 = tags filter (JSONB array, e.g. '["go","error-handling"]'::jsonb, or NULL to skip)
---   $5 = agent name filter (e.g. 'go-software-engineer', or NULL to skip)
-SELECT p.id, p.name, p.description, p.content, p.tags,
-       1 - (p.embedding <=> $1::vector) AS similarity
-FROM patterns p
-WHERE p.enrichment_status = 'enriched'
-  AND 1 - (p.embedding <=> $1::vector) > $2                     -- similarity threshold
-  -- Tag filter: the @> operator tests whether the left JSONB value contains the right.
-  -- '["go","testing"]'::jsonb @> '["go"]'::jsonb is true, so a pattern tagged with
-  -- both "go" and "testing" matches a filter for ["go"]. When multiple tags are
-  -- supplied, @> enforces conjunctive (AND) semantics: the pattern must have ALL of
-  -- them. This clause uses the GIN index idx_patterns_tags.
+--   $4 = tags filter (JSONB array or NULL)
+--   $5 = language filter (text or NULL)
+--   $6 = domain filter (text or NULL)
+SELECT pc.id, pc.pattern_id, p.name AS pattern_name,
+       p.entity_type, p.language, p.domain, p.tags,
+       pc.section_title, pc.chunk_index, pc.content,
+       1 - (pc.embedding <=> $1::vector) AS similarity
+FROM pattern_chunks pc
+JOIN patterns p ON p.id = pc.pattern_id
+WHERE pc.enrichment_status = 'enriched'
+  AND 1 - (pc.embedding <=> $1::vector) > $2
   AND ($4::jsonb IS NULL OR p.tags @> $4::jsonb)
-  -- Agent filter: restrict results to patterns associated with the named agent.
-  -- Uses a subquery against pattern_agent_associations joined to agents to resolve
-  -- the agent name to its UUID, avoiding row duplication from multiple associations.
-  AND ($5::text IS NULL OR EXISTS (
-      SELECT 1 FROM pattern_agent_associations paa
-      JOIN agents a ON a.id = paa.agent_id
-      WHERE paa.pattern_id = p.id
-        AND a.name = $5
-  ))
-ORDER BY p.embedding <=> $1::vector
+  AND ($5::text IS NULL OR p.language = $5)
+  AND ($6::text IS NULL OR p.domain = $6)
+ORDER BY pc.embedding <=> $1::vector
 LIMIT $3;
 ```
 
@@ -475,13 +491,17 @@ sequenceDiagram
 
     Note over WORKER,PG: Async Processing
     WORKER->>PG: Claim job (FOR UPDATE SKIP LOCKED)
-    WORKER->>OPENAI: Generate embedding
-    OPENAI-->>WORKER: vector(1536)
-    WORKER->>PGV: UPDATE patterns SET embedding
-    WORKER->>OPENAI: Extract entities
+    WORKER->>PG: Load pattern content
+    WORKER->>WORKER: Split content at H2 headings into chunks
+    loop For each chunk
+        WORKER->>OPENAI: Generate chunk embedding
+        OPENAI-->>WORKER: vector(1536)
+        WORKER->>PGV: Store chunk embedding in pattern_chunks
+    end
+    WORKER->>OPENAI: Extract entities from full content (LLM)
     OPENAI-->>WORKER: concepts, technologies
     WORKER->>NEO: CREATE/MERGE nodes and relationships
-    Note over WORKER,NEO: Step 6: Compute RELATED_TO edges between<br/>this pattern and others sharing concepts
+    Note over WORKER,NEO: Compute RELATED_TO edges between<br/>this pattern and others sharing concepts
     WORKER->>NEO: MERGE RELATED_TO edges (shared-concept patterns)
     WORKER->>PG: UPDATE pattern status = 'enriched'
     WORKER->>PG: UPDATE job status = 'completed'
@@ -519,9 +539,9 @@ sequenceDiagram
     CC->>MCP: search_patterns(query)
     MCP->>OPENAI: Generate query embedding
     OPENAI-->>MCP: vector(1536)
-    MCP->>PGV: Semantic search (PGVector)
-    PGV-->>MCP: Similar patterns
-    MCP-->>CC: Pattern results
+    MCP->>PGV: Chunk-level semantic search (pattern_chunks)
+    PGV-->>MCP: ChunkMatch results
+    MCP-->>CC: Chunk results (section_title, pattern metadata)
 ```
 
 ##### Find Related Patterns (MCP)
@@ -633,7 +653,7 @@ graph LR
     end
 
     PG -->|"Sync on write"| NEO
-    PG -->|"Embedding column"| PGV
+    PG -->|"Chunk embeddings"| PGV
 
     style PG fill:#9f9
     style NEO fill:#ff9
@@ -668,8 +688,8 @@ For JSONB document tables (agents, skills, skill_files):
 
 For relational tables (patterns):
 
-- Pattern content size enforced (10KB max)
 - JSONB tags validated as arrays
+- `language`, `domain` validated against allowed values; `entity_type` validated against kebab-case pattern
 
 ### Migration Strategy
 
@@ -701,7 +721,9 @@ src/migrations/
     ├── 000007_create_skills.up.sql
     ├── 000007_create_skills.down.sql
     ├── 000008_create_skill_files.up.sql
-    └── 000008_create_skill_files.down.sql
+    ├── 000008_create_skill_files.down.sql
+    ├── 000009_pattern_schema_chunks.up.sql
+    └── 000009_pattern_schema_chunks.down.sql
 ```
 
 **Version Tracking:**
@@ -777,21 +799,24 @@ migrate -path src/migrations/postgres -database "$DB_URL" goto 5
 
 **PostgreSQL Indexes:**
 
-| Index                             | Table                      | Column(s)                              | Type                | Purpose                       |
-| --------------------------------- | -------------------------- | -------------------------------------- | ------------------- | ----------------------------- |
-| `idx_patterns_embedding`   | patterns                   | `embedding`                            | IVFFlat (lists=100) | Vector similarity search      |
-| `idx_patterns_enriched`           | patterns                   | `id` WHERE status='enriched'           | btree (partial)     | Filter to searchable patterns |
-| `idx_patterns_tags`               | patterns                   | `tags`                                 | GIN                 | Tag containment queries       |
-| `idx_patterns_search`             | patterns                   | `to_tsvector(name \|\| description)`   | GIN                 | Full-text search              |
-| `idx_pattern_agent_assoc_agent`   | pattern_agent_associations | `agent_id`                             | btree               | FK join performance           |
-| `idx_pattern_agent_assoc_pattern` | pattern_agent_associations | `pattern_id`                           | btree               | FK join performance           |
-| `idx_enrichment_jobs_pattern`     | enrichment_jobs            | `pattern_id`                           | btree               | FK join performance           |
-| `idx_enrichment_jobs_pending`     | enrichment_jobs            | `scheduled_for` WHERE status='pending' | btree (partial)     | Worker job polling            |
-| `idx_enrichment_jobs_processing`  | enrichment_jobs            | `started_at` WHERE status='processing' | btree (partial)     | Timeout detection             |
-| `idx_enrichment_jobs_unique_pending` | enrichment_jobs         | `pattern_id` WHERE status IN ('pending','processing') | unique (partial) | Prevent duplicate pending/processing jobs per pattern |
-| `idx_agents_definition`           | agents                     | `definition`                           | GIN                 | JSONB queries                 |
-| `idx_skills_definition`           | skills                     | `definition`                           | GIN                 | JSONB queries                 |
-| `idx_skill_files_skill_id`        | skill_files                | `skill_id`                             | btree               | FK lookup                     |
+| Index                                | Table                      | Column(s)                              | Type                | Purpose                                               |
+| ------------------------------------ | -------------------------- | -------------------------------------- | ------------------- | ----------------------------------------------------- |
+| `idx_pattern_chunks_embedding`       | pattern_chunks             | `embedding`                            | IVFFlat (lists=100) | Chunk vector search                                   |
+| `idx_patterns_language`              | patterns                   | `language`                             | btree               | Metadata filtering                                    |
+| `idx_patterns_domain`                | patterns                   | `domain`                               | btree               | Metadata filtering                                    |
+| `idx_patterns_entity_type`           | patterns                   | `entity_type`                          | btree               | Metadata filtering                                    |
+| `idx_patterns_enriched`              | patterns                   | `id` WHERE status='enriched'           | btree (partial)     | Filter to searchable patterns                         |
+| `idx_patterns_tags`                  | patterns                   | `tags`                                 | GIN                 | Tag containment queries                               |
+| `idx_patterns_search`                | patterns                   | `to_tsvector(name \|\| description)`   | GIN                 | Full-text search                                      |
+| `idx_pattern_agent_assoc_agent`      | pattern_agent_associations | `agent_id`                             | btree               | FK join performance                                   |
+| `idx_pattern_agent_assoc_pattern`    | pattern_agent_associations | `pattern_id`                           | btree               | FK join performance                                   |
+| `idx_enrichment_jobs_pattern`        | enrichment_jobs            | `pattern_id`                           | btree               | FK join performance                                   |
+| `idx_enrichment_jobs_pending`        | enrichment_jobs            | `scheduled_for` WHERE status='pending' | btree (partial)     | Worker job polling                                    |
+| `idx_enrichment_jobs_processing`     | enrichment_jobs            | `started_at` WHERE status='processing' | btree (partial)     | Timeout detection                                     |
+| `idx_enrichment_jobs_unique_pending` | enrichment_jobs            | `pattern_id` WHERE status IN ('pending','processing') | unique (partial) | Prevent duplicate pending/processing jobs per pattern |
+| `idx_agents_definition`              | agents                     | `definition`                           | GIN                 | JSONB queries                                         |
+| `idx_skills_definition`              | skills                     | `definition`                           | GIN                 | JSONB queries                                         |
+| `idx_skill_files_skill_id`           | skill_files                | `skill_id`                             | btree               | FK lookup                                             |
 
 > **Full index DDL:** See [Data Storage](../design/data-storage.md) for CREATE INDEX statements.
 
@@ -804,13 +829,14 @@ migrate -path src/migrations/postgres -database "$DB_URL" goto 5
 SET ivfflat.probes = 10;  -- Increase for better recall
 
 EXPLAIN ANALYZE
-SELECT id, name, content, 1 - (embedding <=> $1::vector) AS similarity
-FROM patterns
-WHERE enrichment_status = 'enriched'
-ORDER BY embedding <=> $1::vector
+SELECT pc.id, pc.pattern_id, pc.section_title, pc.content,
+       1 - (pc.embedding <=> $1::vector) AS similarity
+FROM pattern_chunks pc
+WHERE pc.enrichment_status = 'enriched'
+ORDER BY pc.embedding <=> $1::vector
 LIMIT 5;
 
--- Expected: Index Scan using idx_patterns_embedding
+-- Expected: Index Scan using idx_pattern_chunks_embedding
 ```
 
 **Skills List Query:**
@@ -936,13 +962,19 @@ WHERE NOT EXISTS {
 DELETE p;
 ```
 
-**Stale Embeddings:**
+**Stale Chunk Embeddings:**
 
 ```sql
--- Clear embeddings for failed enrichment (allow retry)
+-- Remove chunk data for failed enrichment (allow retry)
+DELETE FROM pattern_chunks
+WHERE pattern_id IN (
+    SELECT id FROM patterns
+    WHERE enrichment_status = 'failed'
+      AND updated_at < NOW() - INTERVAL '24 hours'
+);
+
 UPDATE patterns
-SET embedding = NULL,
-    enrichment_status = 'pending',
+SET enrichment_status = 'pending',
     enrichment_error = NULL
 WHERE enrichment_status = 'failed'
   AND updated_at < NOW() - INTERVAL '24 hours';

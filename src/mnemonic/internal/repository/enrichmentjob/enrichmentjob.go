@@ -12,8 +12,11 @@ type Job struct {
 	// ID is the unique identifier for the job.
 	ID uuid.UUID `db:"id"`
 
-	// PatternID is the ID of the pattern being enriched.
-	PatternID uuid.UUID `db:"pattern_id"`
+	// PatternID references the pattern to enrich. Nil for chunk-based jobs.
+	PatternID *uuid.UUID `db:"pattern_id"`
+
+	// ChunkID references the chunk to enrich. Nil for legacy pattern-level jobs.
+	ChunkID *uuid.UUID `db:"chunk_id"`
 
 	// Status is the job processing state.
 	// Valid values: pending, processing, completed, failed
@@ -109,4 +112,7 @@ type Filter struct {
 
 	// PatternID filters by the associated pattern ID.
 	PatternID *uuid.UUID
+
+	// ChunkID filters jobs by chunk_id.
+	ChunkID *uuid.UUID
 }

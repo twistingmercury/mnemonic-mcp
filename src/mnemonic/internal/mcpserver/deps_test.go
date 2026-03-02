@@ -134,8 +134,8 @@ func TestSearchPatterns_DelegatesToSearchService(t *testing.T) {
 		Query:            "error handling",
 		TotalCandidates:  3,
 		SearchDurationMs: 42,
-		Matches: []*patternrepo.Match{
-			{Pattern: &patternrepo.Pattern{Name: "go-error-handling"}, Similarity: 0.95},
+		Matches: []*searchsvc.ChunkMatch{
+			{PatternName: "go-error-handling", Similarity: 0.95},
 		},
 	}
 

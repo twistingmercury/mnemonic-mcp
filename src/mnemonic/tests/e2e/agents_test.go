@@ -1038,8 +1038,11 @@ func TestDeleteAgent_CascadesPatternAssociations(t *testing.T) {
 
 	// Create a pattern (returns 202 Accepted).
 	patternPayload := PatternCreate{
-		Name:    GenerateUniqueName("ptn"),
-		Content: "Pattern content for cascade deletion test.",
+		Name:       GenerateUniqueName("ptn"),
+		Content:    "Pattern content for cascade deletion test.",
+		EntityType: "pattern-type",
+		Language:   "agnostic",
+		Domain:     "agnostic",
 	}
 	patternResp, err := client.Post("/v1/api/patterns", patternPayload)
 	if err != nil {

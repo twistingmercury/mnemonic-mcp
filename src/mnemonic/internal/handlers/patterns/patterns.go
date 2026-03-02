@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -18,25 +19,32 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/twistingmercury/mnemonic/internal/handlers"
+	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
+	"github.com/twistingmercury/mnemonic/internal/service"
 	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
 )
 
-// patternNameRe is the compiled pattern for valid pattern names.
-var patternNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+// kebabCaseRe matches lowercase kebab-case identifiers (e.g., "go-pattern", "go-error-handling").
+var kebabCaseRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+
+var allowedLanguages = []string{"go", "agnostic", "shell", "python", "typescript", "sql"}
+var allowedDomains = []string{"backend", "api-design", "testing", "frontend", "infrastructure", "data", "agnostic"}
 
 // Handler provides HTTP handlers for pattern CRUD and search operations.
 type Handler struct {
 	patternSvc patternsvc.Service
 	searchSvc  searchsvc.Service
+	chunkRepo  chunkrepo.Repository
 }
 
 // New creates a new pattern Handler backed by the given services.
-func New(patternSvc patternsvc.Service, searchSvc searchsvc.Service) *Handler {
+func New(patternSvc patternsvc.Service, searchSvc searchsvc.Service, chunkRepo chunkrepo.Repository) *Handler {
 	return &Handler{
 		patternSvc: patternSvc,
 		searchSvc:  searchSvc,
+		chunkRepo:  chunkRepo,
 	}
 }
 
@@ -51,6 +59,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.DELETE("/patterns/:id", h.Delete)
 	rg.GET("/patterns/:id/agents", h.GetAgentAssociations)
 	rg.PUT("/patterns/:id/agents", h.SetAgentAssociations)
+	rg.GET("/patterns/:id/chunks", h.GetChunks)
 }
 
 // --- Request/Response Types ---
@@ -66,6 +75,11 @@ type patternCreateRequest struct {
 	Content           string               `json:"content"`
 	Tags              []string             `json:"tags"`
 	AgentAssociations []associationRequest `json:"agent_associations"`
+	EntityType        string               `json:"entity_type"`
+	Language          string               `json:"language"`
+	Domain            string               `json:"domain"`
+	Version           *string              `json:"version"`
+	RelatedPatterns   []string             `json:"related_patterns"`
 }
 
 type patternUpdateRequest struct {
@@ -74,6 +88,11 @@ type patternUpdateRequest struct {
 	Content           string               `json:"content"`
 	Tags              []string             `json:"tags"`
 	AgentAssociations []associationRequest `json:"agent_associations"`
+	EntityType        string               `json:"entity_type"`
+	Language          string               `json:"language"`
+	Domain            string               `json:"domain"`
+	Version           *string              `json:"version"`
+	RelatedPatterns   []string             `json:"related_patterns"`
 }
 
 type associationResponse struct {
@@ -98,17 +117,34 @@ type graphContextResponse struct {
 	Concepts        []conceptResponse        `json:"concepts"`
 }
 
+type chunkSummary struct {
+	ChunkIndex       int    `json:"chunk_index"`
+	SectionTitle     string `json:"section_title"`
+	EnrichmentStatus string `json:"enrichment_status"`
+}
+
+type chunkListResponse struct {
+	Chunks []chunkSummary `json:"chunks"`
+	Count  int            `json:"count"`
+}
+
 type patternResponse struct {
 	ID               string                `json:"id"`
 	Name             string                `json:"name"`
 	Description      *string               `json:"description"`
 	Content          string                `json:"content"`
 	Tags             []string              `json:"tags"`
+	EntityType       string                `json:"entity_type"`
+	Language         string                `json:"language"`
+	Domain           string                `json:"domain"`
+	Version          *string               `json:"version"`
+	RelatedPatterns  []string              `json:"related_patterns"`
 	AgentAssociation []associationResponse `json:"agent_associations,omitempty"`
 	EnrichmentStatus string                `json:"enrichment_status"`
 	EnrichmentError  *string               `json:"enrichment_error"`
 	EnrichedAt       *string               `json:"enriched_at"`
 	Graph            *graphContextResponse `json:"graph"`
+	Chunks           []chunkSummary        `json:"chunks,omitempty"`
 	CreatedAt        string                `json:"created_at"`
 	UpdatedAt        string                `json:"updated_at"`
 }
@@ -137,13 +173,16 @@ type associationsResponse struct {
 }
 
 type searchResultResponse struct {
-	ID               string                `json:"id"`
-	Name             string                `json:"name"`
-	Description      *string               `json:"description"`
-	Content          string                `json:"content"`
-	Tags             []string              `json:"tags"`
-	Similarity       float64               `json:"similarity"`
-	AgentAssociation []associationResponse `json:"agent_associations,omitempty"`
+	PatternID    string   `json:"pattern_id"`
+	PatternName  string   `json:"pattern_name"`
+	EntityType   string   `json:"entity_type"`
+	Language     string   `json:"language"`
+	Domain       string   `json:"domain"`
+	Tags         []string `json:"tags"`
+	SectionTitle string   `json:"section_title"`
+	ChunkIndex   int      `json:"chunk_index"`
+	Content      string   `json:"content"`
+	Similarity   float64  `json:"similarity"`
 }
 
 type searchMetadata struct {
@@ -165,12 +204,22 @@ func toPatternResponse(p *patternrepo.Pattern, graph *patternsvc.GraphContext, a
 		tags = []string{}
 	}
 
+	relatedPatterns := p.RelatedPatterns
+	if relatedPatterns == nil {
+		relatedPatterns = []string{}
+	}
+
 	resp := patternResponse{
 		ID:               p.ID.String(),
 		Name:             p.Name,
 		Description:      p.Description,
 		Content:          p.Content,
 		Tags:             tags,
+		EntityType:       p.EntityType,
+		Language:         p.Language,
+		Domain:           p.Domain,
+		Version:          p.Version,
+		RelatedPatterns:  relatedPatterns,
 		AgentAssociation: assocs,
 		EnrichmentStatus: p.EnrichmentStatus,
 		EnrichmentError:  p.EnrichmentError,
@@ -251,7 +300,7 @@ func toAssociationInputs(reqs []associationRequest) []patternsvc.AssociationInpu
 
 // validatePatternFields checks field-level constraints for create/update and
 // returns a non-nil slice of FieldErrors when any constraint is violated.
-func validatePatternFields(name, content string, description *string, tags []string) []handlers.FieldError {
+func validatePatternFields(name, content string, description *string, tags []string, entityType, language, domain string) []handlers.FieldError {
 	var errs []handlers.FieldError
 
 	// name: must match ^[a-z][a-z0-9-]*$, length 1-128
@@ -260,7 +309,7 @@ func validatePatternFields(name, content string, description *string, tags []str
 		errs = append(errs, handlers.FieldError{Field: "name", Code: "REQUIRED", Message: "name is required"})
 	} else if nameLen > 128 {
 		errs = append(errs, handlers.FieldError{Field: "name", Code: "MAX_LENGTH", Message: "name must be 128 characters or fewer"})
-	} else if !patternNameRe.MatchString(name) {
+	} else if !kebabCaseRe.MatchString(name) {
 		errs = append(errs, handlers.FieldError{Field: "name", Code: "INVALID_FORMAT", Message: "name must match ^[a-z][a-z0-9-]*$"})
 	}
 
@@ -282,17 +331,42 @@ func validatePatternFields(name, content string, description *string, tags []str
 		errs = append(errs, handlers.FieldError{Field: "tags", Code: "MAX_ITEMS", Message: "tags must contain 20 items or fewer"})
 	}
 
+	// entity_type: required, max 100 chars, must match ^[a-z][a-z0-9-]*$
+	entityTypeLen := utf8.RuneCountInString(entityType)
+	if entityTypeLen == 0 {
+		errs = append(errs, handlers.FieldError{Field: "entity_type", Code: "REQUIRED", Message: "entity_type is required"})
+	} else if entityTypeLen > 100 {
+		errs = append(errs, handlers.FieldError{Field: "entity_type", Code: "MAX_LENGTH", Message: "entity_type must be 100 characters or fewer"})
+	} else if !kebabCaseRe.MatchString(entityType) {
+		errs = append(errs, handlers.FieldError{Field: "entity_type", Code: "INVALID_FORMAT", Message: "entity_type must match ^[a-z][a-z0-9-]*$"})
+	}
+
+	// language: required, must be in allowedLanguages
+	if language == "" {
+		errs = append(errs, handlers.FieldError{Field: "language", Code: "REQUIRED", Message: "language is required"})
+	} else if !slices.Contains(allowedLanguages, language) {
+		errs = append(errs, handlers.FieldError{Field: "language", Code: "INVALID_VALUE", Message: "language must be one of: go, agnostic, shell, python, typescript, sql"})
+	}
+
+	// domain: required, must be in allowedDomains
+	if domain == "" {
+		errs = append(errs, handlers.FieldError{Field: "domain", Code: "REQUIRED", Message: "domain is required"})
+	} else if !slices.Contains(allowedDomains, domain) {
+		errs = append(errs, handlers.FieldError{Field: "domain", Code: "INVALID_VALUE", Message: "domain must be one of: backend, api-design, testing, frontend, infrastructure, data, agnostic"})
+	}
+
 	return errs
 }
 
 // validateAssociationRelevance checks that each association has a relevance value
 // in the range [0.0, 1.0] and returns FieldErrors for any that are out of range.
-func validateAssociationRelevance(assocs []associationRequest) []handlers.FieldError {
+// fieldPrefix is the JSON field name used in error paths (e.g., "agent_associations" or "associations").
+func validateAssociationRelevance(assocs []associationRequest, fieldPrefix string) []handlers.FieldError {
 	var errs []handlers.FieldError
 	for i, assoc := range assocs {
 		if assoc.Relevance < 0.0 || assoc.Relevance > 1.0 {
 			errs = append(errs, handlers.FieldError{
-				Field:   fmt.Sprintf("associations[%d].relevance", i),
+				Field:   fmt.Sprintf("%s[%d].relevance", fieldPrefix, i),
 				Code:    "INVALID_VALUE",
 				Message: "relevance must be a number between 0 and 1",
 			})
@@ -311,12 +385,12 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	if fieldErrs := validatePatternFields(req.Name, req.Content, req.Description, req.Tags); len(fieldErrs) > 0 {
+	if fieldErrs := validatePatternFields(req.Name, req.Content, req.Description, req.Tags, req.EntityType, req.Language, req.Domain); len(fieldErrs) > 0 {
 		handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
 		return
 	}
 
-	if assocErrs := validateAssociationRelevance(req.AgentAssociations); len(assocErrs) > 0 {
+	if assocErrs := validateAssociationRelevance(req.AgentAssociations, "agent_associations"); len(assocErrs) > 0 {
 		handlers.RespondValidationError(c, "The request body contains invalid fields", assocErrs)
 		return
 	}
@@ -327,6 +401,9 @@ func (h *Handler) Create(c *gin.Context) {
 	if req.AgentAssociations == nil {
 		req.AgentAssociations = []associationRequest{}
 	}
+	if req.RelatedPatterns == nil {
+		req.RelatedPatterns = []string{}
+	}
 
 	pattern, err := h.patternSvc.Create(c.Request.Context(), patternsvc.CreateInput{
 		Name:              req.Name,
@@ -334,6 +411,11 @@ func (h *Handler) Create(c *gin.Context) {
 		Content:           req.Content,
 		Tags:              req.Tags,
 		AgentAssociations: toAssociationInputs(req.AgentAssociations),
+		EntityType:        req.EntityType,
+		Language:          req.Language,
+		Domain:            req.Domain,
+		Version:           req.Version,
+		RelatedPatterns:   req.RelatedPatterns,
 	})
 	if err != nil {
 		handlers.RespondError(c, err)
@@ -387,6 +469,9 @@ func (h *Handler) List(c *gin.Context) {
 	filter := patternrepo.Filter{
 		Tags:        tags,
 		SearchQuery: c.Query("search"),
+		Language:    c.Query("language"),
+		Domain:      c.Query("domain"),
+		EntityType:  c.Query("entity_type"),
 	}
 
 	patterns, _, err := h.patternSvc.List(c.Request.Context(), filter, patternsvc.ListOptions{
@@ -482,12 +567,12 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	if fieldErrs := validatePatternFields(req.Name, req.Content, req.Description, req.Tags); len(fieldErrs) > 0 {
+	if fieldErrs := validatePatternFields(req.Name, req.Content, req.Description, req.Tags, req.EntityType, req.Language, req.Domain); len(fieldErrs) > 0 {
 		handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
 		return
 	}
 
-	if assocErrs := validateAssociationRelevance(req.AgentAssociations); len(assocErrs) > 0 {
+	if assocErrs := validateAssociationRelevance(req.AgentAssociations, "agent_associations"); len(assocErrs) > 0 {
 		handlers.RespondValidationError(c, "The request body contains invalid fields", assocErrs)
 		return
 	}
@@ -498,6 +583,9 @@ func (h *Handler) Update(c *gin.Context) {
 	if req.AgentAssociations == nil {
 		req.AgentAssociations = []associationRequest{}
 	}
+	if req.RelatedPatterns == nil {
+		req.RelatedPatterns = []string{}
+	}
 
 	pattern, err := h.patternSvc.Update(c.Request.Context(), id, patternsvc.UpdateInput{
 		Name:              req.Name,
@@ -505,13 +593,35 @@ func (h *Handler) Update(c *gin.Context) {
 		Content:           req.Content,
 		Tags:              req.Tags,
 		AgentAssociations: toAssociationInputs(req.AgentAssociations),
+		EntityType:        req.EntityType,
+		Language:          req.Language,
+		Domain:            req.Domain,
+		Version:           req.Version,
+		RelatedPatterns:   req.RelatedPatterns,
 	})
 	if err != nil {
 		handlers.RespondError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, toPatternResponse(pattern, nil, nil))
+	ctx := c.Request.Context()
+	pgAssocs, err := h.patternSvc.GetAgentAssociations(ctx, id)
+	if err != nil {
+		handlers.RespondError(c, err)
+		return
+	}
+
+	agentIDs := make([]uuid.UUID, len(pgAssocs))
+	for i, a := range pgAssocs {
+		agentIDs[i] = a.AgentID
+	}
+	names, err := h.patternSvc.ResolveAgentNames(ctx, agentIDs)
+	if err != nil {
+		handlers.RespondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, toPatternResponse(pattern, nil, toAssociationResponses(pgAssocs, names)))
 }
 
 // Delete handles DELETE /v1/api/patterns/:id.
@@ -577,7 +687,7 @@ func (h *Handler) SetAgentAssociations(c *gin.Context) {
 		return
 	}
 
-	if assocErrs := validateAssociationRelevance(req.Associations); len(assocErrs) > 0 {
+	if assocErrs := validateAssociationRelevance(req.Associations, "associations"); len(assocErrs) > 0 {
 		handlers.RespondValidationError(c, "The request body contains invalid fields", assocErrs)
 		return
 	}
@@ -602,6 +712,35 @@ func (h *Handler) SetAgentAssociations(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, associationsResponse{Associations: assocs})
+}
+
+// GetChunks handles GET /v1/api/patterns/:id/chunks.
+func (h *Handler) GetChunks(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		handlers.RespondValidationError(c, "Invalid pattern ID format", []handlers.FieldError{
+			{Field: "id", Code: "INVALID_FORMAT", Message: "id must be a valid UUID"},
+		})
+		return
+	}
+	if h.chunkRepo == nil {
+		handlers.RespondError(c, fmt.Errorf("%w: chunk repository not configured", service.ErrServiceUnavailable))
+		return
+	}
+	chunks, err := h.chunkRepo.ListByPatternID(c.Request.Context(), id)
+	if err != nil {
+		handlers.RespondError(c, err)
+		return
+	}
+	summaries := make([]chunkSummary, len(chunks))
+	for i, ch := range chunks {
+		summaries[i] = chunkSummary{
+			ChunkIndex:       ch.ChunkIndex,
+			SectionTitle:     ch.SectionTitle,
+			EnrichmentStatus: ch.EnrichmentStatus,
+		}
+	}
+	c.JSON(http.StatusOK, chunkListResponse{Chunks: summaries, Count: len(summaries)})
 }
 
 // Search handles GET /v1/api/patterns/search.
@@ -656,6 +795,8 @@ func (h *Handler) Search(c *gin.Context) {
 		Threshold: threshold,
 		Tags:      tags,
 		AgentName: c.Query("agent"),
+		Language:  c.Query("language"),
+		Domain:    c.Query("domain"),
 	})
 	if err != nil {
 		handlers.RespondError(c, err)
@@ -664,17 +805,21 @@ func (h *Handler) Search(c *gin.Context) {
 
 	results := make([]searchResultResponse, len(result.Matches))
 	for i, m := range result.Matches {
-		matchTags := m.Pattern.Tags
+		matchTags := m.Tags
 		if matchTags == nil {
 			matchTags = []string{}
 		}
 		results[i] = searchResultResponse{
-			ID:          m.Pattern.ID.String(),
-			Name:        m.Pattern.Name,
-			Description: m.Pattern.Description,
-			Content:     m.Pattern.Content,
-			Tags:        matchTags,
-			Similarity:  m.Similarity,
+			PatternID:    m.PatternID.String(),
+			PatternName:  m.PatternName,
+			EntityType:   m.EntityType,
+			Language:     m.Language,
+			Domain:       m.Domain,
+			Tags:         matchTags,
+			SectionTitle: m.SectionTitle,
+			ChunkIndex:   m.ChunkIndex,
+			Content:      m.Content,
+			Similarity:   m.Similarity,
 		}
 	}
 

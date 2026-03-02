@@ -100,9 +100,49 @@ func testLogger() zerolog.Logger {
 
 // newTestJob creates a Job with a random ID and pattern ID.
 func newTestJob() *enrichmentjob.Job {
+	pid := uuid.New()
 	return &enrichmentjob.Job{
 		ID:        uuid.New(),
-		PatternID: uuid.New(),
+		PatternID: &pid,
+		Status:    string(enrichmentjob.StatusProcessing),
+		Attempts:  1,
+	}
+}
+
+// newPatternOnlyJob creates a Job with PatternID set and ChunkID nil.
+// This represents a legacy pattern-level enrichment job.
+func newPatternOnlyJob() *enrichmentjob.Job {
+	pid := uuid.New()
+	return &enrichmentjob.Job{
+		ID:        uuid.New(),
+		PatternID: &pid,
+		ChunkID:   nil,
+		Status:    string(enrichmentjob.StatusProcessing),
+		Attempts:  1,
+	}
+}
+
+// newChunkOnlyJob creates a Job with ChunkID set and PatternID nil.
+// This represents a chunk-only enrichment job.
+func newChunkOnlyJob() *enrichmentjob.Job {
+	cid := uuid.New()
+	return &enrichmentjob.Job{
+		ID:        uuid.New(),
+		PatternID: nil,
+		ChunkID:   &cid,
+		Status:    string(enrichmentjob.StatusProcessing),
+		Attempts:  1,
+	}
+}
+
+// newBothIDsJob creates a Job with both PatternID and ChunkID set.
+func newBothIDsJob() *enrichmentjob.Job {
+	pid := uuid.New()
+	cid := uuid.New()
+	return &enrichmentjob.Job{
+		ID:        uuid.New(),
+		PatternID: &pid,
+		ChunkID:   &cid,
 		Status:    string(enrichmentjob.StatusProcessing),
 		Attempts:  1,
 	}
@@ -524,6 +564,103 @@ func TestGracefulDrainStopsClaimingNewJobs(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not return within expected time")
 	}
+}
+
+// --- Nil-pointer guard tests for PatternID / ChunkID ---
+
+// TestRunWorkerPatternOnlyJobNoPanic verifies that a job with PatternID set and
+// ChunkID nil is processed without panicking. This is the pre-existing "pattern
+// level" job shape.
+func TestRunWorkerPatternOnlyJobNoPanic(t *testing.T) {
+	t.Parallel()
+
+	svc := new(mockService)
+	job := newPatternOnlyJob()
+
+	var processed atomic.Bool
+
+	svc.On("ClaimNextJob", mock.Anything).Return(job, nil).Once()
+	svc.On("ClaimNextJob", mock.Anything).Return(nil, nil).Maybe()
+	svc.On("ProcessJob", mock.Anything, job).Return(nil).Once().Run(func(_ mock.Arguments) {
+		processed.Store(true)
+	})
+	svc.On("ReclaimStaleJobs", mock.Anything).Return(int64(0), nil).Maybe()
+	svc.On("CleanupCompletedJobs", mock.Anything).Return(int64(0), nil).Maybe()
+	svc.On("CleanupFailedJobs", mock.Anything).Return(int64(0), nil).Maybe()
+
+	w := enricher.New(svc, testConfig(1), testLogger())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	assert.NotPanics(t, func() {
+		err := w.Run(ctx)
+		assert.NoError(t, err)
+	})
+	assert.True(t, processed.Load(), "pattern-only job should have been processed")
+}
+
+// TestRunWorkerChunkOnlyJobNoPanic verifies that a job with ChunkID set and
+// PatternID nil is processed without panicking. This is the chunk-only job
+// shape that was previously causing a nil pointer dereference.
+func TestRunWorkerChunkOnlyJobNoPanic(t *testing.T) {
+	t.Parallel()
+
+	svc := new(mockService)
+	job := newChunkOnlyJob()
+
+	var processed atomic.Bool
+
+	svc.On("ClaimNextJob", mock.Anything).Return(job, nil).Once()
+	svc.On("ClaimNextJob", mock.Anything).Return(nil, nil).Maybe()
+	svc.On("ProcessJob", mock.Anything, job).Return(nil).Once().Run(func(_ mock.Arguments) {
+		processed.Store(true)
+	})
+	svc.On("ReclaimStaleJobs", mock.Anything).Return(int64(0), nil).Maybe()
+	svc.On("CleanupCompletedJobs", mock.Anything).Return(int64(0), nil).Maybe()
+	svc.On("CleanupFailedJobs", mock.Anything).Return(int64(0), nil).Maybe()
+
+	w := enricher.New(svc, testConfig(1), testLogger())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	assert.NotPanics(t, func() {
+		err := w.Run(ctx)
+		assert.NoError(t, err)
+	})
+	assert.True(t, processed.Load(), "chunk-only job should have been processed")
+}
+
+// TestRunWorkerBothIDsJobNoPanic verifies that a job with both PatternID and
+// ChunkID set is processed without panicking.
+func TestRunWorkerBothIDsJobNoPanic(t *testing.T) {
+	t.Parallel()
+
+	svc := new(mockService)
+	job := newBothIDsJob()
+
+	var processed atomic.Bool
+
+	svc.On("ClaimNextJob", mock.Anything).Return(job, nil).Once()
+	svc.On("ClaimNextJob", mock.Anything).Return(nil, nil).Maybe()
+	svc.On("ProcessJob", mock.Anything, job).Return(nil).Once().Run(func(_ mock.Arguments) {
+		processed.Store(true)
+	})
+	svc.On("ReclaimStaleJobs", mock.Anything).Return(int64(0), nil).Maybe()
+	svc.On("CleanupCompletedJobs", mock.Anything).Return(int64(0), nil).Maybe()
+	svc.On("CleanupFailedJobs", mock.Anything).Return(int64(0), nil).Maybe()
+
+	w := enricher.New(svc, testConfig(1), testLogger())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	assert.NotPanics(t, func() {
+		err := w.Run(ctx)
+		assert.NoError(t, err)
+	})
+	assert.True(t, processed.Load(), "job with both IDs should have been processed")
 }
 
 func TestGracefulDrainMultipleInflightJobs(t *testing.T) {

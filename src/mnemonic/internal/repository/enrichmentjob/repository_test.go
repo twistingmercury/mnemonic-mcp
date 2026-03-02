@@ -19,9 +19,10 @@ import (
 
 // testJob returns a sample enrichment job for testing.
 func testJob() *enrichmentjob.Job {
+	pid := uuid.New()
 	return &enrichmentjob.Job{
 		ID:           uuid.New(),
-		PatternID:    uuid.New(),
+		PatternID:    &pid,
 		Status:       "pending",
 		Attempts:     0,
 		MaxAttempts:  3,
@@ -41,7 +42,7 @@ func TestRepository_Create(t *testing.T) {
 		wantErr   error
 	}{
 		{
-			name: "successful creation",
+			name: "successful creation - pattern-based job",
 			job:  testJob(),
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{"scheduled_for", "created_at", "updated_at"}).
@@ -50,6 +51,40 @@ func TestRepository_Create(t *testing.T) {
 					WithArgs(
 						pgxmock.AnyArg(), // id
 						pgxmock.AnyArg(), // pattern_id
+						pgxmock.AnyArg(), // chunk_id
+						"pending",
+						0,                // attempts
+						3,                // max_attempts
+						pgxmock.AnyArg(), // last_error
+						pgxmock.AnyArg(), // scheduled_for
+						pgxmock.AnyArg(), // started_at
+						pgxmock.AnyArg(), // completed_at
+					).
+					WillReturnRows(rows)
+			},
+			wantErr: nil,
+		},
+		{
+			name: "successful creation - chunk-based job",
+			job: func() *enrichmentjob.Job {
+				cid := uuid.New()
+				return &enrichmentjob.Job{
+					ID:          uuid.New(),
+					PatternID:   nil,
+					ChunkID:     &cid,
+					Status:      "pending",
+					Attempts:    0,
+					MaxAttempts: 3,
+				}
+			}(),
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				rows := pgxmock.NewRows([]string{"scheduled_for", "created_at", "updated_at"}).
+					AddRow(now, now, now)
+				mock.ExpectQuery("INSERT INTO enrichment_jobs").
+					WithArgs(
+						pgxmock.AnyArg(), // id
+						pgxmock.AnyArg(), // pattern_id (nil)
+						pgxmock.AnyArg(), // chunk_id
 						"pending",
 						0,                // attempts
 						3,                // max_attempts
@@ -68,6 +103,7 @@ func TestRepository_Create(t *testing.T) {
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("INSERT INTO enrichment_jobs").
 					WithArgs(
+						pgxmock.AnyArg(),
 						pgxmock.AnyArg(),
 						pgxmock.AnyArg(),
 						pgxmock.AnyArg(),
@@ -118,9 +154,10 @@ func TestRepository_Create_GeneratesUUID(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
+	pid := uuid.New()
 	job := &enrichmentjob.Job{
 		// ID is not set - should be generated
-		PatternID: uuid.New(),
+		PatternID: &pid,
 	}
 
 	rows := pgxmock.NewRows([]string{"scheduled_for", "created_at", "updated_at"}).
@@ -128,10 +165,11 @@ func TestRepository_Create_GeneratesUUID(t *testing.T) {
 	mock.ExpectQuery("INSERT INTO enrichment_jobs").
 		WithArgs(
 			pgxmock.AnyArg(), // generated id
-			pgxmock.AnyArg(),
-			"pending", // default status
-			0,         // default attempts
-			3,         // default max_attempts
+			pgxmock.AnyArg(), // pattern_id
+			pgxmock.AnyArg(), // chunk_id
+			"pending",        // default status
+			0,                // default attempts
+			3,                // default max_attempts
 			pgxmock.AnyArg(),
 			pgxmock.AnyArg(),
 			pgxmock.AnyArg(),
@@ -168,12 +206,13 @@ func TestRepository_Get(t *testing.T) {
 			jobID: jobID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at",
 				}).AddRow(
 					jobID,
-					patternID,
+					&patternID,
+					(*uuid.UUID)(nil),
 					"pending",
 					0,
 					3,
@@ -190,7 +229,7 @@ func TestRepository_Get(t *testing.T) {
 			},
 			wantJob: &enrichmentjob.Job{
 				ID:           jobID,
-				PatternID:    patternID,
+				PatternID:    &patternID,
 				Status:       "pending",
 				Attempts:     0,
 				MaxAttempts:  3,
@@ -259,12 +298,13 @@ func TestRepository_GetByPatternID(t *testing.T) {
 			patternID: patternID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at",
 				}).AddRow(
 					jobID,
-					patternID,
+					&patternID,
+					(*uuid.UUID)(nil),
 					"completed",
 					1,
 					3,
@@ -311,7 +351,8 @@ func TestRepository_GetByPatternID(t *testing.T) {
 				assert.Nil(t, job)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, tt.patternID, job.PatternID)
+				require.NotNil(t, job.PatternID)
+				assert.Equal(t, tt.patternID, *job.PatternID)
 			}
 
 			assert.NoError(t, mock.ExpectationsWereMet())
@@ -336,12 +377,13 @@ func TestRepository_ClaimPending(t *testing.T) {
 			name: "successfully claims a pending job",
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at",
 				}).AddRow(
 					jobID,
-					patternID,
+					&patternID,
+					(*uuid.UUID)(nil),
 					"processing",
 					0,
 					3,
@@ -830,6 +872,7 @@ func TestRepository_List(t *testing.T) {
 	now := time.Now()
 	jobID := uuid.New()
 	patternID := uuid.New()
+	chunkID := uuid.New()
 
 	tests := []struct {
 		name      string
@@ -846,12 +889,12 @@ func TestRepository_List(t *testing.T) {
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at", "total_count",
 				}).
-					AddRow(jobID, patternID, "pending", 0, 3, nil, now, nil, nil, now, now, int64(2)).
-					AddRow(uuid.New(), uuid.New(), "completed", 1, 3, nil, now, &now, &now, now, now, int64(2))
+					AddRow(jobID, &patternID, (*uuid.UUID)(nil), "pending", 0, 3, nil, now, nil, nil, now, now, int64(2)).
+					AddRow(uuid.New(), (*uuid.UUID)(nil), &chunkID, "completed", 1, 3, nil, now, &now, &now, now, now, int64(2))
 
 				mock.ExpectQuery("SELECT .* FROM enrichment_jobs ORDER BY scheduled_for").
 					WillReturnRows(rows)
@@ -867,11 +910,11 @@ func TestRepository_List(t *testing.T) {
 			opts: repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at", "total_count",
 				}).
-					AddRow(jobID, patternID, "pending", 0, 3, nil, now, nil, nil, now, now, int64(1))
+					AddRow(jobID, &patternID, (*uuid.UUID)(nil), "pending", 0, 3, nil, now, nil, nil, now, now, int64(1))
 
 				mock.ExpectQuery("SELECT .* FROM enrichment_jobs WHERE status").
 					WithArgs("pending").
@@ -888,14 +931,35 @@ func TestRepository_List(t *testing.T) {
 			opts: repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at", "total_count",
 				}).
-					AddRow(jobID, patternID, "pending", 0, 3, nil, now, nil, nil, now, now, int64(1))
+					AddRow(jobID, &patternID, (*uuid.UUID)(nil), "pending", 0, 3, nil, now, nil, nil, now, now, int64(1))
 
 				mock.ExpectQuery("SELECT .* FROM enrichment_jobs WHERE pattern_id").
 					WithArgs(patternID).
+					WillReturnRows(rows)
+			},
+			wantCount: 1,
+			wantTotal: 1,
+		},
+		{
+			name: "list with chunk_id filter",
+			filter: enrichmentjob.Filter{
+				ChunkID: &chunkID,
+			},
+			opts: repository.ListOptions{},
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				rows := pgxmock.NewRows([]string{
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
+					"last_error", "scheduled_for", "started_at", "completed_at",
+					"created_at", "updated_at", "total_count",
+				}).
+					AddRow(uuid.New(), (*uuid.UUID)(nil), &chunkID, "pending", 0, 3, nil, now, nil, nil, now, now, int64(1))
+
+				mock.ExpectQuery("SELECT .* FROM enrichment_jobs WHERE chunk_id").
+					WithArgs(chunkID).
 					WillReturnRows(rows)
 			},
 			wantCount: 1,
@@ -907,11 +971,11 @@ func TestRepository_List(t *testing.T) {
 			opts:   repository.ListOptions{Limit: 1, Offset: 1},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at", "total_count",
 				}).
-					AddRow(jobID, patternID, "pending", 0, 3, nil, now, nil, nil, now, now, int64(2))
+					AddRow(jobID, &patternID, (*uuid.UUID)(nil), "pending", 0, 3, nil, now, nil, nil, now, now, int64(2))
 
 				mock.ExpectQuery("SELECT .* FROM enrichment_jobs ORDER BY scheduled_for ASC, created_at ASC LIMIT").
 					WithArgs(1, 1).
@@ -926,7 +990,7 @@ func TestRepository_List(t *testing.T) {
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at", "total_count",
 				})

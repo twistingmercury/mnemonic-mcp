@@ -42,11 +42,11 @@ All 3 tools are stateless: each invocation is a standalone request/response with
 
 **Tools:**
 
-| Tool                    | Purpose                                   | Databases Queried |
-| ----------------------- | ----------------------------------------- | ----------------- |
-| `search_patterns`       | Semantic search over team knowledge graph | PGVector (MVP); + Neo4j (post-MVP) |
-| `find_related_patterns` | Graph traversal from a given pattern      | Neo4j             |
-| `get_pattern`           | Single pattern retrieval by UUID          | Postgres + Neo4j  |
+| Tool                    | Purpose                                                 | Databases Queried |
+| ----------------------- | ------------------------------------------------------- | ----------------- |
+| `search_patterns`       | Chunk-level semantic search over team knowledge patterns | PGVector (MVP); + Neo4j (post-MVP) |
+| `find_related_patterns` | Graph traversal from a given pattern                    | Neo4j             |
+| `get_pattern`           | Single pattern retrieval by UUID                        | Postgres + Neo4j  |
 
 ## Server Setup
 
@@ -202,7 +202,7 @@ Tool definitions:
 ```go
 var searchPatternsTool = &mcp.Tool{
     Name:        "search_patterns",
-    Description: "Semantic search over the team knowledge graph. Returns patterns ranked by vector similarity. Only enriched patterns appear in results.",
+    Description: "Semantic search over team knowledge patterns. Returns pattern chunks ranked by vector similarity. Supports filtering by language, domain, tags, and agent. Only enriched patterns appear in results.",
 }
 
 var findRelatedPatternsTool = &mcp.Tool{
@@ -260,6 +260,8 @@ type SearchPatternsInput struct {
     Threshold *float64  `json:"threshold,omitempty"   jsonschema:"Minimum cosine similarity score 0.0-1.0 (default 0.7)"`
     Tags      []string  `json:"tags,omitempty"        jsonschema:"Conjunctive (AND) filter by tag. Pattern must contain ALL specified tags (SQL: tags @> $tags::jsonb)."`
     Agent     string    `json:"agent,omitempty"       jsonschema:"Filter results by agent association"`
+    Language  string    `json:"language,omitempty"    jsonschema:"Filter by programming language (go, python, typescript, shell, sql, agnostic)"`
+    Domain    string    `json:"domain,omitempty"      jsonschema:"Filter by domain (backend, api-design, testing, frontend, infrastructure, data, agnostic)"`
 }
 ```
 
@@ -277,12 +279,14 @@ func handleSearchPatterns(deps ToolDependencies) func(ctx context.Context, req *
         //    b. Query pattern_agent_associations for (agent_id) -> []pattern_id
         //    c. Pass the resulting PatternIDs to SimilarityOptions.PatternIDs
         //       (this pre-filters the PGVector search to agent-scoped patterns)
-        // 5. PGVector cosine similarity search via FindSimilar():
+        // 5. Filter by Language/Domain if set
+        // 6. Chunk-level PGVector cosine similarity search via FindSimilar():
+        //    - Searches pattern_chunks.embedding (not patterns.embedding)
         //    - SimilarityOptions.Tags uses conjunctive (AND) filtering
         //      (SQL: tags @> $tags::jsonb -- pattern must contain ALL specified tags)
         //    - SimilarityOptions.PatternIDs restricts to agent-associated patterns (step 4)
-        // 6. Format results as markdown
-        // 7. Return *mcp.CallToolResult with text content, nil, nil
+        // 7. Format results as markdown (ChunkMatch results with section_title)
+        // 8. Return *mcp.CallToolResult with text content, nil, nil
         // Post-MVP: add Neo4j graph score blending
         //
         // On error: return nil, nil, err (SDK sets isError: true)
@@ -295,23 +299,25 @@ func handleSearchPatterns(deps ToolDependencies) func(ctx context.Context, req *
 > **Score format note:** `search_patterns` displays similarity as a percentage (e.g., "92% match") because it reflects a single vector similarity score that is intuitive as a percentage. `find_related_patterns` uses a decimal (e.g., "similarity: 0.85") because the score represents computed concept-overlap strength, where the raw value is more meaningful to the caller. `get_pattern` uses the same decimal format as `find_related_patterns` for consistency in its related patterns list.
 
 ```text
-Found N patterns matching 'query' (filtered by agent: X):
+Found N chunks matching 'query' (filtered by agent: X):
 
 ---
 
-## pattern-name (92% match)
+## pattern-name › Section Title (92% match)
 
 **Tags:** go, errors, best-practices
+**Language:** go | **Domain:** backend
 
-Full pattern content here...
+Chunk content here...
 
 ---
 
-## another-pattern (85% match)
+## another-pattern › Another Section (85% match)
 
 **Tags:** go, testing
+**Language:** go | **Domain:** backend
 
-Full pattern content here...
+Chunk content here...
 ```
 
 When no results match, the response is:

@@ -87,9 +87,9 @@ func TestHandleSearchPatterns_HappyPath(t *testing.T) {
 		Query:            "error handling",
 		TotalCandidates:  2,
 		SearchDurationMs: 42,
-		Matches: []*patternrepo.Match{
-			{Pattern: &patternrepo.Pattern{Name: "go-error-handling", Tags: []string{"go", "errors"}, Content: "Error handling content"}, Similarity: 0.92},
-			{Pattern: &patternrepo.Pattern{Name: "retry-logic", Tags: []string{"go", "resilience"}, Content: "Retry logic content"}, Similarity: 0.85},
+		Matches: []*searchsvc.ChunkMatch{
+			{PatternName: "go-error-handling", Tags: []string{"go", "errors"}, Content: "Error handling content", Similarity: 0.92},
+			{PatternName: "retry-logic", Tags: []string{"go", "resilience"}, Content: "Retry logic content", Similarity: 0.85},
 		},
 	}
 	deps.On("SearchPatterns", mock.Anything, searchsvc.SearchOptions{
@@ -118,7 +118,7 @@ func TestHandleSearchPatterns_NoResults(t *testing.T) {
 
 	searchResult := &searchsvc.SearchResult{
 		Query:   "nonexistent topic",
-		Matches: []*patternrepo.Match{},
+		Matches: []*searchsvc.ChunkMatch{},
 	}
 	deps.On("SearchPatterns", mock.Anything, mock.Anything).Return(searchResult, nil)
 
@@ -140,8 +140,8 @@ func TestHandleSearchPatterns_WithAgentFilter(t *testing.T) {
 
 	searchResult := &searchsvc.SearchResult{
 		Query: "testing",
-		Matches: []*patternrepo.Match{
-			{Pattern: &patternrepo.Pattern{Name: "test-pattern", Content: "Test content"}, Similarity: 0.88},
+		Matches: []*searchsvc.ChunkMatch{
+			{PatternName: "test-pattern", Content: "Test content", Similarity: 0.88},
 		},
 	}
 	deps.On("SearchPatterns", mock.Anything, searchsvc.SearchOptions{
@@ -220,7 +220,7 @@ func TestHandleSearchPatterns_CustomLimitAndThreshold(t *testing.T) {
 
 	searchResult := &searchsvc.SearchResult{
 		Query:   "go patterns",
-		Matches: []*patternrepo.Match{},
+		Matches: []*searchsvc.ChunkMatch{},
 	}
 	deps.On("SearchPatterns", mock.Anything, searchsvc.SearchOptions{
 		Query:     "go patterns",
@@ -247,7 +247,7 @@ func TestHandleSearchPatterns_WithTags(t *testing.T) {
 
 	searchResult := &searchsvc.SearchResult{
 		Query:   "error handling",
-		Matches: []*patternrepo.Match{},
+		Matches: []*searchsvc.ChunkMatch{},
 	}
 	deps.On("SearchPatterns", mock.Anything, searchsvc.SearchOptions{
 		Query:     "error handling",

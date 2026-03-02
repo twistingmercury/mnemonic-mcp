@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/twistingmercury/mnemonic/internal/repository"
 	agentrepo "github.com/twistingmercury/mnemonic/internal/repository/agent"
+	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	enrichmentrepo "github.com/twistingmercury/mnemonic/internal/repository/enrichmentjob"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
@@ -335,6 +336,79 @@ func (m *mockTxBeginner) Begin(ctx context.Context) (pgx.Tx, error) {
 	return args.Get(0).(pgx.Tx), args.Error(1)
 }
 
+// ---------- Mock: chunkrepo.Repository ----------
+
+type mockChunkRepo struct {
+	mock.Mock
+}
+
+func (m *mockChunkRepo) Create(ctx context.Context, c *chunkrepo.Chunk) error {
+	args := m.Called(ctx, c)
+	return args.Error(0)
+}
+
+func (m *mockChunkRepo) CreateBatch(ctx context.Context, chunks []*chunkrepo.Chunk) error {
+	args := m.Called(ctx, chunks)
+	// Assign IDs to chunks so that enrichment job creation can use them.
+	if args.Error(0) == nil {
+		for _, c := range chunks {
+			if c.ID == (uuid.UUID{}) {
+				c.ID = uuid.New()
+			}
+		}
+	}
+	return args.Error(0)
+}
+
+func (m *mockChunkRepo) Get(ctx context.Context, id uuid.UUID) (*chunkrepo.Chunk, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*chunkrepo.Chunk), args.Error(1)
+}
+
+func (m *mockChunkRepo) ListByPatternID(ctx context.Context, patternID uuid.UUID) ([]*chunkrepo.Chunk, error) {
+	args := m.Called(ctx, patternID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*chunkrepo.Chunk), args.Error(1)
+}
+
+func (m *mockChunkRepo) DeleteByPatternID(ctx context.Context, patternID uuid.UUID) error {
+	args := m.Called(ctx, patternID)
+	return args.Error(0)
+}
+
+func (m *mockChunkRepo) UpdateEmbedding(ctx context.Context, id uuid.UUID, embedding []float32) error {
+	args := m.Called(ctx, id, embedding)
+	return args.Error(0)
+}
+
+func (m *mockChunkRepo) UpdateEnrichmentStatus(ctx context.Context, id uuid.UUID, status string, errMsg *string) error {
+	args := m.Called(ctx, id, status, errMsg)
+	return args.Error(0)
+}
+
+func (m *mockChunkRepo) FindSimilar(ctx context.Context, embedding []float32, opts chunkrepo.SimilarityOptions) ([]*chunkrepo.Match, error) {
+	args := m.Called(ctx, embedding, opts)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*chunkrepo.Match), args.Error(1)
+}
+
+func (m *mockChunkRepo) AllEnrichedForPattern(ctx context.Context, patternID uuid.UUID) (bool, error) {
+	args := m.Called(ctx, patternID)
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *mockChunkRepo) AnyFailedForPattern(ctx context.Context, patternID uuid.UUID) (bool, error) {
+	args := m.Called(ctx, patternID)
+	return args.Bool(0), args.Error(1)
+}
+
 // ---------- Helpers ----------
 
 var (
@@ -352,7 +426,20 @@ func newTestService(
 	tb *mockTxBeginner,
 ) patternsvc.Service {
 	logger := zerolog.Nop()
-	return patternsvc.New(pr, er, gr, ar, tb, logger)
+	// chunkRepo is nil: chunk creation is skipped during the transitional period.
+	return patternsvc.New(pr, er, gr, ar, tb, nil, logger)
+}
+
+func newTestServiceWithChunkRepo(
+	pr *mockPatternRepo,
+	er *mockEnrichmentRepo,
+	gr *mockGraphRepo,
+	ar *mockAgentRepo,
+	tb *mockTxBeginner,
+	cr *mockChunkRepo,
+) patternsvc.Service {
+	logger := zerolog.Nop()
+	return patternsvc.New(pr, er, gr, ar, tb, cr, logger)
 }
 
 func testCreateInput() patternsvc.CreateInput {
@@ -436,7 +523,7 @@ func TestCreate(t *testing.T) {
 
 		// Enrichment job.
 		er.On("Create", mock.Anything, mock.MatchedBy(func(j *enrichmentrepo.Job) bool {
-			return j.PatternID == testPatternID && j.Status == "pending"
+			return j.PatternID != nil && *j.PatternID == testPatternID && j.Status == "pending"
 		})).Return(nil)
 
 		// Neo4j sync.
@@ -722,7 +809,7 @@ func TestUpdate(t *testing.T) {
 
 		// Enrichment job.
 		er.On("Create", mock.Anything, mock.MatchedBy(func(j *enrichmentrepo.Job) bool {
-			return j.PatternID == testPatternID && j.Status == "pending"
+			return j.PatternID != nil && *j.PatternID == testPatternID && j.Status == "pending"
 		})).Return(nil)
 
 		// Neo4j sync.
@@ -1134,5 +1221,70 @@ func TestFindRelated(t *testing.T) {
 		assert.True(t, errors.Is(err, service.ErrNotFound), "expected service.ErrNotFound, got: %v", err)
 
 		gr.AssertNotCalled(t, "FindRelatedPatterns")
+	})
+}
+
+// ---------- TestCreate_ChunksContent ----------
+
+func TestCreate_ChunksContent(t *testing.T) {
+	t.Parallel()
+
+	t.Run("chunks are created and per-chunk enrichment jobs are queued", func(t *testing.T) {
+		t.Parallel()
+
+		pr := new(mockPatternRepo)
+		er := new(mockEnrichmentRepo)
+		gr := new(mockGraphRepo)
+		ar := new(mockAgentRepo)
+		tb := new(mockTxBeginner)
+		cr := new(mockChunkRepo)
+		svc := newTestServiceWithChunkRepo(pr, er, gr, ar, tb, cr)
+
+		desc := "A chunked pattern"
+		input := patternsvc.CreateInput{
+			Name:        "chunked-pattern",
+			Description: &desc,
+			// Two H2 sections → 2 chunks.
+			Content:    "## Section One\nContent of section one.\n\n## Section Two\nContent of section two.",
+			Tags:       []string{"test"},
+			EntityType: "go-pattern",
+			Language:   "go",
+			Domain:     "backend",
+		}
+
+		// Pattern creation.
+		pr.On("Create", mock.Anything, mock.MatchedBy(func(p *patternrepo.Pattern) bool {
+			return p.Name == "chunked-pattern" && p.EntityType == "go-pattern" && p.Language == "go"
+		})).Run(func(args mock.Arguments) {
+			p := args.Get(1).(*patternrepo.Pattern)
+			p.ID = testPatternID
+			p.EnrichmentStatus = "pending"
+		}).Return(nil)
+
+		// No agent associations (none provided).
+
+		// Chunk batch creation: expect 2 chunks.
+		cr.On("CreateBatch", mock.Anything, mock.MatchedBy(func(chunks []*chunkrepo.Chunk) bool {
+			return len(chunks) == 2
+		})).Return(nil)
+
+		// Per-chunk enrichment jobs: expect 2 calls.
+		er.On("Create", mock.Anything, mock.MatchedBy(func(j *enrichmentrepo.Job) bool {
+			return j.ChunkID != nil && j.PatternID == nil
+		})).Return(nil).Times(2)
+
+		// No Neo4j sync (no agent associations).
+
+		result, err := svc.Create(context.Background(), input)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, "chunked-pattern", result.Name)
+		assert.Equal(t, testPatternID, result.ID)
+
+		pr.AssertExpectations(t)
+		cr.AssertExpectations(t)
+		er.AssertExpectations(t)
+		gr.AssertNotCalled(t, "SetPatternAgentRelevance")
 	})
 }

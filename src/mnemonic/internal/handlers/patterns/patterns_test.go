@@ -129,7 +129,7 @@ func (m *mockSearchService) SearchPatterns(ctx context.Context, opts searchsvc.S
 
 func newTestRouter(psvc patternsvc.Service, ssvc searchsvc.Service) *gin.Engine {
 	router := gin.New()
-	h := patterns.New(psvc, ssvc)
+	h := patterns.New(psvc, ssvc, nil) // chunkRepo is nil; GetChunks tests use a dedicated router
 	v1 := router.Group("/v1/api")
 	h.RegisterRoutes(v1)
 	return router
@@ -143,6 +143,10 @@ func makePattern(name string) *patternrepo.Pattern {
 		Description:      &desc,
 		Content:          "# Test Pattern\n\nContent here",
 		Tags:             []string{"go", "test"},
+		EntityType:       "go-pattern",
+		Language:         "go",
+		Domain:           "backend",
+		RelatedPatterns:  []string{},
 		EnrichmentStatus: "pending",
 		CreatedAt:        time.Date(2026, 1, 10, 8, 0, 0, 0, time.UTC),
 		UpdatedAt:        time.Date(2026, 1, 10, 8, 0, 0, 0, time.UTC),
@@ -166,7 +170,10 @@ func TestPatternCreate_Success(t *testing.T) {
 		"name": "go-error-handling",
 		"description": "Test pattern description",
 		"content": "# Test Pattern\n\nContent here",
-		"tags": ["go", "test"]
+		"tags": ["go", "test"],
+		"entity_type": "go-pattern",
+		"language": "go",
+		"domain": "backend"
 	}`
 
 	w := httptest.NewRecorder()
@@ -194,7 +201,10 @@ func TestPatternCreate_Conflict(t *testing.T) {
 
 	body := `{
 		"name": "go-error-handling",
-		"content": "content"
+		"content": "content",
+		"entity_type": "go-pattern",
+		"language": "go",
+		"domain": "backend"
 	}`
 
 	w := httptest.NewRecorder()
@@ -213,6 +223,50 @@ func TestPatternCreate_BadRequest(t *testing.T) {
 
 	// Missing required content field.
 	body := `{"name": "test"}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/patterns", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPatternCreate_InvalidEntityType(t *testing.T) {
+	t.Parallel()
+	psvc := new(mockPatternService)
+	ssvc := new(mockSearchService)
+	router := newTestRouter(psvc, ssvc)
+
+	body := `{
+		"name": "go-error-handling",
+		"content": "# Test Pattern\n\nContent here",
+		"entity_type": "Invalid Type",
+		"language": "go",
+		"domain": "backend"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/patterns", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPatternCreate_InvalidLanguage(t *testing.T) {
+	t.Parallel()
+	psvc := new(mockPatternService)
+	ssvc := new(mockSearchService)
+	router := newTestRouter(psvc, ssvc)
+
+	body := `{
+		"name": "go-error-handling",
+		"content": "# Test Pattern\n\nContent here",
+		"entity_type": "go-pattern",
+		"language": "brainfuck",
+		"domain": "backend"
+	}`
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/v1/api/patterns", bytes.NewBufferString(body))
@@ -386,10 +440,15 @@ func TestPatternUpdate_Success(t *testing.T) {
 
 	pattern := makePattern("go-error-handling")
 	psvc.On("Update", mock.Anything, pattern.ID, mock.Anything).Return(pattern, nil)
+	psvc.On("GetAgentAssociations", mock.Anything, pattern.ID).Return([]patternrepo.AgentAssociation{}, nil)
+	psvc.On("ResolveAgentNames", mock.Anything, []uuid.UUID{}).Return(map[uuid.UUID]string{}, nil)
 
 	body := `{
 		"name": "go-error-handling",
-		"content": "Updated content"
+		"content": "Updated content",
+		"entity_type": "go-pattern",
+		"language": "go",
+		"domain": "backend"
 	}`
 
 	w := httptest.NewRecorder()
@@ -398,6 +457,15 @@ func TestPatternUpdate_Success(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "go-error-handling", resp["name"])
+	assert.Equal(t, "go-pattern", resp["entity_type"])
+	assert.Equal(t, "go", resp["language"])
+	assert.Equal(t, "backend", resp["domain"])
+
+	psvc.AssertExpectations(t)
 }
 
 func TestPatternDelete_Success(t *testing.T) {
@@ -498,11 +566,21 @@ func TestSearch_Success(t *testing.T) {
 	ssvc := new(mockSearchService)
 	router := newTestRouter(psvc, ssvc)
 
-	pattern := makePattern("go-error-handling")
 	ssvc.On("SearchPatterns", mock.Anything, mock.AnythingOfType("search.SearchOptions")).
 		Return(&searchsvc.SearchResult{
-			Matches: []*patternrepo.Match{
-				{Pattern: pattern, Similarity: 0.92},
+			Matches: []*searchsvc.ChunkMatch{
+				{
+					PatternID:    uuid.New(),
+					PatternName:  "go-error-handling",
+					EntityType:   "go-pattern",
+					Language:     "go",
+					Domain:       "backend",
+					Content:      "# Test Pattern\n\nContent here",
+					Tags:         []string{"go", "test"},
+					SectionTitle: "Philosophy",
+					ChunkIndex:   0,
+					Similarity:   0.92,
+				},
 			},
 			Query:            "error handling",
 			TotalCandidates:  47,
@@ -519,6 +597,13 @@ func TestSearch_Success(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	results := resp["results"].([]any)
 	assert.Len(t, results, 1)
+
+	first := results[0].(map[string]any)
+	assert.Equal(t, "go-error-handling", first["pattern_name"])
+	assert.Equal(t, "go-pattern", first["entity_type"])
+	assert.Equal(t, "go", first["language"])
+	assert.Equal(t, "backend", first["domain"])
+
 	metadata := resp["metadata"].(map[string]any)
 	assert.Equal(t, "error handling", metadata["query"])
 }
@@ -547,6 +632,21 @@ func TestSearch_ServiceUnavailable(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/api/patterns/search?q=test", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+}
+
+func TestGetChunks_ChunkRepoNil(t *testing.T) {
+	t.Parallel()
+	psvc := new(mockPatternService)
+	ssvc := new(mockSearchService)
+	router := newTestRouter(psvc, ssvc) // nil chunkRepo
+
+	id := uuid.New()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/api/patterns/"+id.String()+"/chunks", nil)
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)

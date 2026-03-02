@@ -86,10 +86,10 @@ func (r *pgxRepository) Create(ctx context.Context, job *Job) error {
 	// Use COALESCE to default scheduled_for to now() if not set
 	query := `
 		INSERT INTO enrichment_jobs (
-			id, pattern_id, status, attempts, max_attempts,
+			id, pattern_id, chunk_id, status, attempts, max_attempts,
 			last_error, scheduled_for, started_at, completed_at,
 			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, now()), $8, $9, now(), now())
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, now()), $9, $10, now(), now())
 		RETURNING scheduled_for, created_at, updated_at
 	`
 
@@ -104,6 +104,7 @@ func (r *pgxRepository) Create(ctx context.Context, job *Job) error {
 	err := r.db.QueryRow(ctx, query,
 		job.ID,
 		job.PatternID,
+		job.ChunkID,
 		job.Status,
 		job.Attempts,
 		job.MaxAttempts,
@@ -133,7 +134,7 @@ func (r *pgxRepository) Create(ctx context.Context, job *Job) error {
 // Get retrieves an enrichment job by ID from the database.
 func (r *pgxRepository) Get(ctx context.Context, id uuid.UUID) (*Job, error) {
 	query := `
-		SELECT id, pattern_id, status, attempts, max_attempts,
+		SELECT id, pattern_id, chunk_id, status, attempts, max_attempts,
 			   last_error, scheduled_for, started_at, completed_at,
 			   created_at, updated_at
 		FROM enrichment_jobs
@@ -146,7 +147,7 @@ func (r *pgxRepository) Get(ctx context.Context, id uuid.UUID) (*Job, error) {
 // GetByPatternID retrieves the latest job for a pattern.
 func (r *pgxRepository) GetByPatternID(ctx context.Context, patternID uuid.UUID) (*Job, error) {
 	query := `
-		SELECT id, pattern_id, status, attempts, max_attempts,
+		SELECT id, pattern_id, chunk_id, status, attempts, max_attempts,
 			   last_error, scheduled_for, started_at, completed_at,
 			   created_at, updated_at
 		FROM enrichment_jobs
@@ -165,6 +166,7 @@ func (r *pgxRepository) scanJob(ctx context.Context, query string, args ...any) 
 	err := r.db.QueryRow(ctx, query, args...).Scan(
 		&job.ID,
 		&job.PatternID,
+		&job.ChunkID,
 		&job.Status,
 		&job.Attempts,
 		&job.MaxAttempts,
@@ -205,7 +207,7 @@ func (r *pgxRepository) ClaimPending(ctx context.Context) (*Job, error) {
 			LIMIT 1
 			FOR UPDATE SKIP LOCKED
 		)
-		RETURNING id, pattern_id, status, attempts, max_attempts,
+		RETURNING id, pattern_id, chunk_id, status, attempts, max_attempts,
 				  last_error, scheduled_for, started_at, completed_at,
 				  created_at, updated_at
 	`
@@ -217,6 +219,7 @@ func (r *pgxRepository) ClaimPending(ctx context.Context) (*Job, error) {
 	).Scan(
 		&job.ID,
 		&job.PatternID,
+		&job.ChunkID,
 		&job.Status,
 		&job.Attempts,
 		&job.MaxAttempts,
@@ -395,6 +398,12 @@ func (r *pgxRepository) List(ctx context.Context, filter Filter, opts repository
 		argIndex++
 	}
 
+	if filter.ChunkID != nil {
+		conditions = append(conditions, fmt.Sprintf("chunk_id = $%d", argIndex))
+		args = append(args, *filter.ChunkID)
+		argIndex++
+	}
+
 	whereClause := ""
 	if len(conditions) > 0 {
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
@@ -402,7 +411,7 @@ func (r *pgxRepository) List(ctx context.Context, filter Filter, opts repository
 
 	// Build query with window function for total count
 	query := fmt.Sprintf(`
-		SELECT id, pattern_id, status, attempts, max_attempts,
+		SELECT id, pattern_id, chunk_id, status, attempts, max_attempts,
 			   last_error, scheduled_for, started_at, completed_at,
 			   created_at, updated_at,
 			   COUNT(*) OVER() as total_count
@@ -440,6 +449,7 @@ func (r *pgxRepository) List(ctx context.Context, filter Filter, opts repository
 		err := rows.Scan(
 			&job.ID,
 			&job.PatternID,
+			&job.ChunkID,
 			&job.Status,
 			&job.Attempts,
 			&job.MaxAttempts,

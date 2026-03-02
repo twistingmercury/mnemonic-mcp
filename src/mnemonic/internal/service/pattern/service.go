@@ -8,11 +8,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/twistingmercury/mnemonic/internal/repository"
 	agentrepo "github.com/twistingmercury/mnemonic/internal/repository/agent"
+	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	enrichmentrepo "github.com/twistingmercury/mnemonic/internal/repository/enrichmentjob"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
@@ -72,6 +74,11 @@ type CreateInput struct {
 	Content           string
 	Tags              []string
 	AgentAssociations []AssociationInput
+	EntityType        string
+	Language          string
+	Domain            string
+	Version           *string
+	RelatedPatterns   []string
 }
 
 // UpdateInput contains fields for updating a pattern.
@@ -81,6 +88,11 @@ type UpdateInput struct {
 	Content           string
 	Tags              []string
 	AgentAssociations []AssociationInput
+	EntityType        string
+	Language          string
+	Domain            string
+	Version           *string
+	RelatedPatterns   []string
 }
 
 // AssociationInput represents an agent association specified by agent name.
@@ -122,17 +134,21 @@ type patternService struct {
 	enrichmentRepo enrichmentrepo.Repository
 	graphRepo      graphrepo.Repository
 	agentRepo      agentrepo.Repository
+	chunkRepo      chunkrepo.Repository
 	pool           repository.TxBeginner
 	logger         zerolog.Logger
 }
 
 // New creates a new pattern Service backed by the given repositories.
+// chunkRepo may be nil during the transitional period; pass a real implementation
+// once it is wired (Task 9).
 func New(
 	patternRepo patternrepo.Repository,
 	enrichmentRepo enrichmentrepo.Repository,
 	graphRepo graphrepo.Repository,
 	agentRepo agentrepo.Repository,
 	pool repository.TxBeginner,
+	chunkRepo chunkrepo.Repository,
 	logger zerolog.Logger,
 ) Service {
 	return &patternService{
@@ -140,9 +156,64 @@ func New(
 		enrichmentRepo: enrichmentRepo,
 		graphRepo:      graphRepo,
 		agentRepo:      agentRepo,
+		chunkRepo:      chunkRepo,
 		pool:           pool,
 		logger:         logger,
 	}
+}
+
+// splitChunk is a parsed chunk from content.
+type splitChunk struct {
+	SectionTitle string
+	ChunkIndex   int
+	Content      string
+}
+
+// splitIntoChunks splits markdown content at H2 (##) boundaries.
+// Content before the first H2 becomes an "Overview" chunk.
+// Content with no H2 headings becomes a single "Content" chunk.
+// Empty sections are dropped.
+func splitIntoChunks(content string) []splitChunk {
+	lines := strings.Split(content, "\n")
+	var chunks []splitChunk
+	var currentTitle string
+	var currentLines []string
+	index := 0
+
+	flush := func(title string) {
+		body := strings.TrimSpace(strings.Join(currentLines, "\n"))
+		if body == "" {
+			return
+		}
+		chunks = append(chunks, splitChunk{
+			SectionTitle: title,
+			ChunkIndex:   index,
+			Content:      body,
+		})
+		index++
+	}
+
+	foundH2 := false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "## ") {
+			if !foundH2 {
+				flush("Overview")
+				foundH2 = true
+			} else {
+				flush(currentTitle)
+			}
+			currentTitle = strings.TrimPrefix(line, "## ")
+			currentLines = nil
+		} else {
+			currentLines = append(currentLines, line)
+		}
+	}
+	if foundH2 {
+		flush(currentTitle)
+	} else {
+		flush("Content")
+	}
+	return chunks
 }
 
 // Create stores a new pattern, sets agent associations, creates an enrichment
@@ -155,10 +226,15 @@ func (s *patternService) Create(ctx context.Context, input CreateInput) (*patter
 	}
 
 	pattern := patternrepo.Pattern{
-		Name:        input.Name,
-		Description: input.Description,
-		Content:     input.Content,
-		Tags:        input.Tags,
+		Name:            input.Name,
+		Description:     input.Description,
+		Content:         input.Content,
+		Tags:            input.Tags,
+		EntityType:      input.EntityType,
+		Language:        input.Language,
+		Domain:          input.Domain,
+		Version:         input.Version,
+		RelatedPatterns: input.RelatedPatterns,
 	}
 
 	if err := s.patternRepo.Create(ctx, &pattern); err != nil {
@@ -175,13 +251,42 @@ func (s *patternService) Create(ctx context.Context, input CreateInput) (*patter
 		}
 	}
 
-	// Create enrichment job for async processing.
-	job := enrichmentrepo.Job{
-		PatternID: pattern.ID,
-		Status:    string(enrichmentrepo.StatusPending),
-	}
-	if err := s.enrichmentRepo.Create(ctx, &job); err != nil {
-		return nil, fmt.Errorf("create pattern: creating enrichment job: %w", err)
+	// Split content into chunks and create them (when chunk repo is wired).
+	if s.chunkRepo != nil {
+		rawChunks := splitIntoChunks(input.Content)
+		chunks := make([]*chunkrepo.Chunk, len(rawChunks))
+		for i, rc := range rawChunks {
+			chunks[i] = &chunkrepo.Chunk{
+				PatternID:    pattern.ID,
+				SectionTitle: rc.SectionTitle,
+				ChunkIndex:   rc.ChunkIndex,
+				Content:      rc.Content,
+			}
+		}
+		if err := s.chunkRepo.CreateBatch(ctx, chunks); err != nil {
+			return nil, fmt.Errorf("create pattern: creating chunks: %w", err)
+		}
+
+		// Create one enrichment job per chunk. Failures are best-effort: a
+		// missed job means that chunk won't be embedded initially, but manual
+		// re-enrichment or a future retry can recover it without data loss.
+		for _, c := range chunks {
+			chunkID := c.ID
+			job := enrichmentrepo.Job{ChunkID: &chunkID}
+			if jobErr := s.enrichmentRepo.Create(ctx, &job); jobErr != nil {
+				s.logger.Warn().Err(jobErr).Str("chunk_id", c.ID.String()).Msg("failed to create enrichment job for chunk")
+			}
+		}
+	} else {
+		// Fallback: create a single pattern-level enrichment job.
+		pid := pattern.ID
+		job := enrichmentrepo.Job{
+			PatternID: &pid,
+			Status:    string(enrichmentrepo.StatusPending),
+		}
+		if err := s.enrichmentRepo.Create(ctx, &job); err != nil {
+			return nil, fmt.Errorf("create pattern: creating enrichment job: %w", err)
+		}
 	}
 
 	// Best-effort Neo4j sync for agent associations.
@@ -257,6 +362,11 @@ func (s *patternService) Update(ctx context.Context, id uuid.UUID, input UpdateI
 	existing.Description = input.Description
 	existing.Content = input.Content
 	existing.Tags = input.Tags
+	existing.EntityType = input.EntityType
+	existing.Language = input.Language
+	existing.Domain = input.Domain
+	existing.Version = input.Version
+	existing.RelatedPatterns = input.RelatedPatterns
 
 	if err := s.patternRepo.Update(ctx, existing); err != nil {
 		if errors.Is(err, patternrepo.ErrNameExists) {
@@ -273,8 +383,10 @@ func (s *patternService) Update(ctx context.Context, id uuid.UUID, input UpdateI
 	}
 
 	// Create new enrichment job (update always triggers re-enrichment for MVP).
+	// TODO(Task 6): Replace with per-chunk job creation once update is chunk-aware.
+	eid := existing.ID
 	job := enrichmentrepo.Job{
-		PatternID: existing.ID,
+		PatternID: &eid,
 		Status:    string(enrichmentrepo.StatusPending),
 	}
 	if err := s.enrichmentRepo.Create(ctx, &job); err != nil {

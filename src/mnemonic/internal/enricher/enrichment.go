@@ -169,10 +169,14 @@ func (w *Worker) runWorker(claimCtx, drainCtx context.Context, id int, inflight 
 			continue
 		}
 
-		log.Info().
-			Str("job_id", job.ID.String()).
-			Str("pattern_id", job.PatternID.String()).
-			Msg("processing enrichment job")
+		logEvent := log.Info().Str("job_id", job.ID.String())
+		if job.PatternID != nil {
+			logEvent = logEvent.Str("pattern_id", job.PatternID.String())
+		}
+		if job.ChunkID != nil {
+			logEvent = logEvent.Str("chunk_id", job.ChunkID.String())
+		}
+		logEvent.Msg("processing enrichment job")
 
 		// Track the in-flight job for graceful drain. Use drainCtx for the
 		// ProcessJob call so that in-flight work can complete even after

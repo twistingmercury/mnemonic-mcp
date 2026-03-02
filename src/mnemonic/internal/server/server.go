@@ -23,6 +23,7 @@ import (
 	"github.com/twistingmercury/mnemonic/internal/mcpserver"
 	"github.com/twistingmercury/mnemonic/internal/middleware"
 	agentrepo "github.com/twistingmercury/mnemonic/internal/repository/agent"
+	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	enrichmentjobrepo "github.com/twistingmercury/mnemonic/internal/repository/enrichmentjob"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
@@ -187,6 +188,7 @@ func wireDependencies(
 	skillFileRepo := skillfilerepo.NewRepository(pgPool)
 	enrichmentJobRepo := enrichmentjobrepo.NewRepository(pgPool)
 	graphRepo := graphrepo.NewRepository(neo4jDriver, cfg.Database.Neo4j.Database)
+	chunkRepo := chunkrepo.NewRepository(pgPool)
 
 	// External services.
 	embeddingSvc := openaisvc.NewEmbeddingService(cfg.OpenAI)
@@ -196,12 +198,12 @@ func wireDependencies(
 	agentSvc := agentsvc.New(agentRepo, graphRepo, logger)
 	skillSvc := skillsvc.New(skillRepo, logger)
 	skillFileSvc := skillfilesvc.New(skillFileRepo, skillRepo, logger)
-	searchSvc := searchsvc.New(embeddingSvc, patternRepo, agentRepo, logger)
-	patternSvc := patternsvc.New(patternRepo, enrichmentJobRepo, graphRepo, agentRepo, pgPool, logger)
+	searchSvc := searchsvc.New(embeddingSvc, patternRepo, agentRepo, chunkRepo, logger)
+	patternSvc := patternsvc.New(patternRepo, enrichmentJobRepo, graphRepo, agentRepo, pgPool, chunkRepo, logger)
 	enrichmentSvc := enrichmentsvc.New(
 		enrichmentJobRepo, patternRepo, agentRepo, graphRepo,
 		embeddingSvc, extractionSvc,
-		cfg.Enrichment, logger,
+		cfg.Enrichment, chunkRepo, logger,
 	)
 
 	// MCP facade.
@@ -214,6 +216,7 @@ func wireDependencies(
 		Search:    searchSvc,
 		Skill:     skillSvc,
 		SkillFile: skillFileSvc,
+		ChunkRepo: chunkRepo,
 	}
 
 	// Enrichment worker.

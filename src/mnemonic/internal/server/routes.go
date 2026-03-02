@@ -6,6 +6,7 @@ import (
 	patternhandler "github.com/twistingmercury/mnemonic/internal/handlers/patterns"
 	skillfilehandler "github.com/twistingmercury/mnemonic/internal/handlers/skillfiles"
 	skillhandler "github.com/twistingmercury/mnemonic/internal/handlers/skills"
+	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	agentsvc "github.com/twistingmercury/mnemonic/internal/service/agent"
 	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
@@ -20,6 +21,7 @@ type Services struct {
 	Search    searchsvc.Service
 	Skill     skillsvc.Service
 	SkillFile skillfilesvc.Service
+	ChunkRepo chunkrepo.Repository
 }
 
 // RegisterAPIRoutes creates all domain handlers and registers their routes
@@ -28,7 +30,7 @@ func RegisterAPIRoutes(router *gin.Engine, svc Services) {
 	v1 := router.Group("/v1/api")
 
 	agenthandler.New(svc.Agent).RegisterRoutes(v1)
-	patternhandler.New(svc.Pattern, svc.Search).RegisterRoutes(v1)
+	patternhandler.New(svc.Pattern, svc.Search, svc.ChunkRepo).RegisterRoutes(v1)
 	skillhandler.New(svc.Skill).RegisterRoutes(v1)
 	skillfilehandler.New(svc.SkillFile).RegisterRoutes(v1)
 }

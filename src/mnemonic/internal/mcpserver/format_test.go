@@ -19,22 +19,20 @@ func TestFormatSearchResults_WithResults(t *testing.T) {
 
 	result := &searchsvc.SearchResult{
 		Query: "error handling",
-		Matches: []*patternrepo.Match{
+		Matches: []*searchsvc.ChunkMatch{
 			{
-				Pattern: &patternrepo.Pattern{
-					Name:    "go-error-handling",
-					Tags:    []string{"go", "errors", "best-practices"},
-					Content: "Always wrap errors with context.",
-				},
-				Similarity: 0.92,
+				PatternName:  "go-error-handling",
+				SectionTitle: "Overview",
+				Tags:         []string{"go", "errors", "best-practices"},
+				Content:      "Always wrap errors with context.",
+				Similarity:   0.92,
 			},
 			{
-				Pattern: &patternrepo.Pattern{
-					Name:    "retry-logic",
-					Tags:    []string{"go", "resilience"},
-					Content: "Use exponential backoff.",
-				},
-				Similarity: 0.847,
+				PatternName:  "retry-logic",
+				SectionTitle: "Overview",
+				Tags:         []string{"go", "resilience"},
+				Content:      "Use exponential backoff.",
+				Similarity:   0.847,
 			},
 		},
 	}
@@ -55,10 +53,11 @@ func TestFormatSearchResults_WithAgentFilter(t *testing.T) {
 
 	result := &searchsvc.SearchResult{
 		Query: "testing",
-		Matches: []*patternrepo.Match{
+		Matches: []*searchsvc.ChunkMatch{
 			{
-				Pattern:    &patternrepo.Pattern{Name: "unit-testing", Content: "Test content"},
-				Similarity: 0.88,
+				PatternName: "unit-testing",
+				Content:     "Test content",
+				Similarity:  0.88,
 			},
 		},
 	}
@@ -73,7 +72,7 @@ func TestFormatSearchResults_Empty(t *testing.T) {
 
 	result := &searchsvc.SearchResult{
 		Query:   "nonexistent",
-		Matches: []*patternrepo.Match{},
+		Matches: []*searchsvc.ChunkMatch{},
 	}
 
 	md := formatSearchResults(result, "")
@@ -86,10 +85,11 @@ func TestFormatSearchResults_NoTags(t *testing.T) {
 
 	result := &searchsvc.SearchResult{
 		Query: "query",
-		Matches: []*patternrepo.Match{
+		Matches: []*searchsvc.ChunkMatch{
 			{
-				Pattern:    &patternrepo.Pattern{Name: "no-tags", Content: "Content without tags"},
-				Similarity: 0.75,
+				PatternName: "no-tags",
+				Content:     "Content without tags",
+				Similarity:  0.75,
 			},
 		},
 	}
@@ -105,14 +105,16 @@ func TestFormatSearchResults_SimilarityRounding(t *testing.T) {
 
 	result := &searchsvc.SearchResult{
 		Query: "query",
-		Matches: []*patternrepo.Match{
+		Matches: []*searchsvc.ChunkMatch{
 			{
-				Pattern:    &patternrepo.Pattern{Name: "pattern-a", Content: "Content"},
-				Similarity: 0.925,
+				PatternName: "pattern-a",
+				Content:     "Content",
+				Similarity:  0.925,
 			},
 			{
-				Pattern:    &patternrepo.Pattern{Name: "pattern-b", Content: "Content"},
-				Similarity: 0.994,
+				PatternName: "pattern-b",
+				Content:     "Content",
+				Similarity:  0.994,
 			},
 		},
 	}
