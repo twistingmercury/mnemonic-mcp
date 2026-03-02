@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -129,8 +130,12 @@ func loadFile(path, apiURL string) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusConflict {
+		patternID, lookupErr := lookupPatternID(apiURL, name)
+		if lookupErr != nil {
+			return fmt.Errorf("lookup pattern UUID for %q: %w", name, lookupErr)
+		}
 		putReq, err := http.NewRequest(http.MethodPut,
-			apiURL+"/v1/api/patterns/"+name, bytes.NewReader(body))
+			apiURL+"/v1/api/patterns/"+patternID, bytes.NewReader(body))
 		if err != nil {
 			return fmt.Errorf("build PUT request: %w", err)
 		}
@@ -167,4 +172,45 @@ func parseFrontmatter(raw string) (*frontmatter, string, error) {
 
 func slugFromFilename(name string) string {
 	return strings.TrimSuffix(name, ".md")
+}
+
+// patternListItem represents a single entry from GET /v1/api/patterns.
+type patternListItem struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// patternListEnvelope is the top-level response from GET /v1/api/patterns.
+type patternListEnvelope struct {
+	Data []patternListItem `json:"data"`
+}
+
+// lookupPatternID retrieves the UUID of the pattern with the given name by
+// querying GET /v1/api/patterns and scanning for an exact name match.
+// It returns an error if the pattern cannot be found.
+func lookupPatternID(apiURL, name string) (string, error) {
+	listURL := apiURL + "/v1/api/patterns?search=" + url.QueryEscape(name) + "&limit=100"
+	// G107: apiURL is an operator-supplied CLI flag — false positive.
+	getResp, err := http.Get(listURL) //#nosec G107 -- nolint:gosec,noctx
+	if err != nil {
+		return "", fmt.Errorf("GET patterns list: %w", err)
+	}
+	defer func() { _ = getResp.Body.Close() }()
+
+	if getResp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GET patterns list returned %d", getResp.StatusCode)
+	}
+
+	var envelope patternListEnvelope
+	if err := json.NewDecoder(getResp.Body).Decode(&envelope); err != nil {
+		return "", fmt.Errorf("decode patterns list: %w", err)
+	}
+
+	for _, p := range envelope.Data {
+		if p.Name == name {
+			return p.ID, nil
+		}
+	}
+
+	return "", fmt.Errorf("pattern %q not found in list response", name)
 }

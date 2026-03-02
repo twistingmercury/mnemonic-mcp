@@ -1194,7 +1194,7 @@ func TestPattern_IsValidEnrichmentStatus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.status, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, pattern.IsValidEnrichmentStatus(tt.status))
+			assert.Equal(t, tt.want, repository.IsValidEnrichmentStatus(tt.status))
 		})
 	}
 }

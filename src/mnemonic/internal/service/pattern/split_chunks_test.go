@@ -43,3 +43,31 @@ func TestSplitChunks_EmptySectionDropped(t *testing.T) {
 	assert.Equal(t, "Real Section", chunks[0].SectionTitle)
 	assert.Equal(t, 0, chunks[0].ChunkIndex)
 }
+
+func TestSplitChunks_EmptyString(t *testing.T) {
+	chunks := splitIntoChunks("")
+	require.Len(t, chunks, 0)
+}
+
+func TestSplitChunks_SingleH2WithContent(t *testing.T) {
+	content := "## Only Section\nSome content here."
+	chunks := splitIntoChunks(content)
+	require.Len(t, chunks, 1)
+	assert.Equal(t, "Only Section", chunks[0].SectionTitle)
+	assert.Equal(t, 0, chunks[0].ChunkIndex)
+	assert.Equal(t, "Some content here.", chunks[0].Content)
+}
+
+func TestSplitChunks_H2TrailingWhitespace(t *testing.T) {
+	content := "## Section With Spaces   \nContent here."
+	chunks := splitIntoChunks(content)
+	require.Len(t, chunks, 1)
+	// TrimPrefix leaves trailing whitespace — section title should match raw suffix.
+	assert.Equal(t, "Section With Spaces   ", chunks[0].SectionTitle)
+	assert.Equal(t, "Content here.", chunks[0].Content)
+}
+
+func TestSplitChunks_WhitespaceOnlyContent(t *testing.T) {
+	chunks := splitIntoChunks("   \n\t\n  ")
+	require.Len(t, chunks, 0)
+}

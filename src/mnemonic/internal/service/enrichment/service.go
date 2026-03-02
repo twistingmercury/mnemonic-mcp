@@ -80,7 +80,7 @@ type enrichmentService struct {
 }
 
 // New creates a new enrichment Service backed by the given dependencies.
-// chunkRepo may be nil; chunk jobs will fail gracefully when it is not wired.
+// Returns an error if any required dependency is nil.
 func New(
 	jobRepo enrichmentjob.Repository,
 	patternRepo patternrepo.Repository,
@@ -91,7 +91,10 @@ func New(
 	cfg config.EnrichmentConfig,
 	chunkRepo chunkrepo.Repository,
 	logger zerolog.Logger,
-) Service {
+) (Service, error) {
+	if chunkRepo == nil {
+		return nil, fmt.Errorf("enrichment.New: chunkRepo is required")
+	}
 	return &enrichmentService{
 		jobRepo:       jobRepo,
 		patternRepo:   patternRepo,
@@ -102,7 +105,7 @@ func New(
 		extractionSvc: extractionSvc,
 		cfg:           cfg,
 		logger:        logger,
-	}
+	}, nil
 }
 
 // ClaimNextJob atomically claims the next pending enrichment job.
@@ -121,21 +124,15 @@ func (s *enrichmentService) ProcessJob(ctx context.Context, job *enrichmentjob.J
 }
 
 // processChunkJob runs the chunk-based enrichment pipeline:
-//  1. Require chunk repository to be wired
-//  2. Load chunk from Postgres
-//  3. Generate embedding for chunk content
-//  4. Store embedding on the chunk row
-//  5. Mark chunk as enriched
-//  6. Check aggregate status: any-failed → mark pattern failed;
+//  1. Load chunk from Postgres
+//  2. Generate embedding for chunk content
+//  3. Store embedding on the chunk row
+//  4. Mark chunk as enriched
+//  5. Check aggregate status: any-failed → mark pattern failed;
 //     all-enriched → run concept extraction + graph sync + mark pattern enriched
-//  7. Mark job completed
+//  6. Mark job completed
 func (s *enrichmentService) processChunkJob(ctx context.Context, job *enrichmentjob.Job) error {
-	// Step 1: chunk repo must be wired.
-	if s.chunkRepo == nil {
-		return s.failJob(ctx, job, fmt.Errorf("process chunk job: chunk repository is not configured"))
-	}
-
-	// Step 2: Load chunk from Postgres.
+	// Step 1: Load chunk from Postgres.
 	chunk, err := s.chunkRepo.Get(ctx, *job.ChunkID)
 	if err != nil {
 		return s.failJob(ctx, job, fmt.Errorf("load chunk: %w", err))
@@ -425,7 +422,7 @@ func (s *enrichmentService) CleanupFailedJobs(ctx context.Context) (int64, error
 // Compile-time check that *enrichmentService implements Service.
 var _ Service = (*enrichmentService)(nil)
 
-// Compile-time check that New returns the Service interface.
+// Compile-time check that New returns (Service, error).
 var _ func(
 	enrichmentjob.Repository,
 	patternrepo.Repository,
@@ -436,4 +433,4 @@ var _ func(
 	config.EnrichmentConfig,
 	chunkrepo.Repository,
 	zerolog.Logger,
-) Service = New
+) (Service, error) = New

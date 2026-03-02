@@ -61,19 +61,19 @@ create table if not exists pattern_chunks (
 
 create index idx_pattern_chunks_pattern_id on pattern_chunks (pattern_id);
 
--- Vector similarity search on chunks (IVFFlat for MVP scale)
--- lists = 100 suitable for 1,000-10,000 chunks
--- NOTE: IVFFlat requires at least one row with a non-null embedding to build
--- centroids. If applied to an empty database, create this index after seeding
--- initial data, or use HNSW as an alternative that builds on empty tables.
+-- Vector similarity search on chunks.
+-- HNSW is used instead of IVFFlat because IVFFlat requires existing rows to
+-- build centroids; on an empty table it produces zero centroids and degrades
+-- all vector searches to sequential scans until the index is rebuilt manually
+-- after seeding. HNSW builds correctly on empty tables and requires no
+-- centroid seeding, making it safe to create at migration time.
 create index idx_pattern_chunks_embedding
-    on pattern_chunks using ivfflat (embedding vector_cosine_ops)
-    with (lists = 100);
+    on pattern_chunks using hnsw (embedding vector_cosine_ops);
 
 comment on table pattern_chunks is 'H2-bounded chunks of patterns with per-chunk embeddings for semantic search';
 comment on column pattern_chunks.chunk_index is 'Zero-based order within parent pattern';
 comment on index idx_pattern_chunks_embedding is
-    'IVFFlat index for chunk vector similarity search (100 lists for MVP scale)';
+    'HNSW index for chunk vector similarity search; chosen over IVFFlat because it builds correctly on empty tables without centroid seeding';
 
 -- =============================================================================
 -- ENRICHMENT_JOBS — add chunk_id, make pattern_id nullable

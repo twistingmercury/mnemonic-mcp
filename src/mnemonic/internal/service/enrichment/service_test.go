@@ -489,7 +489,7 @@ func newTestService(t *testing.T) (enrichment.Service, *testDeps) {
 		chunkRepo:     new(mockChunkRepo),
 	}
 
-	svc := enrichment.New(
+	svc, err := enrichment.New(
 		deps.jobRepo,
 		deps.patternRepo,
 		deps.agentRepo,
@@ -500,8 +500,28 @@ func newTestService(t *testing.T) (enrichment.Service, *testDeps) {
 		deps.chunkRepo,
 		zerolog.Nop(),
 	)
+	require.NoError(t, err)
 
 	return svc, deps
+}
+
+// TestNew_NilChunkRepo verifies that New returns an error when chunkRepo is nil,
+// preventing the misconfiguration from surfacing as a runtime failure.
+func TestNew_NilChunkRepo(t *testing.T) {
+	t.Parallel()
+	_, err := enrichment.New(
+		new(mockJobRepo),
+		new(mockPatternRepo),
+		new(mockAgentRepo),
+		new(mockGraphRepo),
+		new(mockEmbeddingSvc),
+		new(mockExtractionSvc),
+		testConfig(),
+		nil, // chunkRepo intentionally nil
+		zerolog.Nop(),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "chunkRepo")
 }
 
 // setupHappyPathMocks configures all mocks for a successful ProcessJob call

@@ -85,7 +85,10 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	}
 
 	// Wire all dependencies.
-	svc, toolDeps, enrichWorker := wireDependencies(pgPool, neo4jDriver, cfg, logger)
+	svc, toolDeps, enrichWorker, err := wireDependencies(pgPool, neo4jDriver, cfg, logger)
+	if err != nil {
+		return fmt.Errorf("failed to wire dependencies: %w", err)
+	}
 
 	// Create request metrics middleware.
 	requestMetrics, err := middleware.NewRequestMetrics(tel.Meter("mnemonic/http"))
@@ -180,7 +183,7 @@ func wireDependencies(
 	neo4jDriver neo4j.DriverWithContext,
 	cfg *config.MnemonicConfig,
 	logger zerolog.Logger,
-) (Services, mcpserver.ToolDependencies, *enricher.Worker) {
+) (Services, mcpserver.ToolDependencies, *enricher.Worker, error) {
 	// Repositories.
 	agentRepo := agentrepo.NewRepository(pgPool)
 	patternRepo := patternrepo.NewRepository(pgPool)
@@ -200,11 +203,14 @@ func wireDependencies(
 	skillFileSvc := skillfilesvc.New(skillFileRepo, skillRepo, logger)
 	searchSvc := searchsvc.New(embeddingSvc, patternRepo, agentRepo, chunkRepo, logger)
 	patternSvc := patternsvc.New(patternRepo, enrichmentJobRepo, graphRepo, agentRepo, pgPool, chunkRepo, logger)
-	enrichmentSvc := enrichmentsvc.New(
+	enrichmentSvc, err := enrichmentsvc.New(
 		enrichmentJobRepo, patternRepo, agentRepo, graphRepo,
 		embeddingSvc, extractionSvc,
 		cfg.Enrichment, chunkRepo, logger,
 	)
+	if err != nil {
+		return Services{}, nil, nil, fmt.Errorf("wire enrichment service: %w", err)
+	}
 
 	// MCP facade.
 	toolDeps := mcpserver.NewToolDependencies(searchSvc, patternSvc)
@@ -216,13 +222,12 @@ func wireDependencies(
 		Search:    searchSvc,
 		Skill:     skillSvc,
 		SkillFile: skillFileSvc,
-		ChunkRepo: chunkRepo,
 	}
 
 	// Enrichment worker.
 	enrichWorker := enricher.New(enrichmentSvc, cfg.Enrichment, logger)
 
-	return svc, toolDeps, enrichWorker
+	return svc, toolDeps, enrichWorker, nil
 }
 
 // runHTTPServer starts the admin API HTTP server and gracefully shuts it down

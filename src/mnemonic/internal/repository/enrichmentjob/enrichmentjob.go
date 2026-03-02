@@ -72,9 +72,9 @@ var ValidStatuses = []JobStatus{
 	StatusFailed,
 }
 
-// IsValidStatus checks if the given status string is valid.
-func IsValidStatus(status string) bool {
-	return slices.Contains(ValidStatuses, JobStatus(status))
+// IsValidStatus checks if the given status is valid.
+func IsValidStatus(status JobStatus) bool {
+	return slices.Contains(ValidStatuses, status)
 }
 
 // IsPending returns true if the job is in pending state.

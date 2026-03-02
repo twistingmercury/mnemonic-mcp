@@ -276,7 +276,7 @@ func (r *pgxRepository) UpdateEmbedding(ctx context.Context, id uuid.UUID, embed
 // UpdateEnrichmentStatus updates the enrichment state of a chunk.
 // When status is "enriched", enriched_at is set to the current time.
 func (r *pgxRepository) UpdateEnrichmentStatus(ctx context.Context, id uuid.UUID, status string, errMsg *string) error {
-	if !IsValidEnrichmentStatus(status) {
+	if !repository.IsValidEnrichmentStatus(status) {
 		return fmt.Errorf("invalid enrichment status: %q", status)
 	}
 
@@ -327,6 +327,7 @@ func (r *pgxRepository) FindSimilar(ctx context.Context, embedding []float32, op
 		FROM pattern_chunks pc
 		JOIN patterns p ON p.id = pc.pattern_id
 		WHERE pc.embedding IS NOT NULL
+		  AND pc.enrichment_status = 'enriched'
 		  AND 1 - (pc.embedding <=> $1) >= $2
 		  AND ($3::text = '' OR p.language = $3)
 		  AND ($4::text = '' OR p.domain = $4)
@@ -397,15 +398,14 @@ func (r *pgxRepository) FindSimilar(ctx context.Context, embedding []float32, op
 	return matches, nil
 }
 
-// AllEnrichedForPattern returns true if every chunk for the pattern has status "enriched".
-// Returns true if the pattern has no chunks (vacuous truth).
+// AllEnrichedForPattern returns true if every chunk for the pattern has status "enriched"
+// and the pattern has at least one chunk. Returns false for patterns with no chunks.
 func (r *pgxRepository) AllEnrichedForPattern(ctx context.Context, patternID uuid.UUID) (bool, error) {
 	query := `
-		SELECT NOT EXISTS (
-			SELECT 1 FROM pattern_chunks
-			WHERE pattern_id = $1
-			  AND enrichment_status != 'enriched'
-		)
+		SELECT COUNT(*) > 0
+		   AND COUNT(*) FILTER (WHERE enrichment_status != 'enriched') = 0
+		FROM pattern_chunks
+		WHERE pattern_id = $1
 	`
 
 	var allEnriched bool

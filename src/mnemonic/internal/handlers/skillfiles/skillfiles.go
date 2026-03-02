@@ -238,7 +238,11 @@ func (h *Handler) createFile(fileType string) gin.HandlerFunc {
 		if limits, ok := fileTypeLimits[fileType]; ok {
 			ft := fileType
 			existing, listErr := h.svc.ListBySkill(c.Request.Context(), skillName, &ft)
-			if listErr == nil && len(existing) >= limits.maxFiles {
+			if listErr != nil {
+				handlers.RespondError(c, listErr)
+				return
+			}
+			if len(existing) >= limits.maxFiles {
 				c.JSON(http.StatusUnprocessableEntity, handlers.ProblemDetail{
 					Type:     handlers.ProblemBaseURI + "unprocessable-entity",
 					Title:    "Unprocessable Entity",

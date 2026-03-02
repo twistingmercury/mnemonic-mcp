@@ -65,6 +65,11 @@ type Service interface {
 	// FindRelated finds patterns related to the given pattern via the Neo4j
 	// knowledge graph. Returns service.ErrNotFound if the pattern does not exist.
 	FindRelated(ctx context.Context, patternID uuid.UUID, limit int) ([]RelatedPatternResult, error)
+
+	// ListChunks retrieves all chunks for a pattern, ordered by chunk_index.
+	// Returns an empty slice when the pattern exists but has no chunks.
+	// Returns service.ErrNotFound if the pattern does not exist.
+	ListChunks(ctx context.Context, patternID uuid.UUID) ([]*chunkrepo.Chunk, error)
 }
 
 // CreateInput contains fields for creating a pattern.
@@ -621,6 +626,27 @@ func (s *patternService) FindRelated(ctx context.Context, patternID uuid.UUID, l
 	}
 
 	return results, nil
+}
+
+// ListChunks retrieves all chunks for a pattern, ordered by chunk_index.
+// Returns service.ErrNotFound if the pattern does not exist.
+func (s *patternService) ListChunks(ctx context.Context, patternID uuid.UUID) ([]*chunkrepo.Chunk, error) {
+	if _, err := s.patternRepo.Get(ctx, patternID); err != nil {
+		if errors.Is(err, patternrepo.ErrNotFound) {
+			return nil, fmt.Errorf("%w: pattern %s", service.ErrNotFound, patternID)
+		}
+		return nil, fmt.Errorf("list chunks: %w", err)
+	}
+
+	if s.chunkRepo == nil {
+		return []*chunkrepo.Chunk{}, nil
+	}
+
+	chunks, err := s.chunkRepo.ListByPatternID(ctx, patternID)
+	if err != nil {
+		return nil, fmt.Errorf("list chunks: %w", err)
+	}
+	return chunks, nil
 }
 
 // resolveAgentAssociations converts agent names to UUIDs and builds both the

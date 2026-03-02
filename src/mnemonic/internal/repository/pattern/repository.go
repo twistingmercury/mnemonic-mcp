@@ -421,7 +421,7 @@ func (r *pgxRepository) List(ctx context.Context, filter Filter, opts repository
 
 // UpdateEnrichmentStatus updates the enrichment state of a pattern.
 func (r *pgxRepository) UpdateEnrichmentStatus(ctx context.Context, id uuid.UUID, status string, errMsg *string) error {
-	if !IsValidEnrichmentStatus(status) {
+	if !repository.IsValidEnrichmentStatus(status) {
 		return fmt.Errorf("invalid enrichment status: %q", status)
 	}
 

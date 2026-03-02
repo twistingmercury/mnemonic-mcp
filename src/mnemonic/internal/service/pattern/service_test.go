@@ -1447,3 +1447,107 @@ func TestCreate_ChunksContent(t *testing.T) {
 		gr.AssertNotCalled(t, "SetPatternAgentRelevance")
 	})
 }
+
+// ---------- ListChunks ----------
+
+func TestListChunks(t *testing.T) {
+	t.Parallel()
+
+	t.Run("happy path returns chunks for existing pattern", func(t *testing.T) {
+		t.Parallel()
+
+		pr := new(mockPatternRepo)
+		er := new(mockEnrichmentRepo)
+		gr := new(mockGraphRepo)
+		ar := new(mockAgentRepo)
+		tb := new(mockTxBeginner)
+		cr := new(mockChunkRepo)
+		svc := newTestServiceWithChunkRepo(pr, er, gr, ar, tb, cr)
+
+		expectedChunks := []*chunkrepo.Chunk{
+			{ChunkIndex: 0, SectionTitle: "Overview", EnrichmentStatus: "pending"},
+			{ChunkIndex: 1, SectionTitle: "Philosophy", EnrichmentStatus: "enriched"},
+		}
+		pr.On("Get", mock.Anything, testPatternID).Return(testPattern(), nil)
+		cr.On("ListByPatternID", mock.Anything, testPatternID).Return(expectedChunks, nil)
+
+		result, err := svc.ListChunks(context.Background(), testPatternID)
+
+		require.NoError(t, err)
+		require.Len(t, result, 2)
+		assert.Equal(t, 0, result[0].ChunkIndex)
+		assert.Equal(t, "Overview", result[0].SectionTitle)
+		assert.Equal(t, "pending", result[0].EnrichmentStatus)
+		assert.Equal(t, 1, result[1].ChunkIndex)
+		assert.Equal(t, "Philosophy", result[1].SectionTitle)
+
+		pr.AssertExpectations(t)
+		cr.AssertExpectations(t)
+	})
+
+	t.Run("pattern not found returns service.ErrNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		pr := new(mockPatternRepo)
+		er := new(mockEnrichmentRepo)
+		gr := new(mockGraphRepo)
+		ar := new(mockAgentRepo)
+		tb := new(mockTxBeginner)
+		cr := new(mockChunkRepo)
+		svc := newTestServiceWithChunkRepo(pr, er, gr, ar, tb, cr)
+
+		pr.On("Get", mock.Anything, testPatternID).Return(nil, patternrepo.ErrNotFound)
+
+		result, err := svc.ListChunks(context.Background(), testPatternID)
+
+		assert.Nil(t, result)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, service.ErrNotFound), "expected service.ErrNotFound, got: %v", err)
+
+		cr.AssertNotCalled(t, "ListByPatternID")
+	})
+
+	t.Run("nil chunk repo returns empty slice", func(t *testing.T) {
+		t.Parallel()
+
+		pr := new(mockPatternRepo)
+		er := new(mockEnrichmentRepo)
+		gr := new(mockGraphRepo)
+		ar := new(mockAgentRepo)
+		tb := new(mockTxBeginner)
+		svc := newTestService(pr, er, gr, ar, tb) // chunkRepo is nil
+
+		pr.On("Get", mock.Anything, testPatternID).Return(testPattern(), nil)
+
+		result, err := svc.ListChunks(context.Background(), testPatternID)
+
+		require.NoError(t, err)
+		assert.Empty(t, result)
+
+		pr.AssertExpectations(t)
+	})
+
+	t.Run("repo error propagates", func(t *testing.T) {
+		t.Parallel()
+
+		pr := new(mockPatternRepo)
+		er := new(mockEnrichmentRepo)
+		gr := new(mockGraphRepo)
+		ar := new(mockAgentRepo)
+		tb := new(mockTxBeginner)
+		cr := new(mockChunkRepo)
+		svc := newTestServiceWithChunkRepo(pr, er, gr, ar, tb, cr)
+
+		pr.On("Get", mock.Anything, testPatternID).Return(testPattern(), nil)
+		cr.On("ListByPatternID", mock.Anything, testPatternID).Return(nil, errors.New("db error"))
+
+		result, err := svc.ListChunks(context.Background(), testPatternID)
+
+		assert.Nil(t, result)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "db error")
+
+		pr.AssertExpectations(t)
+		cr.AssertExpectations(t)
+	})
+}

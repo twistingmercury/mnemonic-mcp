@@ -181,7 +181,7 @@ func (r *pgxRepository) scanJob(ctx context.Context, query string, args ...any) 
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("scan enrichment job: %w", err)
 	}
 
 	return &job, nil
@@ -372,7 +372,7 @@ func (r *pgxRepository) ReclaimStale(ctx context.Context, timeout time.Duration)
 		timeoutInterval,
 	)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("reclaim stale jobs: %w", err)
 	}
 
 	return result.RowsAffected(), nil
@@ -486,7 +486,7 @@ func (r *pgxRepository) DeleteCompleted(ctx context.Context, retention time.Dura
 
 	result, err := r.db.Exec(ctx, query, string(StatusCompleted), cutoff)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("delete completed jobs: %w", err)
 	}
 
 	return result.RowsAffected(), nil
@@ -503,7 +503,7 @@ func (r *pgxRepository) DeleteFailed(ctx context.Context, retention time.Duratio
 
 	result, err := r.db.Exec(ctx, query, string(StatusFailed), cutoff)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("delete failed jobs: %w", err)
 	}
 
 	return result.RowsAffected(), nil

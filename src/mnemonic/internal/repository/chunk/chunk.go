@@ -1,7 +1,6 @@
 package chunk
 
 import (
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -100,12 +99,4 @@ type SimilarityOptions struct {
 	// Tags restricts results to patterns whose tags contain all of these values.
 	// Empty slice disables this filter.
 	Tags []string
-}
-
-// ValidEnrichmentStatuses defines the valid values for the EnrichmentStatus field.
-var ValidEnrichmentStatuses = []string{"pending", "enriched", "failed"}
-
-// IsValidEnrichmentStatus reports whether status is a valid enrichment status value.
-func IsValidEnrichmentStatus(status string) bool {
-	return slices.Contains(ValidEnrichmentStatuses, status)
 }

@@ -578,8 +578,8 @@ func TestRepository_AllEnrichedForPattern(t *testing.T) {
 			name:      "all chunks enriched returns true",
 			patternID: patternID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{"not_exists"}).AddRow(true)
-				mock.ExpectQuery("SELECT NOT EXISTS").
+				rows := pgxmock.NewRows([]string{"result"}).AddRow(true)
+				mock.ExpectQuery("SELECT COUNT").
 					WithArgs(patternID).
 					WillReturnRows(rows)
 			},
@@ -590,8 +590,21 @@ func TestRepository_AllEnrichedForPattern(t *testing.T) {
 			name:      "some chunks not enriched returns false",
 			patternID: patternID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
-				rows := pgxmock.NewRows([]string{"not_exists"}).AddRow(false)
-				mock.ExpectQuery("SELECT NOT EXISTS").
+				rows := pgxmock.NewRows([]string{"result"}).AddRow(false)
+				mock.ExpectQuery("SELECT COUNT").
+					WithArgs(patternID).
+					WillReturnRows(rows)
+			},
+			wantResult: false,
+			wantErr:    false,
+		},
+		{
+			name:      "zero chunks returns false",
+			patternID: patternID,
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				// COUNT(*) > 0 is false when no rows match; the DB returns false.
+				rows := pgxmock.NewRows([]string{"result"}).AddRow(false)
+				mock.ExpectQuery("SELECT COUNT").
 					WithArgs(patternID).
 					WillReturnRows(rows)
 			},
@@ -602,7 +615,7 @@ func TestRepository_AllEnrichedForPattern(t *testing.T) {
 			name:      "database error is propagated",
 			patternID: patternID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery("SELECT NOT EXISTS").
+				mock.ExpectQuery("SELECT COUNT").
 					WithArgs(patternID).
 					WillReturnError(errors.New("connection failed"))
 			},
@@ -806,6 +819,34 @@ func TestRepository_FindSimilar(t *testing.T) {
 						"go",             // language filter
 						"engineering",    // domain filter
 						10,               // max results
+					).
+					WillReturnRows(rows)
+			},
+			wantCount: 0,
+			wantErr:   false,
+		},
+		{
+			// Chunks whose enrichment_status is not 'enriched' must not appear in
+			// results even when their embedding column is non-null (M12).
+			// The WHERE clause filters them server-side; the mock returns no rows to
+			// represent the database honouring that filter.
+			name: "chunks with non-null embedding but non-enriched status are excluded",
+			opts: opts,
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				rows := pgxmock.NewRows([]string{
+					"chunk_id", "pattern_id", "pattern_name", "entity_type",
+					"language", "domain", "tags",
+					"section_title", "chunk_index", "content", "similarity",
+				})
+				// No rows: the database filtered out the failed/pending chunk via
+				// AND pc.enrichment_status = 'enriched'.
+				mock.ExpectQuery("SELECT .* FROM pattern_chunks pc").
+					WithArgs(
+						pgxmock.AnyArg(),
+						opts.MinSimilarity,
+						opts.Language,
+						opts.Domain,
+						opts.MaxResults,
 					).
 					WillReturnRows(rows)
 			},

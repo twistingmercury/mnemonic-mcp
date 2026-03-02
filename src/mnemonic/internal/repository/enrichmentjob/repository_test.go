@@ -23,7 +23,7 @@ func testJob() *enrichmentjob.Job {
 	return &enrichmentjob.Job{
 		ID:           uuid.New(),
 		PatternID:    &pid,
-		Status:       "pending",
+		Status:       enrichmentjob.StatusPending,
 		Attempts:     0,
 		MaxAttempts:  3,
 		ScheduledFor: time.Now(),
@@ -72,7 +72,7 @@ func TestRepository_Create(t *testing.T) {
 					ID:          uuid.New(),
 					PatternID:   nil,
 					ChunkID:     &cid,
-					Status:      "pending",
+					Status:      enrichmentjob.StatusPending,
 					Attempts:    0,
 					MaxAttempts: 3,
 				}
@@ -117,6 +117,27 @@ func TestRepository_Create(t *testing.T) {
 					WillReturnError(&pgconn.PgError{Code: "23503"})
 			},
 			wantErr: enrichmentjob.ErrPatternNotFound,
+		},
+		{
+			name: "check violation returns ErrInvalidJobTarget",
+			job:  testJob(),
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("INSERT INTO enrichment_jobs").
+					WithArgs(
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+					).
+					WillReturnError(&pgconn.PgError{Code: "23514"})
+			},
+			wantErr: enrichmentjob.ErrInvalidJobTarget,
 		},
 	}
 
@@ -230,7 +251,7 @@ func TestRepository_Get(t *testing.T) {
 			wantJob: &enrichmentjob.Job{
 				ID:           jobID,
 				PatternID:    &patternID,
-				Status:       "pending",
+				Status:       enrichmentjob.StatusPending,
 				Attempts:     0,
 				MaxAttempts:  3,
 				ScheduledFor: now,
@@ -358,6 +379,29 @@ func TestRepository_GetByPatternID(t *testing.T) {
 			assert.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
+}
+
+func TestRepository_Get_ScanError(t *testing.T) {
+	t.Parallel()
+
+	jobID := uuid.New()
+
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	// Return a row with wrong column count to force a scan error.
+	rows := pgxmock.NewRows([]string{"id"}).AddRow(jobID)
+	mock.ExpectQuery("SELECT .* FROM enrichment_jobs").
+		WithArgs(jobID).
+		WillReturnRows(rows)
+
+	repo := enrichmentjob.NewRepository(mock)
+	job, err := repo.Get(context.Background(), jobID)
+
+	assert.Nil(t, job)
+	assert.ErrorContains(t, err, "scan enrichment job")
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestRepository_ClaimPending(t *testing.T) {
@@ -727,6 +771,16 @@ func TestRepository_ReclaimStale(t *testing.T) {
 			},
 			wantCount: 0,
 		},
+		{
+			name: "database error is wrapped",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectExec("UPDATE enrichment_jobs SET").
+					WithArgs("pending", "failed", "processing", "1800 seconds").
+					WillReturnError(errors.New("connection reset"))
+			},
+			wantCount: 0,
+			wantErr:   errors.New("reclaim stale jobs"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -744,6 +798,7 @@ func TestRepository_ReclaimStale(t *testing.T) {
 
 			if tt.wantErr != nil {
 				assert.Error(t, err)
+				assert.ErrorContains(t, err, "reclaim stale jobs")
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.wantCount, count)
@@ -783,6 +838,16 @@ func TestRepository_DeleteCompleted(t *testing.T) {
 			},
 			wantCount: 0,
 		},
+		{
+			name: "database error is wrapped",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectExec("DELETE FROM enrichment_jobs WHERE status").
+					WithArgs("completed", pgxmock.AnyArg()).
+					WillReturnError(errors.New("connection reset"))
+			},
+			wantCount: 0,
+			wantErr:   errors.New("delete completed jobs"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -800,6 +865,7 @@ func TestRepository_DeleteCompleted(t *testing.T) {
 
 			if tt.wantErr != nil {
 				assert.Error(t, err)
+				assert.ErrorContains(t, err, "delete completed jobs")
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.wantCount, count)
@@ -839,6 +905,16 @@ func TestRepository_DeleteFailed(t *testing.T) {
 			},
 			wantCount: 0,
 		},
+		{
+			name: "database error is wrapped",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectExec("DELETE FROM enrichment_jobs WHERE status").
+					WithArgs("failed", pgxmock.AnyArg()).
+					WillReturnError(errors.New("connection reset"))
+			},
+			wantCount: 0,
+			wantErr:   errors.New("delete failed jobs"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -856,6 +932,7 @@ func TestRepository_DeleteFailed(t *testing.T) {
 
 			if tt.wantErr != nil {
 				assert.Error(t, err)
+				assert.ErrorContains(t, err, "delete failed jobs")
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.wantCount, count)
@@ -1098,20 +1175,20 @@ func TestIsValidStatus(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		status string
+		status enrichmentjob.JobStatus
 		want   bool
 	}{
-		{"pending", true},
-		{"processing", true},
-		{"completed", true},
-		{"failed", true},
+		{enrichmentjob.StatusPending, true},
+		{enrichmentjob.StatusProcessing, true},
+		{enrichmentjob.StatusCompleted, true},
+		{enrichmentjob.StatusFailed, true},
 		{"invalid", false},
 		{"PENDING", false},
 		{"", false},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.status, func(t *testing.T) {
+		t.Run(string(tt.status), func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tt.want, enrichmentjob.IsValidStatus(tt.status))
 		})

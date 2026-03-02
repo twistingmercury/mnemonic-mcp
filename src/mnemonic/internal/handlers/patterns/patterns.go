@@ -19,9 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/twistingmercury/mnemonic/internal/handlers"
-	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
-	"github.com/twistingmercury/mnemonic/internal/service"
 	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
 )
@@ -36,15 +34,13 @@ var allowedDomains = []string{"backend", "api-design", "testing", "frontend", "i
 type Handler struct {
 	patternSvc patternsvc.Service
 	searchSvc  searchsvc.Service
-	chunkRepo  chunkrepo.Repository
 }
 
 // New creates a new pattern Handler backed by the given services.
-func New(patternSvc patternsvc.Service, searchSvc searchsvc.Service, chunkRepo chunkrepo.Repository) *Handler {
+func New(patternSvc patternsvc.Service, searchSvc searchsvc.Service) *Handler {
 	return &Handler{
 		patternSvc: patternSvc,
 		searchSvc:  searchSvc,
-		chunkRepo:  chunkRepo,
 	}
 }
 
@@ -525,14 +521,16 @@ func (h *Handler) Get(c *gin.Context) {
 		return
 	}
 
-	pattern, graph, err := h.patternSvc.GetWithGraph(c.Request.Context(), id)
+	ctx := c.Request.Context()
+
+	pattern, graph, err := h.patternSvc.GetWithGraph(ctx, id)
 	if err != nil {
 		handlers.RespondError(c, err)
 		return
 	}
 
 	// Fetch agent associations separately (handler composition per design doc).
-	pgAssocs, err := h.patternSvc.GetAgentAssociations(c.Request.Context(), id)
+	pgAssocs, err := h.patternSvc.GetAgentAssociations(ctx, id)
 	if err != nil {
 		handlers.RespondError(c, err)
 		return
@@ -542,13 +540,32 @@ func (h *Handler) Get(c *gin.Context) {
 	for i, a := range pgAssocs {
 		agentIDs[i] = a.AgentID
 	}
-	names, err := h.patternSvc.ResolveAgentNames(c.Request.Context(), agentIDs)
+	names, err := h.patternSvc.ResolveAgentNames(ctx, agentIDs)
 	if err != nil {
 		handlers.RespondError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, toPatternResponse(pattern, graph, toAssociationResponses(pgAssocs, names)))
+	resp := toPatternResponse(pattern, graph, toAssociationResponses(pgAssocs, names))
+
+	// Populate chunks; degrade gracefully if the chunk service fails.
+	chunks, chunkErr := h.patternSvc.ListChunks(ctx, id)
+	if chunkErr != nil {
+		// Non-fatal: log and return the pattern without chunks.
+		c.Header("X-Warning", "chunks unavailable")
+	} else {
+		summaries := make([]chunkSummary, len(chunks))
+		for i, ch := range chunks {
+			summaries[i] = chunkSummary{
+				ChunkIndex:       ch.ChunkIndex,
+				SectionTitle:     ch.SectionTitle,
+				EnrichmentStatus: ch.EnrichmentStatus,
+			}
+		}
+		resp.Chunks = summaries
+	}
+
+	c.JSON(http.StatusOK, resp)
 }
 
 // Update handles PUT /v1/api/patterns/:id.
@@ -723,11 +740,16 @@ func (h *Handler) GetChunks(c *gin.Context) {
 		})
 		return
 	}
-	if h.chunkRepo == nil {
-		handlers.RespondError(c, fmt.Errorf("%w: chunk repository not configured", service.ErrServiceUnavailable))
+
+	ctx := c.Request.Context()
+
+	// Verify the pattern exists before listing chunks (returns 404 for unknown patterns).
+	if _, err := h.patternSvc.Get(ctx, id); err != nil {
+		handlers.RespondError(c, err)
 		return
 	}
-	chunks, err := h.chunkRepo.ListByPatternID(c.Request.Context(), id)
+
+	chunks, err := h.patternSvc.ListChunks(ctx, id)
 	if err != nil {
 		handlers.RespondError(c, err)
 		return

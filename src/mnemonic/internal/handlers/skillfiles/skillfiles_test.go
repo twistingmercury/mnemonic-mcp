@@ -163,6 +163,31 @@ func TestCreateScript_Conflict(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, w.Code)
 }
 
+func TestCreateScript_ListBySkillDBError(t *testing.T) {
+	t.Parallel()
+	svc := new(mockSkillFileService)
+	router := newTestRouter(svc)
+
+	svc.On("ListBySkill", mock.Anything, "my-skill", mock.AnythingOfType("*string")).
+		Return(nil, fmt.Errorf("database connection lost"))
+
+	body := `{
+		"filename": "extract.py",
+		"content_type": "text/x-python",
+		"content": "content"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/skills/my-skill/scripts", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	// A DB error on the file count check must return an error response, not 201.
+	assert.NotEqual(t, http.StatusCreated, w.Code)
+	assert.GreaterOrEqual(t, w.Code, 400)
+	svc.AssertNotCalled(t, "Create")
+}
+
 func TestListScripts_Success(t *testing.T) {
 	t.Parallel()
 	svc := new(mockSkillFileService)

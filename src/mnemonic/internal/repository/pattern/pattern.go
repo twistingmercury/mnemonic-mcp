@@ -1,7 +1,6 @@
 package pattern
 
 import (
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -54,14 +53,6 @@ type Pattern struct {
 
 	// UpdatedAt is the timestamp when the pattern was last modified.
 	UpdatedAt time.Time `db:"updated_at"`
-}
-
-// ValidEnrichmentStatuses defines the valid values for the EnrichmentStatus field.
-var ValidEnrichmentStatuses = []string{"pending", "enriched", "failed"}
-
-// IsValidEnrichmentStatus checks if the given status string is a valid enrichment status.
-func IsValidEnrichmentStatus(status string) bool {
-	return slices.Contains(ValidEnrichmentStatuses, status)
 }
 
 // Filter defines filtering options for pattern queries.
