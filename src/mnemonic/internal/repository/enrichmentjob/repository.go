@@ -315,29 +315,24 @@ func (r *pgxRepository) MarkFailed(ctx context.Context, id uuid.UUID, jobErr err
 			started_at = CASE WHEN attempts + 1 < max_attempts THEN NULL ELSE started_at END,
 			updated_at = now()
 		WHERE id = $1
-		RETURNING status, attempts, scheduled_for, updated_at
 	`
 
 	// Convert retryDelay to PostgreSQL interval string
 	delayInterval := fmt.Sprintf("%d seconds", int(retryDelay.Seconds()))
 
-	var status string
-	var attempts int
-	var scheduledFor time.Time
-	var updatedAt time.Time
-
-	err := r.db.QueryRow(ctx, query,
+	result, err := r.db.Exec(ctx, query,
 		id,
 		string(StatusPending),
 		string(StatusFailed),
 		errMsg,
 		delayInterval,
-	).Scan(&status, &attempts, &scheduledFor, &updatedAt)
+	)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrNotFound
-		}
 		return fmt.Errorf("mark job failed: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return ErrNotFound
 	}
 
 	return nil

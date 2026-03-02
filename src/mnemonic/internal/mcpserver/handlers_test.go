@@ -88,8 +88,8 @@ func TestHandleSearchPatterns_HappyPath(t *testing.T) {
 		TotalCandidates:  2,
 		SearchDurationMs: 42,
 		Matches: []*searchsvc.ChunkMatch{
-			{PatternName: "go-error-handling", Tags: []string{"go", "errors"}, Content: "Error handling content", Similarity: 0.92},
-			{PatternName: "retry-logic", Tags: []string{"go", "resilience"}, Content: "Retry logic content", Similarity: 0.85},
+			{PatternID: uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), PatternName: "go-error-handling", Tags: []string{"go", "errors"}, Content: "Error handling content", Similarity: 0.92},
+			{PatternID: uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), PatternName: "retry-logic", Tags: []string{"go", "resilience"}, Content: "Retry logic content", Similarity: 0.85},
 		},
 	}
 	deps.On("SearchPatterns", mock.Anything, searchsvc.SearchOptions{
@@ -104,7 +104,8 @@ func TestHandleSearchPatterns_HappyPath(t *testing.T) {
 
 	require.NoError(t, err)
 	text := extractTextContent(t, result)
-	assert.Contains(t, text, "Found 2 patterns matching 'error handling'")
+	// 2 sections from 2 distinct patterns.
+	assert.Contains(t, text, "Found 2 sections across 2 patterns matching 'error handling'")
 	assert.Contains(t, text, "go-error-handling (92% match)")
 	assert.Contains(t, text, "retry-logic (85% match)")
 	deps.AssertExpectations(t)

@@ -20,7 +20,15 @@ func formatSearchResults(result *searchsvc.SearchResult, agentFilter string) str
 
 	var sb strings.Builder
 
-	header := fmt.Sprintf("Found %d patterns matching '%s'", len(result.Matches), result.Query)
+	// Count distinct pattern IDs; one pattern may have multiple matching chunks.
+	seen := make(map[interface{}]struct{}, len(result.Matches))
+	for _, m := range result.Matches {
+		seen[m.PatternID] = struct{}{}
+	}
+	distinctPatterns := len(seen)
+	sections := len(result.Matches)
+
+	header := fmt.Sprintf("Found %d sections across %d patterns matching '%s'", sections, distinctPatterns, result.Query)
 	if agentFilter != "" {
 		header += fmt.Sprintf(" (filtered by agent: %s)", agentFilter)
 	}

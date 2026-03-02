@@ -901,23 +901,19 @@ func TestRepository_CreateBatch(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
-	patternID := uuid.New()
-
-	chunks := []*chunk.Chunk{
-		{PatternID: patternID, SectionTitle: "Intro", ChunkIndex: 0, Content: "intro content"},
-		{PatternID: patternID, SectionTitle: "Details", ChunkIndex: 1, Content: "details content"},
-	}
 
 	tests := []struct {
-		name      string
-		chunks    []*chunk.Chunk
-		setupMock func(mock pgxmock.PgxPoolIface)
-		wantErr   bool
+		name       string
+		makeChunks func() []*chunk.Chunk
+		setupMock  func(mock pgxmock.PgxPoolIface, chunks []*chunk.Chunk)
+		wantErr    bool
 	}{
 		{
-			name:   "empty slice is a no-op",
-			chunks: []*chunk.Chunk{},
-			setupMock: func(mock pgxmock.PgxPoolIface) {
+			name: "empty slice is a no-op",
+			makeChunks: func() []*chunk.Chunk {
+				return []*chunk.Chunk{}
+			},
+			setupMock: func(mock pgxmock.PgxPoolIface, _ []*chunk.Chunk) {
 				// No expectations — no DB calls expected.
 			},
 			wantErr: false,
@@ -926,9 +922,15 @@ func TestRepository_CreateBatch(t *testing.T) {
 			// pgxmock.PgxPoolIface is not *pgxpool.Pool, so CreateBatch falls
 			// through to createBatchDirect and executes without an internal
 			// transaction (no Begin/Commit expected).
-			name:   "inserts each chunk and returns DB values",
-			chunks: chunks,
-			setupMock: func(mock pgxmock.PgxPoolIface) {
+			name: "inserts each chunk and returns DB values",
+			makeChunks: func() []*chunk.Chunk {
+				patternID := uuid.New()
+				return []*chunk.Chunk{
+					{PatternID: patternID, SectionTitle: "Intro", ChunkIndex: 0, Content: "intro content"},
+					{PatternID: patternID, SectionTitle: "Details", ChunkIndex: 1, Content: "details content"},
+				}
+			},
+			setupMock: func(mock pgxmock.PgxPoolIface, chunks []*chunk.Chunk) {
 				for range chunks {
 					rows := pgxmock.NewRows([]string{"enrichment_status", "created_at", "updated_at"}).
 						AddRow("pending", now, now)
@@ -951,14 +953,16 @@ func TestRepository_CreateBatch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			chunks := tt.makeChunks()
+
 			mock, err := pgxmock.NewPool()
 			require.NoError(t, err)
 			defer mock.Close()
 
-			tt.setupMock(mock)
+			tt.setupMock(mock, chunks)
 
 			repo := chunk.NewRepository(mock)
-			err = repo.CreateBatch(context.Background(), tt.chunks)
+			err = repo.CreateBatch(context.Background(), chunks)
 
 			if tt.wantErr {
 				assert.Error(t, err)

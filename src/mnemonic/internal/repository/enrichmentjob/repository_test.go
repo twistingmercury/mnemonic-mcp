@@ -623,7 +623,6 @@ func TestRepository_MarkCompleted(t *testing.T) {
 func TestRepository_MarkFailed_WithRetry(t *testing.T) {
 	t.Parallel()
 
-	now := time.Now()
 	jobID := uuid.New()
 	retryDelay := 5 * time.Minute
 
@@ -632,10 +631,7 @@ func TestRepository_MarkFailed_WithRetry(t *testing.T) {
 	defer mock.Close()
 
 	// Single atomic UPDATE with CASE expression
-	// Returns pending status when attempts < max_attempts
-	rows := pgxmock.NewRows([]string{"status", "attempts", "scheduled_for", "updated_at"}).
-		AddRow("pending", 1, now.Add(retryDelay), now)
-	mock.ExpectQuery("UPDATE enrichment_jobs SET").
+	mock.ExpectExec("UPDATE enrichment_jobs SET").
 		WithArgs(
 			jobID,
 			"pending",
@@ -643,7 +639,7 @@ func TestRepository_MarkFailed_WithRetry(t *testing.T) {
 			pgxmock.AnyArg(), // last_error (*string)
 			"300 seconds",    // retry delay interval
 		).
-		WillReturnRows(rows)
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 	repo := enrichmentjob.NewRepository(mock)
 	err = repo.MarkFailed(context.Background(), jobID, errors.New("test error"), retryDelay)
@@ -655,7 +651,6 @@ func TestRepository_MarkFailed_WithRetry(t *testing.T) {
 func TestRepository_MarkFailed_MaxAttemptsReached(t *testing.T) {
 	t.Parallel()
 
-	now := time.Now()
 	jobID := uuid.New()
 	retryDelay := 5 * time.Minute
 
@@ -664,10 +659,7 @@ func TestRepository_MarkFailed_MaxAttemptsReached(t *testing.T) {
 	defer mock.Close()
 
 	// Single atomic UPDATE with CASE expression
-	// Returns failed status when attempts >= max_attempts
-	rows := pgxmock.NewRows([]string{"status", "attempts", "scheduled_for", "updated_at"}).
-		AddRow("failed", 3, now, now)
-	mock.ExpectQuery("UPDATE enrichment_jobs SET").
+	mock.ExpectExec("UPDATE enrichment_jobs SET").
 		WithArgs(
 			jobID,
 			"pending",
@@ -675,7 +667,7 @@ func TestRepository_MarkFailed_MaxAttemptsReached(t *testing.T) {
 			pgxmock.AnyArg(), // last_error (*string)
 			"300 seconds",    // retry delay interval
 		).
-		WillReturnRows(rows)
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 	repo := enrichmentjob.NewRepository(mock)
 	err = repo.MarkFailed(context.Background(), jobID, errors.New("final error"), retryDelay)
@@ -694,7 +686,7 @@ func TestRepository_MarkFailed_NotFound(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	mock.ExpectQuery("UPDATE enrichment_jobs SET").
+	mock.ExpectExec("UPDATE enrichment_jobs SET").
 		WithArgs(
 			jobID,
 			"pending",
@@ -702,7 +694,7 @@ func TestRepository_MarkFailed_NotFound(t *testing.T) {
 			pgxmock.AnyArg(),
 			"300 seconds",
 		).
-		WillReturnError(pgx.ErrNoRows)
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 
 	repo := enrichmentjob.NewRepository(mock)
 	err = repo.MarkFailed(context.Background(), jobID, errors.New("error"), retryDelay)
@@ -714,7 +706,6 @@ func TestRepository_MarkFailed_NotFound(t *testing.T) {
 func TestRepository_MarkFailed_NilError(t *testing.T) {
 	t.Parallel()
 
-	now := time.Now()
 	jobID := uuid.New()
 	retryDelay := 5 * time.Minute
 
@@ -723,9 +714,7 @@ func TestRepository_MarkFailed_NilError(t *testing.T) {
 	defer mock.Close()
 
 	// When jobErr is nil, last_error should be nil (*string nil, not interface nil)
-	rows := pgxmock.NewRows([]string{"status", "attempts", "scheduled_for", "updated_at"}).
-		AddRow("pending", 1, now.Add(retryDelay), now)
-	mock.ExpectQuery("UPDATE enrichment_jobs SET").
+	mock.ExpectExec("UPDATE enrichment_jobs SET").
 		WithArgs(
 			jobID,
 			"pending",
@@ -733,7 +722,7 @@ func TestRepository_MarkFailed_NilError(t *testing.T) {
 			pgxmock.AnyArg(), // last_error is *string nil (NULL in DB)
 			"300 seconds",    // retry delay interval
 		).
-		WillReturnRows(rows)
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 	repo := enrichmentjob.NewRepository(mock)
 	err = repo.MarkFailed(context.Background(), jobID, nil, retryDelay)

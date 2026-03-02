@@ -133,6 +133,9 @@ type ListOptions struct {
 	Limit  int
 }
 
+// Compile-time interface check.
+var _ Service = (*patternService)(nil)
+
 // patternService implements the Service interface.
 type patternService struct {
 	patternRepo    patternrepo.Repository
@@ -275,12 +278,19 @@ func (s *patternService) Create(ctx context.Context, input CreateInput) (*patter
 		// Create one enrichment job per chunk. Failures are best-effort: a
 		// missed job means that chunk won't be embedded initially, but manual
 		// re-enrichment or a future retry can recover it without data loss.
+		var jobFailures int
 		for _, c := range chunks {
 			chunkID := c.ID
 			job := enrichmentrepo.Job{ChunkID: &chunkID}
 			if jobErr := s.enrichmentRepo.Create(ctx, &job); jobErr != nil {
-				s.logger.Warn().Err(jobErr).Str("chunk_id", c.ID.String()).Msg("failed to create enrichment job for chunk")
+				jobFailures++
 			}
+		}
+		if jobFailures > 0 {
+			s.logger.Warn().
+				Int("failed", jobFailures).
+				Int("total", len(chunks)).
+				Msg("failed to create chunk enrichment jobs — affected chunks will not be embedded until re-PUT")
 		}
 	} else {
 		// Fallback: create a single pattern-level enrichment job.
@@ -416,6 +426,7 @@ func (s *patternService) Update(ctx context.Context, id uuid.UUID, input UpdateI
 
 	// Enqueue per-chunk enrichment jobs outside the transaction. Failures are
 	// best-effort: a missed job can be recovered by manual re-enrichment.
+	var jobFailures int
 	for _, c := range newChunks {
 		chunkID := c.ID
 		job := enrichmentrepo.Job{
@@ -423,8 +434,14 @@ func (s *patternService) Update(ctx context.Context, id uuid.UUID, input UpdateI
 			Status:  enrichmentrepo.StatusPending,
 		}
 		if err := s.enrichmentRepo.Create(ctx, &job); err != nil {
-			s.logger.Warn().Err(err).Str("chunk_id", chunkID.String()).Msg("failed to create chunk enrichment job on update")
+			jobFailures++
 		}
+	}
+	if jobFailures > 0 {
+		s.logger.Warn().
+			Int("failed", jobFailures).
+			Int("total", len(newChunks)).
+			Msg("failed to create chunk enrichment jobs — affected chunks will not be embedded until re-PUT")
 	}
 
 	// Best-effort Neo4j sync for agent associations.
