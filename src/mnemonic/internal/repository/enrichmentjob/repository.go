@@ -77,7 +77,7 @@ func (r *pgxRepository) Create(ctx context.Context, job *Job) error {
 
 	// Set defaults
 	if job.Status == "" {
-		job.Status = string(StatusPending)
+		job.Status = StatusPending
 	}
 	if job.MaxAttempts == 0 {
 		job.MaxAttempts = DefaultMaxAttempts
@@ -86,10 +86,10 @@ func (r *pgxRepository) Create(ctx context.Context, job *Job) error {
 	// Use COALESCE to default scheduled_for to now() if not set
 	query := `
 		INSERT INTO enrichment_jobs (
-			id, pattern_id, status, attempts, max_attempts,
+			id, pattern_id, chunk_id, status, attempts, max_attempts,
 			last_error, scheduled_for, started_at, completed_at,
 			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, now()), $8, $9, now(), now())
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, now()), $9, $10, now(), now())
 		RETURNING scheduled_for, created_at, updated_at
 	`
 
@@ -104,7 +104,8 @@ func (r *pgxRepository) Create(ctx context.Context, job *Job) error {
 	err := r.db.QueryRow(ctx, query,
 		job.ID,
 		job.PatternID,
-		job.Status,
+		job.ChunkID,
+		string(job.Status),
 		job.Attempts,
 		job.MaxAttempts,
 		job.LastError,
@@ -121,10 +122,10 @@ func (r *pgxRepository) Create(ctx context.Context, job *Job) error {
 			case repository.PgErrCodeForeignKeyViolation:
 				return ErrPatternNotFound
 			case repository.PgErrCodeCheckViolation:
-				return err
+				return ErrInvalidJobTarget
 			}
 		}
-		return err
+		return fmt.Errorf("create enrichment job: %w", err)
 	}
 
 	return nil
@@ -133,7 +134,7 @@ func (r *pgxRepository) Create(ctx context.Context, job *Job) error {
 // Get retrieves an enrichment job by ID from the database.
 func (r *pgxRepository) Get(ctx context.Context, id uuid.UUID) (*Job, error) {
 	query := `
-		SELECT id, pattern_id, status, attempts, max_attempts,
+		SELECT id, pattern_id, chunk_id, status, attempts, max_attempts,
 			   last_error, scheduled_for, started_at, completed_at,
 			   created_at, updated_at
 		FROM enrichment_jobs
@@ -146,7 +147,7 @@ func (r *pgxRepository) Get(ctx context.Context, id uuid.UUID) (*Job, error) {
 // GetByPatternID retrieves the latest job for a pattern.
 func (r *pgxRepository) GetByPatternID(ctx context.Context, patternID uuid.UUID) (*Job, error) {
 	query := `
-		SELECT id, pattern_id, status, attempts, max_attempts,
+		SELECT id, pattern_id, chunk_id, status, attempts, max_attempts,
 			   last_error, scheduled_for, started_at, completed_at,
 			   created_at, updated_at
 		FROM enrichment_jobs
@@ -165,6 +166,7 @@ func (r *pgxRepository) scanJob(ctx context.Context, query string, args ...any) 
 	err := r.db.QueryRow(ctx, query, args...).Scan(
 		&job.ID,
 		&job.PatternID,
+		&job.ChunkID,
 		&job.Status,
 		&job.Attempts,
 		&job.MaxAttempts,
@@ -179,7 +181,7 @@ func (r *pgxRepository) scanJob(ctx context.Context, query string, args ...any) 
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("scan enrichment job: %w", err)
 	}
 
 	return &job, nil
@@ -205,7 +207,7 @@ func (r *pgxRepository) ClaimPending(ctx context.Context) (*Job, error) {
 			LIMIT 1
 			FOR UPDATE SKIP LOCKED
 		)
-		RETURNING id, pattern_id, status, attempts, max_attempts,
+		RETURNING id, pattern_id, chunk_id, status, attempts, max_attempts,
 				  last_error, scheduled_for, started_at, completed_at,
 				  created_at, updated_at
 	`
@@ -217,6 +219,7 @@ func (r *pgxRepository) ClaimPending(ctx context.Context) (*Job, error) {
 	).Scan(
 		&job.ID,
 		&job.PatternID,
+		&job.ChunkID,
 		&job.Status,
 		&job.Attempts,
 		&job.MaxAttempts,
@@ -251,7 +254,7 @@ func (r *pgxRepository) MarkProcessing(ctx context.Context, id uuid.UUID) error 
 
 	result, err := r.db.Exec(ctx, query, id, string(StatusProcessing))
 	if err != nil {
-		return err
+		return fmt.Errorf("mark job processing: %w", err)
 	}
 
 	if result.RowsAffected() == 0 {
@@ -275,7 +278,7 @@ func (r *pgxRepository) MarkCompleted(ctx context.Context, id uuid.UUID) error {
 
 	result, err := r.db.Exec(ctx, query, id, string(StatusCompleted))
 	if err != nil {
-		return err
+		return fmt.Errorf("mark job completed: %w", err)
 	}
 
 	if result.RowsAffected() == 0 {
@@ -312,29 +315,24 @@ func (r *pgxRepository) MarkFailed(ctx context.Context, id uuid.UUID, jobErr err
 			started_at = CASE WHEN attempts + 1 < max_attempts THEN NULL ELSE started_at END,
 			updated_at = now()
 		WHERE id = $1
-		RETURNING status, attempts, scheduled_for, updated_at
 	`
 
 	// Convert retryDelay to PostgreSQL interval string
 	delayInterval := fmt.Sprintf("%d seconds", int(retryDelay.Seconds()))
 
-	var status string
-	var attempts int
-	var scheduledFor time.Time
-	var updatedAt time.Time
-
-	err := r.db.QueryRow(ctx, query,
+	result, err := r.db.Exec(ctx, query,
 		id,
 		string(StatusPending),
 		string(StatusFailed),
 		errMsg,
 		delayInterval,
-	).Scan(&status, &attempts, &scheduledFor, &updatedAt)
+	)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrNotFound
-		}
-		return err
+		return fmt.Errorf("mark job failed: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return ErrNotFound
 	}
 
 	return nil
@@ -369,7 +367,7 @@ func (r *pgxRepository) ReclaimStale(ctx context.Context, timeout time.Duration)
 		timeoutInterval,
 	)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("reclaim stale jobs: %w", err)
 	}
 
 	return result.RowsAffected(), nil
@@ -395,6 +393,12 @@ func (r *pgxRepository) List(ctx context.Context, filter Filter, opts repository
 		argIndex++
 	}
 
+	if filter.ChunkID != nil {
+		conditions = append(conditions, fmt.Sprintf("chunk_id = $%d", argIndex))
+		args = append(args, *filter.ChunkID)
+		argIndex++
+	}
+
 	whereClause := ""
 	if len(conditions) > 0 {
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
@@ -402,7 +406,7 @@ func (r *pgxRepository) List(ctx context.Context, filter Filter, opts repository
 
 	// Build query with window function for total count
 	query := fmt.Sprintf(`
-		SELECT id, pattern_id, status, attempts, max_attempts,
+		SELECT id, pattern_id, chunk_id, status, attempts, max_attempts,
 			   last_error, scheduled_for, started_at, completed_at,
 			   created_at, updated_at,
 			   COUNT(*) OVER() as total_count
@@ -440,6 +444,7 @@ func (r *pgxRepository) List(ctx context.Context, filter Filter, opts repository
 		err := rows.Scan(
 			&job.ID,
 			&job.PatternID,
+			&job.ChunkID,
 			&job.Status,
 			&job.Attempts,
 			&job.MaxAttempts,
@@ -476,7 +481,7 @@ func (r *pgxRepository) DeleteCompleted(ctx context.Context, retention time.Dura
 
 	result, err := r.db.Exec(ctx, query, string(StatusCompleted), cutoff)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("delete completed jobs: %w", err)
 	}
 
 	return result.RowsAffected(), nil
@@ -493,7 +498,7 @@ func (r *pgxRepository) DeleteFailed(ctx context.Context, retention time.Duratio
 
 	result, err := r.db.Exec(ctx, query, string(StatusFailed), cutoff)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("delete failed jobs: %w", err)
 	}
 
 	return result.RowsAffected(), nil

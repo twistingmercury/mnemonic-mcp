@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/pgvector/pgvector-go"
 	"github.com/twistingmercury/mnemonic/internal/repository"
 )
 
@@ -36,14 +35,8 @@ type Repository interface {
 	// Returns the patterns, total count, and any error.
 	List(ctx context.Context, filter Filter, opts repository.ListOptions) ([]*Pattern, int64, error)
 
-	// UpdateEmbedding stores the embedding vector for a pattern.
-	UpdateEmbedding(ctx context.Context, id uuid.UUID, embedding []float32) error
-
 	// UpdateEnrichmentStatus updates the enrichment state of a pattern.
 	UpdateEnrichmentStatus(ctx context.Context, id uuid.UUID, status string, errMsg *string) error
-
-	// FindSimilar finds patterns similar to the given embedding vector.
-	FindSimilar(ctx context.Context, embedding []float32, opts SimilarityOptions) ([]*Match, error)
 
 	// SetAgentAssociations replaces all agent associations for a pattern.
 	SetAgentAssociations(ctx context.Context, patternID uuid.UUID, associations []AgentAssociation) error
@@ -75,10 +68,19 @@ func (r *pgxRepository) Create(ctx context.Context, pattern *Pattern) error {
 	if pattern.Tags == nil {
 		pattern.Tags = []string{}
 	}
+	// Defensive check: ensure RelatedPatterns is not nil (database requires JSON array, not null)
+	if pattern.RelatedPatterns == nil {
+		pattern.RelatedPatterns = []string{}
+	}
 
 	tagsJSON, err := json.Marshal(pattern.Tags)
 	if err != nil {
 		return fmt.Errorf("marshaling tags: %w", err)
+	}
+
+	relatedPatternsJSON, err := json.Marshal(pattern.RelatedPatterns)
+	if err != nil {
+		return fmt.Errorf("marshaling related_patterns: %w", err)
 	}
 
 	// Generate UUID if not set
@@ -90,8 +92,9 @@ func (r *pgxRepository) Create(ctx context.Context, pattern *Pattern) error {
 	query := `
 		INSERT INTO patterns (
 			id, name, description, content, tags,
+			entity_type, language, domain, version, related_patterns,
 			enrichment_status, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	`
 
 	_, err = r.db.Exec(ctx, query,
@@ -100,6 +103,11 @@ func (r *pgxRepository) Create(ctx context.Context, pattern *Pattern) error {
 		pattern.Description,
 		pattern.Content,
 		tagsJSON,
+		pattern.EntityType,
+		pattern.Language,
+		pattern.Domain,
+		pattern.Version,
+		relatedPatternsJSON,
 		"pending", // New patterns start as pending
 		now,
 		now,
@@ -121,7 +129,8 @@ func (r *pgxRepository) Create(ctx context.Context, pattern *Pattern) error {
 // Get retrieves a pattern by ID from the database.
 func (r *pgxRepository) Get(ctx context.Context, id uuid.UUID) (*Pattern, error) {
 	query := `
-		SELECT id, name, description, content, tags, embedding,
+		SELECT id, name, description, content, tags,
+			   entity_type, language, domain, version, related_patterns,
 			   enrichment_status, enrichment_error, enriched_at,
 			   created_at, updated_at
 		FROM patterns
@@ -134,7 +143,8 @@ func (r *pgxRepository) Get(ctx context.Context, id uuid.UUID) (*Pattern, error)
 // GetByName retrieves a pattern by name from the database.
 func (r *pgxRepository) GetByName(ctx context.Context, name string) (*Pattern, error) {
 	query := `
-		SELECT id, name, description, content, tags, embedding,
+		SELECT id, name, description, content, tags,
+			   entity_type, language, domain, version, related_patterns,
 			   enrichment_status, enrichment_error, enriched_at,
 			   created_at, updated_at
 		FROM patterns
@@ -146,22 +156,26 @@ func (r *pgxRepository) GetByName(ctx context.Context, name string) (*Pattern, e
 
 // scanPattern is a helper that executes a query and scans the result into a Pattern.
 func (r *pgxRepository) scanPattern(ctx context.Context, query string, arg any) (*Pattern, error) {
-	var pattern Pattern
+	var p Pattern
 	var tagsJSON []byte
-	var embedding *pgvector.Vector
+	var relatedPatternsJSON []byte
 
 	err := r.db.QueryRow(ctx, query, arg).Scan(
-		&pattern.ID,
-		&pattern.Name,
-		&pattern.Description,
-		&pattern.Content,
+		&p.ID,
+		&p.Name,
+		&p.Description,
+		&p.Content,
 		&tagsJSON,
-		&embedding,
-		&pattern.EnrichmentStatus,
-		&pattern.EnrichmentError,
-		&pattern.EnrichedAt,
-		&pattern.CreatedAt,
-		&pattern.UpdatedAt,
+		&p.EntityType,
+		&p.Language,
+		&p.Domain,
+		&p.Version,
+		&relatedPatternsJSON,
+		&p.EnrichmentStatus,
+		&p.EnrichmentError,
+		&p.EnrichedAt,
+		&p.CreatedAt,
+		&p.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -170,25 +184,38 @@ func (r *pgxRepository) scanPattern(ctx context.Context, query string, arg any) 
 		return nil, fmt.Errorf("getting pattern: %w", err)
 	}
 
-	if err := json.Unmarshal(tagsJSON, &pattern.Tags); err != nil {
+	if err := json.Unmarshal(tagsJSON, &p.Tags); err != nil {
 		return nil, fmt.Errorf("unmarshaling tags: %w", err)
 	}
 
-	// Convert pgvector.Vector to []float32 if embedding exists
-	if embedding != nil {
-		pattern.Embedding = embedding.Slice()
+	if err := json.Unmarshal(relatedPatternsJSON, &p.RelatedPatterns); err != nil {
+		return nil, fmt.Errorf("unmarshaling related_patterns: %w", err)
 	}
 
-	return &pattern, nil
+	return &p, nil
 }
 
 // Update modifies an existing pattern in the database.
-// Per design spec, updating a pattern resets enrichment status to "pending"
-// and clears the embedding, ensuring stale embeddings don't remain active.
+// Per design spec, updating a pattern resets enrichment status to "pending",
+// ensuring stale enrichment state does not remain active.
 func (r *pgxRepository) Update(ctx context.Context, pattern *Pattern) error {
+	// Defensive nil guards: json.Marshal(nil) produces "null" which would violate NOT NULL constraints.
+	if pattern.Tags == nil {
+		pattern.Tags = []string{}
+	}
+
 	tagsJSON, err := json.Marshal(pattern.Tags)
 	if err != nil {
 		return fmt.Errorf("marshaling tags: %w", err)
+	}
+
+	if pattern.RelatedPatterns == nil {
+		pattern.RelatedPatterns = []string{}
+	}
+
+	relatedPatternsJSON, err := json.Marshal(pattern.RelatedPatterns)
+	if err != nil {
+		return fmt.Errorf("marshaling related_patterns: %w", err)
 	}
 
 	now := time.Now()
@@ -198,11 +225,15 @@ func (r *pgxRepository) Update(ctx context.Context, pattern *Pattern) error {
 			description = $3,
 			content = $4,
 			tags = $5,
+			entity_type = $6,
+			language = $7,
+			domain = $8,
+			version = $9,
+			related_patterns = $10,
 			enrichment_status = 'pending',
-			embedding = NULL,
 			enrichment_error = NULL,
 			enriched_at = NULL,
-			updated_at = $6
+			updated_at = $11
 		WHERE id = $1
 	`
 
@@ -212,6 +243,11 @@ func (r *pgxRepository) Update(ctx context.Context, pattern *Pattern) error {
 		pattern.Description,
 		pattern.Content,
 		tagsJSON,
+		pattern.EntityType,
+		pattern.Language,
+		pattern.Domain,
+		pattern.Version,
+		relatedPatternsJSON,
 		now,
 	)
 	if err != nil {
@@ -228,7 +264,6 @@ func (r *pgxRepository) Update(ctx context.Context, pattern *Pattern) error {
 
 	// Update pattern struct to reflect the reset enrichment fields
 	pattern.EnrichmentStatus = "pending"
-	pattern.Embedding = nil
 	pattern.EnrichmentError = nil
 	pattern.EnrichedAt = nil
 	pattern.UpdatedAt = now
@@ -281,6 +316,24 @@ func (r *pgxRepository) List(ctx context.Context, filter Filter, opts repository
 		argNum++
 	}
 
+	if filter.Language != "" {
+		whereConditions = append(whereConditions, fmt.Sprintf("language = $%d", argNum))
+		args = append(args, filter.Language)
+		argNum++
+	}
+
+	if filter.Domain != "" {
+		whereConditions = append(whereConditions, fmt.Sprintf("domain = $%d", argNum))
+		args = append(args, filter.Domain)
+		argNum++
+	}
+
+	if filter.EntityType != "" {
+		whereConditions = append(whereConditions, fmt.Sprintf("entity_type = $%d", argNum))
+		args = append(args, filter.EntityType)
+		argNum++
+	}
+
 	whereClause := ""
 	if len(whereConditions) > 0 {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
@@ -288,7 +341,8 @@ func (r *pgxRepository) List(ctx context.Context, filter Filter, opts repository
 
 	// Build query with window function for total count
 	query := fmt.Sprintf(`
-		SELECT id, name, description, content, tags, embedding,
+		SELECT id, name, description, content, tags,
+			   entity_type, language, domain, version, related_patterns,
 			   enrichment_status, enrichment_error, enriched_at,
 			   created_at, updated_at,
 			   COUNT(*) OVER() as total_count
@@ -321,37 +375,41 @@ func (r *pgxRepository) List(ctx context.Context, filter Filter, opts repository
 	var totalCount int64
 
 	for rows.Next() {
-		var pattern Pattern
+		var p Pattern
 		var tagsJSON []byte
-		var embedding *pgvector.Vector
+		var relatedPatternsJSON []byte
 
 		err := rows.Scan(
-			&pattern.ID,
-			&pattern.Name,
-			&pattern.Description,
-			&pattern.Content,
+			&p.ID,
+			&p.Name,
+			&p.Description,
+			&p.Content,
 			&tagsJSON,
-			&embedding,
-			&pattern.EnrichmentStatus,
-			&pattern.EnrichmentError,
-			&pattern.EnrichedAt,
-			&pattern.CreatedAt,
-			&pattern.UpdatedAt,
+			&p.EntityType,
+			&p.Language,
+			&p.Domain,
+			&p.Version,
+			&relatedPatternsJSON,
+			&p.EnrichmentStatus,
+			&p.EnrichmentError,
+			&p.EnrichedAt,
+			&p.CreatedAt,
+			&p.UpdatedAt,
 			&totalCount,
 		)
 		if err != nil {
 			return nil, 0, fmt.Errorf("listing patterns: scanning row: %w", err)
 		}
 
-		if err := json.Unmarshal(tagsJSON, &pattern.Tags); err != nil {
+		if err := json.Unmarshal(tagsJSON, &p.Tags); err != nil {
 			return nil, 0, fmt.Errorf("unmarshaling tags: %w", err)
 		}
 
-		if embedding != nil {
-			pattern.Embedding = embedding.Slice()
+		if err := json.Unmarshal(relatedPatternsJSON, &p.RelatedPatterns); err != nil {
+			return nil, 0, fmt.Errorf("unmarshaling related_patterns: %w", err)
 		}
 
-		patterns = append(patterns, &pattern)
+		patterns = append(patterns, &p)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -361,32 +419,9 @@ func (r *pgxRepository) List(ctx context.Context, filter Filter, opts repository
 	return patterns, totalCount, nil
 }
 
-// UpdateEmbedding stores the embedding vector for a pattern.
-func (r *pgxRepository) UpdateEmbedding(ctx context.Context, id uuid.UUID, embedding []float32) error {
-	now := time.Now()
-	query := `
-		UPDATE patterns SET
-			embedding = $2,
-			updated_at = $3
-		WHERE id = $1
-	`
-
-	vec := pgvector.NewVector(embedding)
-	result, err := r.db.Exec(ctx, query, id, vec, now)
-	if err != nil {
-		return err
-	}
-
-	if result.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-
-	return nil
-}
-
 // UpdateEnrichmentStatus updates the enrichment state of a pattern.
 func (r *pgxRepository) UpdateEnrichmentStatus(ctx context.Context, id uuid.UUID, status string, errMsg *string) error {
-	if !IsValidEnrichmentStatus(status) {
+	if !repository.IsValidEnrichmentStatus(status) {
 		return fmt.Errorf("invalid enrichment status: %q", status)
 	}
 
@@ -416,124 +451,6 @@ func (r *pgxRepository) UpdateEnrichmentStatus(ctx context.Context, id uuid.UUID
 	}
 
 	return nil
-}
-
-// FindSimilar finds patterns similar to the given embedding vector.
-func (r *pgxRepository) FindSimilar(ctx context.Context, embedding []float32, opts SimilarityOptions) ([]*Match, error) {
-	vec := pgvector.NewVector(embedding)
-
-	// Build query dynamically based on options
-	var whereConditions []string
-	var args []any
-	argNum := 1
-
-	// Always filter by enriched status and non-null embedding
-	whereConditions = append(whereConditions,
-		"enrichment_status = 'enriched'",
-		"embedding IS NOT NULL",
-	)
-
-	// Add the embedding parameter
-	args = append(args, vec)
-	embeddingArgNum := argNum
-	argNum++
-
-	// Apply minimum similarity threshold if specified
-	if opts.MinSimilarity > 0 {
-		// Convert similarity threshold to distance threshold
-		// similarity = 1 - distance, so distance = 1 - similarity
-		whereConditions = append(whereConditions, fmt.Sprintf(
-			"(embedding <=> $%d) < $%d",
-			embeddingArgNum, argNum,
-		))
-		distanceThreshold := 1 - opts.MinSimilarity
-		args = append(args, distanceThreshold)
-		argNum++
-	}
-
-	// Apply tag filter if specified
-	if len(opts.Tags) > 0 {
-		whereConditions = append(whereConditions, fmt.Sprintf("tags ?| $%d", argNum))
-		args = append(args, opts.Tags)
-		argNum++
-	}
-
-	// Apply pattern ID filter if specified
-	if len(opts.PatternIDs) > 0 {
-		whereConditions = append(whereConditions, fmt.Sprintf("id = ANY($%d)", argNum))
-		args = append(args, opts.PatternIDs)
-		argNum++
-	}
-
-	whereClause := strings.Join(whereConditions, " AND ")
-
-	query := fmt.Sprintf(`
-		SELECT id, name, description, content, tags, embedding,
-			   enrichment_status, enrichment_error, enriched_at,
-			   created_at, updated_at,
-			   1 - (embedding <=> $%d) AS similarity
-		FROM patterns
-		WHERE %s
-		ORDER BY embedding <=> $%d
-	`, embeddingArgNum, whereClause, embeddingArgNum)
-
-	// Apply max results limit
-	if opts.MaxResults > 0 {
-		query += fmt.Sprintf(" LIMIT $%d", argNum)
-		args = append(args, opts.MaxResults)
-	}
-
-	rows, err := r.db.Query(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("finding similar patterns: %w", err)
-	}
-	defer rows.Close()
-
-	matches := make([]*Match, 0)
-
-	for rows.Next() {
-		var pattern Pattern
-		var tagsJSON []byte
-		var embeddingVec *pgvector.Vector
-		var similarity float64
-
-		err := rows.Scan(
-			&pattern.ID,
-			&pattern.Name,
-			&pattern.Description,
-			&pattern.Content,
-			&tagsJSON,
-			&embeddingVec,
-			&pattern.EnrichmentStatus,
-			&pattern.EnrichmentError,
-			&pattern.EnrichedAt,
-			&pattern.CreatedAt,
-			&pattern.UpdatedAt,
-			&similarity,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("finding similar patterns: scanning row: %w", err)
-		}
-
-		if err := json.Unmarshal(tagsJSON, &pattern.Tags); err != nil {
-			return nil, fmt.Errorf("unmarshaling tags: %w", err)
-		}
-
-		if embeddingVec != nil {
-			pattern.Embedding = embeddingVec.Slice()
-		}
-
-		matches = append(matches, &Match{
-			Pattern:    &pattern,
-			Similarity: similarity,
-		})
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("finding similar patterns: iterating rows: %w", err)
-	}
-
-	return matches, nil
 }
 
 // SetAgentAssociations replaces all agent associations for a pattern.

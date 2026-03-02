@@ -33,7 +33,7 @@ Pattern:
     enrichment_status:
       type: string
       enum: [pending, enriched, failed]
-      description: Current state of pattern enrichment
+      description: Aggregate enrichment state across all chunks
     enrichment_error:
       type: string
       description: Error message if enrichment_status is "failed"
@@ -43,7 +43,9 @@ Pattern:
       description: Timestamp of last successful enrichment
 ```
 
-`enrichment_status` on the pattern tracks the pattern's own state and uses the values `pending`, `enriched`, and `failed`. The `enrichment_jobs` table has a separate status field with an additional `processing` state (`pending`, `processing`, `completed`, `failed`). The `processing` state exists only on jobs, not on patterns.
+`enrichment_status` on the pattern reflects aggregate chunk status: the pattern is `enriched` when ALL its `pattern_chunks` rows have `enrichment_status = 'enriched'`. It is `failed` if any chunk failed. The `enrichment_jobs` table has a separate status field with an additional `processing` state (`pending`, `processing`, `completed`, `failed`). The `processing` state exists only on jobs, not on patterns.
+
+Each `pattern_chunks` row also has its own `enrichment_status`, `enrichment_error`, and `enriched_at` fields tracking the per-chunk embedding state.
 
 ## Automatic Enrichment Flow
 
@@ -69,10 +71,14 @@ sequenceDiagram
     Note over Worker,PG: Asynchronous processing
 
     Worker->>PG: Pick up job from queue
-    Worker->>OpenAI: Generate embedding (embeddings endpoint)
-    OpenAI-->>Worker: Embedding vector
-    Worker->>PGV: Store embedding
-    Worker->>OpenAI: Extract entities (LLM chat completion)
+    Worker->>PG: Load pattern content
+    Worker->>Worker: Split content at H2 headings into chunks
+    loop For each chunk
+        Worker->>OpenAI: Generate chunk embedding
+        OpenAI-->>Worker: Embedding vector
+        Worker->>PGV: Store chunk embedding in pattern_chunks
+    end
+    Worker->>OpenAI: Extract entities from full content (LLM)
     OpenAI-->>Worker: Extracted entities
     Worker->>Neo4j: Create relationships
     Worker->>PG: Update status to "enriched"
@@ -113,10 +119,11 @@ stateDiagram-v2
 
     ValidateAndStore --> GenerateEmbedding
 
-    state "2. Generate Embedding" as GenerateEmbedding
+    state "2. Generate Embeddings" as GenerateEmbedding
     note right of GenerateEmbedding
-        PGVector: Embed content
-        Store vector for similarity search
+        Split content at H2 headings
+        PGVector: Embed each chunk
+        Store in pattern_chunks
     end note
 
     GenerateEmbedding --> ExtractEntities
@@ -153,23 +160,31 @@ Store pattern metadata in Postgres:
 - `id` (UUID, generated)
 - `name`, `description`, `content`
 - `tags` (array)
+- `entity_type`, `language`, `domain`, `version`, `related_patterns`
 - `pattern_agent_associations` (join table: `pattern_id UUID`, `agent_id UUID`, `relevance double precision`)
 - `enrichment_status` (initially "pending")
 - `enrichment_error` (null initially)
 - `enriched_at` (null initially)
 - `created_at`, `updated_at`
 
-#### Step 2: Generate Embedding
+#### Step 2: Generate Embeddings
 
-Generate a vector embedding from the pattern content:
+Content is split at H2 headings into chunks. Each chunk receives its own embedding stored as a row in `pattern_chunks`. Splitting enables precise section-level search results. If a pattern has no H2 headings, it is stored as a single chunk.
 
 ```go
 // Pseudocode
-embedding := embeddingModel.Embed(pattern.Content)
-pgvector.Store(pattern.ID, embedding)
+chunks := splitAtH2Headings(pattern.Content)
+for i, chunk := range chunks {
+    embedding := embeddingModel.Embed(chunk.Content)
+    chunkRepo.Create(ctx, PatternChunk{
+        PatternID:    pattern.ID,
+        SectionTitle: chunk.Title,
+        ChunkIndex:   i,
+        Content:      chunk.Content,
+        Embedding:    embedding,
+    })
+}
 ```
-
-The embedding captures semantic meaning, enabling similarity search.
 
 #### Step 3: Extract Entities
 
@@ -284,17 +299,17 @@ stateDiagram-v2
 
     EmbedQuery --> VectorSearch
 
-    state "2. Vector Similarity Search" as VectorSearch
+    state "2. Chunk-Level Vector Search" as VectorSearch
     note right of VectorSearch
-        PGVector: Find similar patterns
-        Filter by agent, threshold
-        Only enriched patterns
+        PGVector: Search pattern_chunks.embedding
+        Filter by language, domain, tags, agent
+        Only enriched chunks
     end note
 
     VectorSearch --> [*]
 ```
 
-Note: Query-time search only considers patterns with `enrichment_status = 'enriched'`. Patterns still pending or failed enrichment are excluded from search results.
+Note: Query-time search queries `pattern_chunks.embedding` and returns `ChunkMatch` results. Each result includes `section_title`, `chunk_index`, and parent pattern metadata (`pattern_name`, `entity_type`, `language`, `domain`, `tags`). Only chunks with `enrichment_status = 'enriched'` appear in results.
 
 Graph traversal to expand and re-rank results via Neo4j is a post-MVP enhancement (see Relevance Scoring below).
 
@@ -348,7 +363,8 @@ Use a Postgres-backed job queue (no external message broker required):
 ```sql
 CREATE TABLE enrichment_jobs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    pattern_id UUID NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
+    pattern_id UUID REFERENCES patterns(id) ON DELETE CASCADE,     -- nullable
+    chunk_id UUID REFERENCES pattern_chunks(id) ON DELETE CASCADE, -- nullable
     status VARCHAR(20) NOT NULL DEFAULT 'pending',  -- pending, processing, completed, failed
     attempts INTEGER NOT NULL DEFAULT 0,
     max_attempts INTEGER NOT NULL DEFAULT 3,
@@ -718,14 +734,16 @@ The pattern service should expose a health check that validates enrichment capab
 
 ### PGVector Configuration
 
+Vector embeddings are stored in `pattern_chunks.embedding`, not `patterns.embedding`. The `patterns` table no longer has an `embedding` column.
+
 ```sql
--- Recommended index for ~1000 patterns
-CREATE INDEX ON patterns
+-- Recommended index for chunk-level search
+CREATE INDEX ON pattern_chunks
 USING ivfflat (embedding vector_cosine_ops)
 WITH (lists = 100);
 
 -- For larger collections (10K+), consider HNSW
-CREATE INDEX ON patterns
+CREATE INDEX ON pattern_chunks
 USING hnsw (embedding vector_cosine_ops)
 WITH (m = 16, ef_construction = 64);
 ```
@@ -734,12 +752,8 @@ The vector column must be configured for the same dimensions as the embedding mo
 
 ```sql
 -- Must match embedding.dimensions in config (default: 1536)
-ALTER TABLE patterns ADD COLUMN embedding vector(1536);
-
--- Enrichment status fields
-ALTER TABLE patterns ADD COLUMN enrichment_status VARCHAR(20) DEFAULT 'pending';
-ALTER TABLE patterns ADD COLUMN enrichment_error TEXT;
-ALTER TABLE patterns ADD COLUMN enriched_at TIMESTAMP WITH TIME ZONE;
+-- Column lives in pattern_chunks, not patterns
+ALTER TABLE pattern_chunks ADD COLUMN embedding vector(1536);
 ```
 
 ### Neo4j Schema

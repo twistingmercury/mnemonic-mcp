@@ -30,9 +30,9 @@ type fileTypeConfig struct {
 
 // fileTypeLimits defines the limits for each skill file collection.
 var fileTypeLimits = map[string]fileTypeConfig{
-	"scripts":    {maxSizeBytes: 1048576, maxFiles: 20},  // 1MB, 20 files
-	"references": {maxSizeBytes: 1048576, maxFiles: 50},  // 1MB, 50 files
-	"assets":     {maxSizeBytes: 5242880, maxFiles: 50},  // 5MB, 50 files
+	"scripts":    {maxSizeBytes: 1048576, maxFiles: 20}, // 1MB, 20 files
+	"references": {maxSizeBytes: 1048576, maxFiles: 50}, // 1MB, 50 files
+	"assets":     {maxSizeBytes: 5242880, maxFiles: 50}, // 5MB, 50 files
 }
 
 // ValidFileTypes are the allowed file type path segments.
@@ -238,7 +238,11 @@ func (h *Handler) createFile(fileType string) gin.HandlerFunc {
 		if limits, ok := fileTypeLimits[fileType]; ok {
 			ft := fileType
 			existing, listErr := h.svc.ListBySkill(c.Request.Context(), skillName, &ft)
-			if listErr == nil && len(existing) >= limits.maxFiles {
+			if listErr != nil {
+				handlers.RespondError(c, listErr)
+				return
+			}
+			if len(existing) >= limits.maxFiles {
 				c.JSON(http.StatusUnprocessableEntity, handlers.ProblemDetail{
 					Type:     handlers.ProblemBaseURI + "unprocessable-entity",
 					Title:    "Unprocessable Entity",

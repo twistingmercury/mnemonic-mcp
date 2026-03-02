@@ -19,10 +19,11 @@ import (
 
 // testJob returns a sample enrichment job for testing.
 func testJob() *enrichmentjob.Job {
+	pid := uuid.New()
 	return &enrichmentjob.Job{
 		ID:           uuid.New(),
-		PatternID:    uuid.New(),
-		Status:       "pending",
+		PatternID:    &pid,
+		Status:       enrichmentjob.StatusPending,
 		Attempts:     0,
 		MaxAttempts:  3,
 		ScheduledFor: time.Now(),
@@ -41,7 +42,7 @@ func TestRepository_Create(t *testing.T) {
 		wantErr   error
 	}{
 		{
-			name: "successful creation",
+			name: "successful creation - pattern-based job",
 			job:  testJob(),
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{"scheduled_for", "created_at", "updated_at"}).
@@ -50,6 +51,40 @@ func TestRepository_Create(t *testing.T) {
 					WithArgs(
 						pgxmock.AnyArg(), // id
 						pgxmock.AnyArg(), // pattern_id
+						pgxmock.AnyArg(), // chunk_id
+						"pending",
+						0,                // attempts
+						3,                // max_attempts
+						pgxmock.AnyArg(), // last_error
+						pgxmock.AnyArg(), // scheduled_for
+						pgxmock.AnyArg(), // started_at
+						pgxmock.AnyArg(), // completed_at
+					).
+					WillReturnRows(rows)
+			},
+			wantErr: nil,
+		},
+		{
+			name: "successful creation - chunk-based job",
+			job: func() *enrichmentjob.Job {
+				cid := uuid.New()
+				return &enrichmentjob.Job{
+					ID:          uuid.New(),
+					PatternID:   nil,
+					ChunkID:     &cid,
+					Status:      enrichmentjob.StatusPending,
+					Attempts:    0,
+					MaxAttempts: 3,
+				}
+			}(),
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				rows := pgxmock.NewRows([]string{"scheduled_for", "created_at", "updated_at"}).
+					AddRow(now, now, now)
+				mock.ExpectQuery("INSERT INTO enrichment_jobs").
+					WithArgs(
+						pgxmock.AnyArg(), // id
+						pgxmock.AnyArg(), // pattern_id (nil)
+						pgxmock.AnyArg(), // chunk_id
 						"pending",
 						0,                // attempts
 						3,                // max_attempts
@@ -77,10 +112,32 @@ func TestRepository_Create(t *testing.T) {
 						pgxmock.AnyArg(),
 						pgxmock.AnyArg(),
 						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
 					).
 					WillReturnError(&pgconn.PgError{Code: "23503"})
 			},
 			wantErr: enrichmentjob.ErrPatternNotFound,
+		},
+		{
+			name: "check violation returns ErrInvalidJobTarget",
+			job:  testJob(),
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("INSERT INTO enrichment_jobs").
+					WithArgs(
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+						pgxmock.AnyArg(),
+					).
+					WillReturnError(&pgconn.PgError{Code: "23514"})
+			},
+			wantErr: enrichmentjob.ErrInvalidJobTarget,
 		},
 	}
 
@@ -118,9 +175,10 @@ func TestRepository_Create_GeneratesUUID(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
+	pid := uuid.New()
 	job := &enrichmentjob.Job{
 		// ID is not set - should be generated
-		PatternID: uuid.New(),
+		PatternID: &pid,
 	}
 
 	rows := pgxmock.NewRows([]string{"scheduled_for", "created_at", "updated_at"}).
@@ -128,10 +186,11 @@ func TestRepository_Create_GeneratesUUID(t *testing.T) {
 	mock.ExpectQuery("INSERT INTO enrichment_jobs").
 		WithArgs(
 			pgxmock.AnyArg(), // generated id
-			pgxmock.AnyArg(),
-			"pending", // default status
-			0,         // default attempts
-			3,         // default max_attempts
+			pgxmock.AnyArg(), // pattern_id
+			pgxmock.AnyArg(), // chunk_id
+			"pending",        // default status
+			0,                // default attempts
+			3,                // default max_attempts
 			pgxmock.AnyArg(),
 			pgxmock.AnyArg(),
 			pgxmock.AnyArg(),
@@ -144,7 +203,7 @@ func TestRepository_Create_GeneratesUUID(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, job.ID)
-	assert.Equal(t, "pending", job.Status)
+	assert.Equal(t, enrichmentjob.StatusPending, job.Status)
 	assert.Equal(t, 3, job.MaxAttempts)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -168,12 +227,13 @@ func TestRepository_Get(t *testing.T) {
 			jobID: jobID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at",
 				}).AddRow(
 					jobID,
-					patternID,
+					&patternID,
+					(*uuid.UUID)(nil),
 					"pending",
 					0,
 					3,
@@ -190,8 +250,8 @@ func TestRepository_Get(t *testing.T) {
 			},
 			wantJob: &enrichmentjob.Job{
 				ID:           jobID,
-				PatternID:    patternID,
-				Status:       "pending",
+				PatternID:    &patternID,
+				Status:       enrichmentjob.StatusPending,
 				Attempts:     0,
 				MaxAttempts:  3,
 				ScheduledFor: now,
@@ -259,12 +319,13 @@ func TestRepository_GetByPatternID(t *testing.T) {
 			patternID: patternID,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at",
 				}).AddRow(
 					jobID,
-					patternID,
+					&patternID,
+					(*uuid.UUID)(nil),
 					"completed",
 					1,
 					3,
@@ -311,12 +372,36 @@ func TestRepository_GetByPatternID(t *testing.T) {
 				assert.Nil(t, job)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, tt.patternID, job.PatternID)
+				require.NotNil(t, job.PatternID)
+				assert.Equal(t, tt.patternID, *job.PatternID)
 			}
 
 			assert.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
+}
+
+func TestRepository_Get_ScanError(t *testing.T) {
+	t.Parallel()
+
+	jobID := uuid.New()
+
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	// Return a row with wrong column count to force a scan error.
+	rows := pgxmock.NewRows([]string{"id"}).AddRow(jobID)
+	mock.ExpectQuery("SELECT .* FROM enrichment_jobs").
+		WithArgs(jobID).
+		WillReturnRows(rows)
+
+	repo := enrichmentjob.NewRepository(mock)
+	job, err := repo.Get(context.Background(), jobID)
+
+	assert.Nil(t, job)
+	assert.ErrorContains(t, err, "scan enrichment job")
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestRepository_ClaimPending(t *testing.T) {
@@ -336,12 +421,13 @@ func TestRepository_ClaimPending(t *testing.T) {
 			name: "successfully claims a pending job",
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at",
 				}).AddRow(
 					jobID,
-					patternID,
+					&patternID,
+					(*uuid.UUID)(nil),
 					"processing",
 					0,
 					3,
@@ -409,7 +495,7 @@ func TestRepository_ClaimPending(t *testing.T) {
 				assert.NoError(t, err)
 				if tt.wantJob {
 					assert.NotNil(t, job)
-					assert.Equal(t, "processing", job.Status)
+					assert.Equal(t, enrichmentjob.StatusProcessing, job.Status)
 				} else {
 					assert.Nil(t, job)
 				}
@@ -537,7 +623,6 @@ func TestRepository_MarkCompleted(t *testing.T) {
 func TestRepository_MarkFailed_WithRetry(t *testing.T) {
 	t.Parallel()
 
-	now := time.Now()
 	jobID := uuid.New()
 	retryDelay := 5 * time.Minute
 
@@ -546,10 +631,7 @@ func TestRepository_MarkFailed_WithRetry(t *testing.T) {
 	defer mock.Close()
 
 	// Single atomic UPDATE with CASE expression
-	// Returns pending status when attempts < max_attempts
-	rows := pgxmock.NewRows([]string{"status", "attempts", "scheduled_for", "updated_at"}).
-		AddRow("pending", 1, now.Add(retryDelay), now)
-	mock.ExpectQuery("UPDATE enrichment_jobs SET").
+	mock.ExpectExec("UPDATE enrichment_jobs SET").
 		WithArgs(
 			jobID,
 			"pending",
@@ -557,7 +639,7 @@ func TestRepository_MarkFailed_WithRetry(t *testing.T) {
 			pgxmock.AnyArg(), // last_error (*string)
 			"300 seconds",    // retry delay interval
 		).
-		WillReturnRows(rows)
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 	repo := enrichmentjob.NewRepository(mock)
 	err = repo.MarkFailed(context.Background(), jobID, errors.New("test error"), retryDelay)
@@ -569,7 +651,6 @@ func TestRepository_MarkFailed_WithRetry(t *testing.T) {
 func TestRepository_MarkFailed_MaxAttemptsReached(t *testing.T) {
 	t.Parallel()
 
-	now := time.Now()
 	jobID := uuid.New()
 	retryDelay := 5 * time.Minute
 
@@ -578,10 +659,7 @@ func TestRepository_MarkFailed_MaxAttemptsReached(t *testing.T) {
 	defer mock.Close()
 
 	// Single atomic UPDATE with CASE expression
-	// Returns failed status when attempts >= max_attempts
-	rows := pgxmock.NewRows([]string{"status", "attempts", "scheduled_for", "updated_at"}).
-		AddRow("failed", 3, now, now)
-	mock.ExpectQuery("UPDATE enrichment_jobs SET").
+	mock.ExpectExec("UPDATE enrichment_jobs SET").
 		WithArgs(
 			jobID,
 			"pending",
@@ -589,7 +667,7 @@ func TestRepository_MarkFailed_MaxAttemptsReached(t *testing.T) {
 			pgxmock.AnyArg(), // last_error (*string)
 			"300 seconds",    // retry delay interval
 		).
-		WillReturnRows(rows)
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 	repo := enrichmentjob.NewRepository(mock)
 	err = repo.MarkFailed(context.Background(), jobID, errors.New("final error"), retryDelay)
@@ -608,7 +686,7 @@ func TestRepository_MarkFailed_NotFound(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	mock.ExpectQuery("UPDATE enrichment_jobs SET").
+	mock.ExpectExec("UPDATE enrichment_jobs SET").
 		WithArgs(
 			jobID,
 			"pending",
@@ -616,7 +694,7 @@ func TestRepository_MarkFailed_NotFound(t *testing.T) {
 			pgxmock.AnyArg(),
 			"300 seconds",
 		).
-		WillReturnError(pgx.ErrNoRows)
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 
 	repo := enrichmentjob.NewRepository(mock)
 	err = repo.MarkFailed(context.Background(), jobID, errors.New("error"), retryDelay)
@@ -628,7 +706,6 @@ func TestRepository_MarkFailed_NotFound(t *testing.T) {
 func TestRepository_MarkFailed_NilError(t *testing.T) {
 	t.Parallel()
 
-	now := time.Now()
 	jobID := uuid.New()
 	retryDelay := 5 * time.Minute
 
@@ -637,9 +714,7 @@ func TestRepository_MarkFailed_NilError(t *testing.T) {
 	defer mock.Close()
 
 	// When jobErr is nil, last_error should be nil (*string nil, not interface nil)
-	rows := pgxmock.NewRows([]string{"status", "attempts", "scheduled_for", "updated_at"}).
-		AddRow("pending", 1, now.Add(retryDelay), now)
-	mock.ExpectQuery("UPDATE enrichment_jobs SET").
+	mock.ExpectExec("UPDATE enrichment_jobs SET").
 		WithArgs(
 			jobID,
 			"pending",
@@ -647,7 +722,7 @@ func TestRepository_MarkFailed_NilError(t *testing.T) {
 			pgxmock.AnyArg(), // last_error is *string nil (NULL in DB)
 			"300 seconds",    // retry delay interval
 		).
-		WillReturnRows(rows)
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 	repo := enrichmentjob.NewRepository(mock)
 	err = repo.MarkFailed(context.Background(), jobID, nil, retryDelay)
@@ -685,6 +760,16 @@ func TestRepository_ReclaimStale(t *testing.T) {
 			},
 			wantCount: 0,
 		},
+		{
+			name: "database error is wrapped",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectExec("UPDATE enrichment_jobs SET").
+					WithArgs("pending", "failed", "processing", "1800 seconds").
+					WillReturnError(errors.New("connection reset"))
+			},
+			wantCount: 0,
+			wantErr:   errors.New("reclaim stale jobs"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -702,6 +787,7 @@ func TestRepository_ReclaimStale(t *testing.T) {
 
 			if tt.wantErr != nil {
 				assert.Error(t, err)
+				assert.ErrorContains(t, err, "reclaim stale jobs")
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.wantCount, count)
@@ -741,6 +827,16 @@ func TestRepository_DeleteCompleted(t *testing.T) {
 			},
 			wantCount: 0,
 		},
+		{
+			name: "database error is wrapped",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectExec("DELETE FROM enrichment_jobs WHERE status").
+					WithArgs("completed", pgxmock.AnyArg()).
+					WillReturnError(errors.New("connection reset"))
+			},
+			wantCount: 0,
+			wantErr:   errors.New("delete completed jobs"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -758,6 +854,7 @@ func TestRepository_DeleteCompleted(t *testing.T) {
 
 			if tt.wantErr != nil {
 				assert.Error(t, err)
+				assert.ErrorContains(t, err, "delete completed jobs")
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.wantCount, count)
@@ -797,6 +894,16 @@ func TestRepository_DeleteFailed(t *testing.T) {
 			},
 			wantCount: 0,
 		},
+		{
+			name: "database error is wrapped",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectExec("DELETE FROM enrichment_jobs WHERE status").
+					WithArgs("failed", pgxmock.AnyArg()).
+					WillReturnError(errors.New("connection reset"))
+			},
+			wantCount: 0,
+			wantErr:   errors.New("delete failed jobs"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -814,6 +921,7 @@ func TestRepository_DeleteFailed(t *testing.T) {
 
 			if tt.wantErr != nil {
 				assert.Error(t, err)
+				assert.ErrorContains(t, err, "delete failed jobs")
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.wantCount, count)
@@ -830,6 +938,7 @@ func TestRepository_List(t *testing.T) {
 	now := time.Now()
 	jobID := uuid.New()
 	patternID := uuid.New()
+	chunkID := uuid.New()
 
 	tests := []struct {
 		name      string
@@ -846,12 +955,12 @@ func TestRepository_List(t *testing.T) {
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at", "total_count",
 				}).
-					AddRow(jobID, patternID, "pending", 0, 3, nil, now, nil, nil, now, now, int64(2)).
-					AddRow(uuid.New(), uuid.New(), "completed", 1, 3, nil, now, &now, &now, now, now, int64(2))
+					AddRow(jobID, &patternID, (*uuid.UUID)(nil), "pending", 0, 3, nil, now, nil, nil, now, now, int64(2)).
+					AddRow(uuid.New(), (*uuid.UUID)(nil), &chunkID, "completed", 1, 3, nil, now, &now, &now, now, now, int64(2))
 
 				mock.ExpectQuery("SELECT .* FROM enrichment_jobs ORDER BY scheduled_for").
 					WillReturnRows(rows)
@@ -867,11 +976,11 @@ func TestRepository_List(t *testing.T) {
 			opts: repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at", "total_count",
 				}).
-					AddRow(jobID, patternID, "pending", 0, 3, nil, now, nil, nil, now, now, int64(1))
+					AddRow(jobID, &patternID, (*uuid.UUID)(nil), "pending", 0, 3, nil, now, nil, nil, now, now, int64(1))
 
 				mock.ExpectQuery("SELECT .* FROM enrichment_jobs WHERE status").
 					WithArgs("pending").
@@ -888,14 +997,35 @@ func TestRepository_List(t *testing.T) {
 			opts: repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at", "total_count",
 				}).
-					AddRow(jobID, patternID, "pending", 0, 3, nil, now, nil, nil, now, now, int64(1))
+					AddRow(jobID, &patternID, (*uuid.UUID)(nil), "pending", 0, 3, nil, now, nil, nil, now, now, int64(1))
 
 				mock.ExpectQuery("SELECT .* FROM enrichment_jobs WHERE pattern_id").
 					WithArgs(patternID).
+					WillReturnRows(rows)
+			},
+			wantCount: 1,
+			wantTotal: 1,
+		},
+		{
+			name: "list with chunk_id filter",
+			filter: enrichmentjob.Filter{
+				ChunkID: &chunkID,
+			},
+			opts: repository.ListOptions{},
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				rows := pgxmock.NewRows([]string{
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
+					"last_error", "scheduled_for", "started_at", "completed_at",
+					"created_at", "updated_at", "total_count",
+				}).
+					AddRow(uuid.New(), (*uuid.UUID)(nil), &chunkID, "pending", 0, 3, nil, now, nil, nil, now, now, int64(1))
+
+				mock.ExpectQuery("SELECT .* FROM enrichment_jobs WHERE chunk_id").
+					WithArgs(chunkID).
 					WillReturnRows(rows)
 			},
 			wantCount: 1,
@@ -907,11 +1037,11 @@ func TestRepository_List(t *testing.T) {
 			opts:   repository.ListOptions{Limit: 1, Offset: 1},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at", "total_count",
 				}).
-					AddRow(jobID, patternID, "pending", 0, 3, nil, now, nil, nil, now, now, int64(2))
+					AddRow(jobID, &patternID, (*uuid.UUID)(nil), "pending", 0, 3, nil, now, nil, nil, now, now, int64(2))
 
 				mock.ExpectQuery("SELECT .* FROM enrichment_jobs ORDER BY scheduled_for ASC, created_at ASC LIMIT").
 					WithArgs(1, 1).
@@ -926,7 +1056,7 @@ func TestRepository_List(t *testing.T) {
 			opts:   repository.ListOptions{},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "pattern_id", "status", "attempts", "max_attempts",
+					"id", "pattern_id", "chunk_id", "status", "attempts", "max_attempts",
 					"last_error", "scheduled_for", "started_at", "completed_at",
 					"created_at", "updated_at", "total_count",
 				})
@@ -974,20 +1104,20 @@ func TestJob_StatusHelpers(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		status       string
+		status       enrichmentjob.JobStatus
 		isPending    bool
 		isProcessing bool
 		isCompleted  bool
 		isFailed     bool
 	}{
-		{"pending", true, false, false, false},
-		{"processing", false, true, false, false},
-		{"completed", false, false, true, false},
-		{"failed", false, false, false, true},
+		{enrichmentjob.StatusPending, true, false, false, false},
+		{enrichmentjob.StatusProcessing, false, true, false, false},
+		{enrichmentjob.StatusCompleted, false, false, true, false},
+		{enrichmentjob.StatusFailed, false, false, false, true},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.status, func(t *testing.T) {
+		t.Run(string(tt.status), func(t *testing.T) {
 			t.Parallel()
 
 			job := &enrichmentjob.Job{Status: tt.status}
@@ -1034,20 +1164,20 @@ func TestIsValidStatus(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		status string
+		status enrichmentjob.JobStatus
 		want   bool
 	}{
-		{"pending", true},
-		{"processing", true},
-		{"completed", true},
-		{"failed", true},
+		{enrichmentjob.StatusPending, true},
+		{enrichmentjob.StatusProcessing, true},
+		{enrichmentjob.StatusCompleted, true},
+		{enrichmentjob.StatusFailed, true},
 		{"invalid", false},
 		{"PENDING", false},
 		{"", false},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.status, func(t *testing.T) {
+		t.Run(string(tt.status), func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tt.want, enrichmentjob.IsValidStatus(tt.status))
 		})

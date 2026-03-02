@@ -113,8 +113,11 @@ func TestListPatterns_CursorPaginationWalksAllPages(t *testing.T) {
 	// Create 3 patterns to ensure at least 2 pages with limit=2
 	for i := 0; i < 3; i++ {
 		body := PatternCreate{
-			Name:    GenerateUniqueName("pattern"),
-			Content: "cursor pagination test content",
+			Name:       GenerateUniqueName("pattern"),
+			Content:    "cursor pagination test content",
+			EntityType: "go-pattern",
+			Language:   "go",
+			Domain:     "backend",
 		}
 		resp, err := client.Post("/v1/api/patterns", body)
 		if err != nil {
@@ -170,8 +173,11 @@ func TestListPatterns_SummaryExcludesContentField(t *testing.T) {
 
 	// Create a pattern with content
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "this content should not appear in list summaries",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "this content should not appear in list summaries",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", body)
 	if err != nil {
@@ -223,9 +229,12 @@ func TestListPatterns_FilterByTags(t *testing.T) {
 
 	// Create a pattern with a unique tag
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "filter by tag content",
-		Tags:    []string{uniqueTag},
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "filter by tag content",
+		Tags:       []string{uniqueTag},
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", body)
 	if err != nil {
@@ -280,9 +289,12 @@ func TestListPatterns_FilterByMultipleTagsUsesANDLogic(t *testing.T) {
 
 	// Pattern with both tags
 	bothBody := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "has both tags",
-		Tags:    []string{tagA, tagB},
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "has both tags",
+		Tags:       []string{tagA, tagB},
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	bothResp, err := client.Post("/v1/api/patterns", bothBody)
 	if err != nil {
@@ -293,9 +305,12 @@ func TestListPatterns_FilterByMultipleTagsUsesANDLogic(t *testing.T) {
 
 	// Pattern with only tagA
 	onlyABody := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "has only tag a",
-		Tags:    []string{tagA, tagC},
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "has only tag a",
+		Tags:       []string{tagA, tagC},
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	onlyAResp, err := client.Post("/v1/api/patterns", onlyABody)
 	if err != nil {
@@ -342,6 +357,9 @@ func TestListPatterns_FullTextSearchByNameAndDescription(t *testing.T) {
 		Name:        GenerateUniqueName("pattern"),
 		Description: fmt.Sprintf("description contains %s unique word", uniqueWord),
 		Content:     "content for full text search test",
+		EntityType:  "go-pattern",
+		Language:    "go",
+		Domain:      "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", body)
 	if err != nil {
@@ -384,6 +402,9 @@ func TestListPatterns_CombinedTagAndSearchFilters(t *testing.T) {
 		Description: fmt.Sprintf("description with %s keyword", uniqueWord),
 		Content:     "content for combined filter test",
 		Tags:        []string{uniqueTag},
+		EntityType:  "go-pattern",
+		Language:    "go",
+		Domain:      "backend",
 	}
 	matchResp, err := client.Post("/v1/api/patterns", matchBody)
 	if err != nil {
@@ -394,9 +415,12 @@ func TestListPatterns_CombinedTagAndSearchFilters(t *testing.T) {
 
 	// Pattern with tag but not search term
 	tagOnlyBody := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "content with tag only",
-		Tags:    []string{uniqueTag},
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "content with tag only",
+		Tags:       []string{uniqueTag},
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	tagOnlyResp, err := client.Post("/v1/api/patterns", tagOnlyBody)
 	if err != nil {
@@ -490,8 +514,11 @@ func TestCreatePattern_ReturnsAcceptedWithPendingEnrichment(t *testing.T) {
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "# Test Pattern\n\nThis is test content.",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "# Test Pattern\n\nThis is test content.",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	resp, err := client.Post("/v1/api/patterns", body)
@@ -513,8 +540,11 @@ func TestCreatePattern_ResponseIncludesLocationHeader(t *testing.T) {
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "content for location header test",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "content for location header test",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	resp, err := client.Post("/v1/api/patterns", body)
@@ -539,8 +569,11 @@ func TestCreatePattern_ServerGeneratesUUID(t *testing.T) {
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "content for UUID test",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "content for UUID test",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	resp, err := client.Post("/v1/api/patterns", body)
@@ -567,8 +600,11 @@ func TestCreatePattern_MinimalFieldsOnlyNameAndContent(t *testing.T) {
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "minimal content",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "minimal content",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	resp, err := client.Post("/v1/api/patterns", body)
@@ -619,6 +655,9 @@ func TestCreatePattern_AllFieldsIncludingDescriptionTagsAssociations(t *testing.
 		AgentAssociations: []AgentAssociation{
 			{AgentName: agentName, Relevance: 0.9},
 		},
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	resp, err := client.Post("/v1/api/patterns", body)
@@ -653,8 +692,11 @@ func TestCreatePattern_DuplicateNameReturns409(t *testing.T) {
 
 	name := GenerateUniqueName("pattern")
 	body := PatternCreate{
-		Name:    name,
-		Content: "original content",
+		Name:       name,
+		Content:    "original content",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	resp1, err := client.Post("/v1/api/patterns", body)
@@ -666,8 +708,11 @@ func TestCreatePattern_DuplicateNameReturns409(t *testing.T) {
 
 	// Second create with same name should conflict
 	body2 := PatternCreate{
-		Name:    name,
-		Content: "duplicate name content",
+		Name:       name,
+		Content:    "duplicate name content",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	resp2, err := client.Post("/v1/api/patterns", body2)
 	if err != nil {
@@ -686,52 +731,80 @@ func TestCreatePattern_ValidationErrors(t *testing.T) {
 	}{
 		{
 			name:        "missing name",
-			body:        PatternCreate{Content: "some content"},
+			body:        PatternCreate{Content: "some content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "missing content",
-			body:        PatternCreate{Name: "valid-name"},
+			body:        PatternCreate{Name: "valid-name", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "content",
 		},
 		{
 			name:        "name too long",
-			body:        PatternCreate{Name: strings.Repeat("a", 129), Content: "content"},
+			body:        PatternCreate{Name: strings.Repeat("a", 129), Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "name invalid format uppercase",
-			body:        PatternCreate{Name: "Invalid-Name", Content: "content"},
+			body:        PatternCreate{Name: "Invalid-Name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "name invalid format starts with number",
-			body:        PatternCreate{Name: "1-bad-name", Content: "content"},
+			body:        PatternCreate{Name: "1-bad-name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "name invalid format underscores",
-			body:        PatternCreate{Name: "bad_name", Content: "content"},
+			body:        PatternCreate{Name: "bad_name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "content exceeds max size",
-			body:        PatternCreate{Name: "valid-name", Content: strings.Repeat("x", 10241)},
+			body:        PatternCreate{Name: "valid-name", Content: strings.Repeat("x", 100_001), EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "content",
 		},
 		{
 			name:        "description too long",
-			body:        PatternCreate{Name: "valid-name", Content: "content", Description: strings.Repeat("d", 501)},
+			body:        PatternCreate{Name: "valid-name", Content: "content", Description: strings.Repeat("d", 501), EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "description",
 		},
 		{
 			name: "too many tags",
 			body: PatternCreate{
-				Name:    "valid-name",
-				Content: "content",
-				Tags:    makeTags(21),
+				Name:       "valid-name",
+				Content:    "content",
+				Tags:       makeTags(21),
+				EntityType: "go-pattern",
+				Language:   "go",
+				Domain:     "backend",
 			},
 			expectField: "tags",
+		},
+		{
+			name:        "missing entity_type",
+			body:        PatternCreate{Name: "valid-name", Content: "content", Language: "go", Domain: "backend"},
+			expectField: "entity_type",
+		},
+		{
+			name:        "missing language",
+			body:        PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Domain: "backend"},
+			expectField: "language",
+		},
+		{
+			name:        "missing domain",
+			body:        PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go"},
+			expectField: "domain",
+		},
+		{
+			name:        "invalid language value",
+			body:        PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "cobol", Domain: "backend"},
+			expectField: "language",
+		},
+		{
+			name:        "invalid domain value",
+			body:        PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "not-a-valid-domain"},
+			expectField: "domain",
 		},
 	}
 
@@ -913,10 +986,10 @@ func TestSearchPatterns_ResultsIncludeContentAndScores(t *testing.T) {
 	// Verify each result has content and similarity (if any results exist)
 	for _, r := range searchResp.Results {
 		if r.Content == "" {
-			t.Errorf("result %q has empty content", r.ID)
+			t.Errorf("result %q has empty content", r.PatternID)
 		}
 		if r.Similarity < 0 || r.Similarity > 1 {
-			t.Errorf("result %q has similarity %f out of [0,1] range", r.ID, r.Similarity)
+			t.Errorf("result %q has similarity %f out of [0,1] range", r.PatternID, r.Similarity)
 		}
 	}
 }
@@ -1045,7 +1118,7 @@ func TestSearchPatterns_CustomThreshold(t *testing.T) {
 	// All results must have similarity >= threshold
 	for _, r := range searchResp.Results {
 		if r.Similarity < 0.9 {
-			t.Errorf("result %q has similarity %f below threshold 0.9", r.ID, r.Similarity)
+			t.Errorf("result %q has similarity %f below threshold 0.9", r.PatternID, r.Similarity)
 		}
 	}
 }
@@ -1105,8 +1178,11 @@ func TestSearchPatterns_OnlyEnrichedPatternsAppear(t *testing.T) {
 
 	// Create a pattern — it will be in "pending" or "failed" state (not enriched)
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "content for enrichment exclusion test",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "content for enrichment exclusion test",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", body)
 	if err != nil {
@@ -1139,7 +1215,7 @@ func TestSearchPatterns_OnlyEnrichedPatternsAppear(t *testing.T) {
 
 	// With dummy OpenAI key, no patterns will be enriched — our pattern should NOT appear
 	for _, r := range searchResp.Results {
-		if r.ID == created.ID {
+		if r.PatternID == created.ID {
 			t.Errorf("expected non-enriched pattern %q to be excluded from search results", created.ID)
 		}
 	}
@@ -1244,8 +1320,11 @@ func TestGetPattern_ReturnsFullPatternWithContent(t *testing.T) {
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "# Full Content Pattern\n\nComplete markdown content here.",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "# Full Content Pattern\n\nComplete markdown content here.",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", body)
 	if err != nil {
@@ -1279,8 +1358,11 @@ func TestGetPattern_IncludesEnrichmentStatus(t *testing.T) {
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "content for enrichment status test",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "content for enrichment status test",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", body)
 	if err != nil {
@@ -1356,8 +1438,11 @@ func TestGetPattern_ResponseIncludesRequestIDHeader(t *testing.T) {
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "content for request id header test",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "content for request id header test",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", body)
 	if err != nil {
@@ -1384,8 +1469,11 @@ func TestUpdatePattern_ReturnsOKWithUpdatedPattern(t *testing.T) {
 	client := NewTestClient(t)
 
 	createBody := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "original content",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "original content",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", createBody)
 	if err != nil {
@@ -1395,8 +1483,11 @@ func TestUpdatePattern_ReturnsOKWithUpdatedPattern(t *testing.T) {
 	created := ParseJSON[Pattern](t, createResp)
 
 	updateBody := PatternUpdate{
-		Name:    createBody.Name,
-		Content: "updated content with new information",
+		Name:       createBody.Name,
+		Content:    "updated content with new information",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	resp, err := client.Put(patternPath(created.ID), updateBody)
@@ -1421,8 +1512,11 @@ func TestUpdatePattern_UpdatedAtChangesCreatedAtPreserved(t *testing.T) {
 	client := NewTestClient(t)
 
 	createBody := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "original content for timestamp test",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "original content for timestamp test",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", createBody)
 	if err != nil {
@@ -1432,8 +1526,11 @@ func TestUpdatePattern_UpdatedAtChangesCreatedAtPreserved(t *testing.T) {
 	created := ParseJSON[Pattern](t, createResp)
 
 	updateBody := PatternUpdate{
-		Name:    createBody.Name,
-		Content: "updated content for timestamp test",
+		Name:       createBody.Name,
+		Content:    "updated content for timestamp test",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	resp, err := client.Put(patternPath(created.ID), updateBody)
@@ -1464,6 +1561,9 @@ func TestUpdatePattern_FullReplacementResetsOmittedFields(t *testing.T) {
 		Content:     "original content",
 		Description: "original description",
 		Tags:        []string{"original-tag"},
+		EntityType:  "go-pattern",
+		Language:    "go",
+		Domain:      "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", createBody)
 	if err != nil {
@@ -1474,8 +1574,11 @@ func TestUpdatePattern_FullReplacementResetsOmittedFields(t *testing.T) {
 
 	// Update with only name and content — description and tags are omitted
 	updateBody := PatternUpdate{
-		Name:    createBody.Name,
-		Content: "replacement content",
+		Name:       createBody.Name,
+		Content:    "replacement content",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	resp, err := client.Put(patternPath(created.ID), updateBody)
@@ -1501,8 +1604,11 @@ func TestUpdatePattern_ContentChangeResetsEnrichmentToPending(t *testing.T) {
 	client := NewTestClient(t)
 
 	createBody := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "original content before update",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "original content before update",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", createBody)
 	if err != nil {
@@ -1512,8 +1618,11 @@ func TestUpdatePattern_ContentChangeResetsEnrichmentToPending(t *testing.T) {
 	created := ParseJSON[Pattern](t, createResp)
 
 	updateBody := PatternUpdate{
-		Name:    createBody.Name,
-		Content: "completely new content triggers re-enrichment",
+		Name:       createBody.Name,
+		Content:    "completely new content triggers re-enrichment",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	resp, err := client.Put(patternPath(created.ID), updateBody)
@@ -1537,8 +1646,11 @@ func TestUpdatePattern_NotFoundReturns404(t *testing.T) {
 
 	nonExistentID := uuid.New().String()
 	updateBody := PatternUpdate{
-		Name:    "valid-name",
-		Content: "content for non-existent pattern",
+		Name:       "valid-name",
+		Content:    "content for non-existent pattern",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	resp, err := client.Put(patternPath(nonExistentID), updateBody)
@@ -1558,42 +1670,70 @@ func TestUpdatePattern_ValidationErrors(t *testing.T) {
 	}{
 		{
 			name:        "missing name",
-			body:        PatternUpdate{Content: "content"},
+			body:        PatternUpdate{Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "missing content",
-			body:        PatternUpdate{Name: "valid-name"},
+			body:        PatternUpdate{Name: "valid-name", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "content",
 		},
 		{
 			name:        "name too long",
-			body:        PatternUpdate{Name: strings.Repeat("a", 129), Content: "content"},
+			body:        PatternUpdate{Name: strings.Repeat("a", 129), Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "name invalid format",
-			body:        PatternUpdate{Name: "BAD_NAME", Content: "content"},
+			body:        PatternUpdate{Name: "BAD_NAME", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "content exceeds max size",
-			body:        PatternUpdate{Name: "valid-name", Content: strings.Repeat("x", 10241)},
+			body:        PatternUpdate{Name: "valid-name", Content: strings.Repeat("x", 100_001), EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "content",
 		},
 		{
 			name:        "description too long",
-			body:        PatternUpdate{Name: "valid-name", Content: "content", Description: strings.Repeat("d", 501)},
+			body:        PatternUpdate{Name: "valid-name", Content: "content", Description: strings.Repeat("d", 501), EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "description",
 		},
 		{
 			name: "too many tags",
 			body: PatternUpdate{
-				Name:    "valid-name",
-				Content: "content",
-				Tags:    makeTags(21),
+				Name:       "valid-name",
+				Content:    "content",
+				Tags:       makeTags(21),
+				EntityType: "go-pattern",
+				Language:   "go",
+				Domain:     "backend",
 			},
 			expectField: "tags",
+		},
+		{
+			name:        "missing entity_type",
+			body:        PatternUpdate{Name: "valid-name", Content: "content", Language: "go", Domain: "backend"},
+			expectField: "entity_type",
+		},
+		{
+			name:        "missing language",
+			body:        PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Domain: "backend"},
+			expectField: "language",
+		},
+		{
+			name:        "missing domain",
+			body:        PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go"},
+			expectField: "domain",
+		},
+		{
+			name:        "invalid language value",
+			body:        PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "cobol", Domain: "backend"},
+			expectField: "language",
+		},
+		{
+			name:        "invalid domain value",
+			body:        PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "not-a-valid-domain"},
+			expectField: "domain",
 		},
 	}
 
@@ -1603,8 +1743,11 @@ func TestUpdatePattern_ValidationErrors(t *testing.T) {
 
 			// Create a real pattern to update (so we get 400, not 404)
 			createBody := PatternCreate{
-				Name:    GenerateUniqueName("pattern"),
-				Content: "content for validation test",
+				Name:       GenerateUniqueName("pattern"),
+				Content:    "content for validation test",
+				EntityType: "go-pattern",
+				Language:   "go",
+				Domain:     "backend",
 			}
 			createResp, err := client.Post("/v1/api/patterns", createBody)
 			if err != nil {
@@ -1644,8 +1787,11 @@ func TestUpdatePattern_InvalidUUIDReturns400(t *testing.T) {
 	client := NewTestClient(t)
 
 	updateBody := PatternUpdate{
-		Name:    "valid-name",
-		Content: "content for invalid uuid test",
+		Name:       "valid-name",
+		Content:    "content for invalid uuid test",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	resp, err := client.Put("/v1/api/patterns/not-a-valid-uuid", updateBody)
@@ -1665,8 +1811,11 @@ func TestDeletePattern_ReturnsNoContent(t *testing.T) {
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "content for delete test",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "content for delete test",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", body)
 	if err != nil {
@@ -1688,8 +1837,11 @@ func TestDeletePattern_PatternNoLongerRetrievable(t *testing.T) {
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "content for delete then get test",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "content for delete then get test",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", body)
 	if err != nil {
@@ -1731,8 +1883,11 @@ func TestDeletePattern_SecondDeleteReturns404(t *testing.T) {
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "content for double delete test",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "content for double delete test",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", body)
 	if err != nil {
@@ -1801,6 +1956,9 @@ func TestGetPatternAgentAssociations_ReturnsAssociations(t *testing.T) {
 		AgentAssociations: []AgentAssociation{
 			{AgentName: agentName, Relevance: 0.85},
 		},
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", patternBody)
 	if err != nil {
@@ -1831,8 +1989,11 @@ func TestGetPatternAgentAssociations_EmptyListWhenNoAssociations(t *testing.T) {
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "content with no agent associations",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "content with no agent associations",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", body)
 	if err != nil {
@@ -1885,8 +2046,11 @@ func TestGetPatternAgentAssociations_ResponseIncludesRequestIDHeader(t *testing.
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "content for request id header on agents endpoint",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "content for request id header on agents endpoint",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", body)
 	if err != nil {
@@ -1939,6 +2103,9 @@ func TestSetPatternAgentAssociations_ReplacesAllAssociations(t *testing.T) {
 		AgentAssociations: []AgentAssociation{
 			{AgentName: agentA, Relevance: 0.7},
 		},
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", patternBody)
 	if err != nil {
@@ -1995,6 +2162,9 @@ func TestSetPatternAgentAssociations_ClearAssociationsWithEmptyArray(t *testing.
 		AgentAssociations: []AgentAssociation{
 			{AgentName: agentName, Relevance: 0.75},
 		},
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", patternBody)
 	if err != nil {
@@ -2046,8 +2216,11 @@ func TestSetPatternAgentAssociations_ValidationErrors(t *testing.T) {
 
 		// Create a pattern to PUT against
 		patternBody := PatternCreate{
-			Name:    GenerateUniqueName("pattern"),
-			Content: "content for non-existent agent validation",
+			Name:       GenerateUniqueName("pattern"),
+			Content:    "content for non-existent agent validation",
+			EntityType: "go-pattern",
+			Language:   "go",
+			Domain:     "backend",
 		}
 		createResp, err := client.Post("/v1/api/patterns", patternBody)
 		if err != nil {
@@ -2076,8 +2249,11 @@ func TestSetPatternAgentAssociations_ValidationErrors(t *testing.T) {
 		client := NewTestClient(t)
 
 		patternBody := PatternCreate{
-			Name:    GenerateUniqueName("pattern"),
-			Content: "content for relevance below zero validation",
+			Name:       GenerateUniqueName("pattern"),
+			Content:    "content for relevance below zero validation",
+			EntityType: "go-pattern",
+			Language:   "go",
+			Domain:     "backend",
 		}
 		createResp, err := client.Post("/v1/api/patterns", patternBody)
 		if err != nil {
@@ -2104,8 +2280,11 @@ func TestSetPatternAgentAssociations_ValidationErrors(t *testing.T) {
 		client := NewTestClient(t)
 
 		patternBody := PatternCreate{
-			Name:    GenerateUniqueName("pattern"),
-			Content: "content for relevance above one validation",
+			Name:       GenerateUniqueName("pattern"),
+			Content:    "content for relevance above one validation",
+			EntityType: "go-pattern",
+			Language:   "go",
+			Domain:     "backend",
 		}
 		createResp, err := client.Post("/v1/api/patterns", patternBody)
 		if err != nil {
@@ -2132,8 +2311,11 @@ func TestSetPatternAgentAssociations_ValidationErrors(t *testing.T) {
 		client := NewTestClient(t)
 
 		patternBody := PatternCreate{
-			Name:    GenerateUniqueName("pattern"),
-			Content: "content for missing associations field validation",
+			Name:       GenerateUniqueName("pattern"),
+			Content:    "content for missing associations field validation",
+			EntityType: "go-pattern",
+			Language:   "go",
+			Domain:     "backend",
 		}
 		createResp, err := client.Post("/v1/api/patterns", patternBody)
 		if err != nil {
@@ -2182,8 +2364,11 @@ func TestPatternEnrichment_NewPatternStartsWithPendingStatus(t *testing.T) {
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "content for enrichment pending status test",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "content for enrichment pending status test",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	resp, err := client.Post("/v1/api/patterns", body)
@@ -2205,8 +2390,11 @@ func TestPatternEnrichment_StatusTransitionsToPendingOrFailed(t *testing.T) {
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "content for enrichment status transition test",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "content for enrichment status transition test",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	createResp, err := client.Post("/v1/api/patterns", body)
@@ -2243,8 +2431,11 @@ func TestPatternEnrichment_EnrichedAtSetWhenEnriched(t *testing.T) {
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "content for enriched_at timestamp test",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "content for enriched_at timestamp test",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	createResp, err := client.Post("/v1/api/patterns", body)
@@ -2279,8 +2470,11 @@ func TestPatternEnrichment_ErrorSetWhenFailed(t *testing.T) {
 	client := NewTestClient(t)
 
 	body := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "content for enrichment error test",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "content for enrichment error test",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	createResp, err := client.Post("/v1/api/patterns", body)
@@ -2315,8 +2509,11 @@ func TestPatternEnrichment_ContentUpdateTriggersReenrichment(t *testing.T) {
 	client := NewTestClient(t)
 
 	createBody := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
-		Content: "original content before re-enrichment",
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "original content before re-enrichment",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 	createResp, err := client.Post("/v1/api/patterns", createBody)
 	if err != nil {
@@ -2341,8 +2538,11 @@ func TestPatternEnrichment_ContentUpdateTriggersReenrichment(t *testing.T) {
 
 	// Update content — should reset enrichment_status to pending
 	updateBody := PatternUpdate{
-		Name:    createBody.Name,
-		Content: "new content after re-enrichment trigger",
+		Name:       createBody.Name,
+		Content:    "new content after re-enrichment trigger",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
 	}
 
 	updateResp, err := client.Put(patternPath(created.ID), updateBody)
@@ -2359,6 +2559,58 @@ func TestPatternEnrichment_ContentUpdateTriggersReenrichment(t *testing.T) {
 	if updated.EnrichmentStatus != "pending" {
 		t.Fatalf("expected enrichment_status 'pending' after content update, got %q", updated.EnrichmentStatus)
 	}
+}
+
+// -----------------------------------------------------------------------------
+// Get Pattern Chunks (GET /v1/api/patterns/{id}/chunks)
+// -----------------------------------------------------------------------------
+
+func TestGetPatternChunks_ReturnsChunksForPattern(t *testing.T) {
+	client := NewTestClient(t)
+
+	// Create a pattern (chunks are populated asynchronously by enrichment)
+	body := PatternCreate{
+		Name:       GenerateUniqueName("pattern"),
+		Content:    "## Philosophy\nStorage-only databases.\n\n## Usage\nCall the API.",
+		EntityType: "go-pattern",
+		Language:   "go",
+		Domain:     "backend",
+	}
+	createResp, err := client.Post("/v1/api/patterns", body)
+	if err != nil {
+		t.Fatalf("failed to create pattern: %v", err)
+	}
+	defer createResp.Body.Close()
+	AssertStatusCode(t, createResp, http.StatusAccepted)
+
+	created := ParseJSON[Pattern](t, createResp)
+
+	// GET /v1/api/patterns/:id/chunks — returns 200 with chunks (may be empty if not yet enriched)
+	resp, err := client.Get("/v1/api/patterns/" + created.ID + "/chunks")
+	if err != nil {
+		t.Fatalf("failed to GET chunks: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusOK)
+
+	chunkList := ParseJSON[ChunkListResponse](t, resp)
+
+	if chunkList.Chunks == nil {
+		t.Fatal("expected chunks field to be present (may be empty)")
+	}
+}
+
+func TestGetPatternChunks_InvalidUUIDReturns400(t *testing.T) {
+	client := NewTestClient(t)
+
+	resp, err := client.Get("/v1/api/patterns/not-a-uuid/chunks")
+	if err != nil {
+		t.Fatalf("failed to GET chunks: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 // -----------------------------------------------------------------------------
@@ -2394,6 +2646,7 @@ var (
 	_ = PatternAgentAssociations{}
 	_ = Pattern{}
 	_ = ErrorResponse{}
+	_ = ChunkListResponse{}
 )
 
 // Compile-time assertions for helpers, uuid, http, and strings packages.

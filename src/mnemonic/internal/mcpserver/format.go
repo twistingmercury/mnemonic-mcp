@@ -20,7 +20,15 @@ func formatSearchResults(result *searchsvc.SearchResult, agentFilter string) str
 
 	var sb strings.Builder
 
-	header := fmt.Sprintf("Found %d patterns matching '%s'", len(result.Matches), result.Query)
+	// Count distinct pattern IDs; one pattern may have multiple matching chunks.
+	seen := make(map[interface{}]struct{}, len(result.Matches))
+	for _, m := range result.Matches {
+		seen[m.PatternID] = struct{}{}
+	}
+	distinctPatterns := len(seen)
+	sections := len(result.Matches)
+
+	header := fmt.Sprintf("Found %d sections across %d patterns matching '%s'", sections, distinctPatterns, result.Query)
 	if agentFilter != "" {
 		header += fmt.Sprintf(" (filtered by agent: %s)", agentFilter)
 	}
@@ -36,15 +44,19 @@ func formatSearchResults(result *searchsvc.SearchResult, agentFilter string) str
 }
 
 // writeMatchEntry writes a single search match entry to the builder.
-func writeMatchEntry(sb *strings.Builder, m *patternrepo.Match) {
+func writeMatchEntry(sb *strings.Builder, m *searchsvc.ChunkMatch) {
 	pct := int(math.Round(m.Similarity * 100))
-	fmt.Fprintf(sb, "## %s (%d%% match)\n\n", m.Pattern.Name, pct)
+	fmt.Fprintf(sb, "## %s (%d%% match)\n\n", m.PatternName, pct)
 
-	if len(m.Pattern.Tags) > 0 {
-		fmt.Fprintf(sb, "**Tags:** %s\n\n", strings.Join(m.Pattern.Tags, ", "))
+	if m.SectionTitle != "" {
+		fmt.Fprintf(sb, "**Section:** %s\n\n", m.SectionTitle)
 	}
 
-	sb.WriteString(m.Pattern.Content)
+	if len(m.Tags) > 0 {
+		fmt.Fprintf(sb, "**Tags:** %s\n\n", strings.Join(m.Tags, ", "))
+	}
+
+	sb.WriteString(m.Content)
 	sb.WriteByte('\n')
 }
 

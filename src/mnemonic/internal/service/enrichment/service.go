@@ -12,17 +12,24 @@ package enrichment
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/twistingmercury/mnemonic/internal/config"
 	agentrepo "github.com/twistingmercury/mnemonic/internal/repository/agent"
+	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	enrichmentjob "github.com/twistingmercury/mnemonic/internal/repository/enrichmentjob"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
 	openaisvc "github.com/twistingmercury/mnemonic/internal/service/openai"
 )
+
+// errPipelineFailed is a sentinel returned by runGraphPipeline when a pipeline
+// step fails but the failure was successfully recorded (via failJob). It signals
+// callers to stop processing and return nil to the worker.
+var errPipelineFailed = errors.New("pipeline step failed; failure recorded")
 
 // Service defines the worker-facing interface for processing enrichment jobs.
 // The enrichment worker goroutine calls these methods; REST/MCP handlers do not.
@@ -65,6 +72,7 @@ type enrichmentService struct {
 	patternRepo   patternrepo.Repository
 	agentRepo     agentrepo.Repository
 	graphRepo     graphrepo.Repository
+	chunkRepo     chunkrepo.Repository
 	embeddingSvc  openaisvc.EmbeddingService
 	extractionSvc openaisvc.ExtractionService
 	cfg           config.EnrichmentConfig
@@ -72,6 +80,7 @@ type enrichmentService struct {
 }
 
 // New creates a new enrichment Service backed by the given dependencies.
+// Returns an error if any required dependency is nil.
 func New(
 	jobRepo enrichmentjob.Repository,
 	patternRepo patternrepo.Repository,
@@ -80,18 +89,23 @@ func New(
 	embeddingSvc openaisvc.EmbeddingService,
 	extractionSvc openaisvc.ExtractionService,
 	cfg config.EnrichmentConfig,
+	chunkRepo chunkrepo.Repository,
 	logger zerolog.Logger,
-) Service {
+) (Service, error) {
+	if chunkRepo == nil {
+		return nil, fmt.Errorf("enrichment.New: chunkRepo is required")
+	}
 	return &enrichmentService{
 		jobRepo:       jobRepo,
 		patternRepo:   patternRepo,
 		agentRepo:     agentRepo,
 		graphRepo:     graphRepo,
+		chunkRepo:     chunkRepo,
 		embeddingSvc:  embeddingSvc,
 		extractionSvc: extractionSvc,
 		cfg:           cfg,
 		logger:        logger,
-	}
+	}, nil
 }
 
 // ClaimNextJob atomically claims the next pending enrichment job.
@@ -100,42 +114,147 @@ func (s *enrichmentService) ClaimNextJob(ctx context.Context) (*enrichmentjob.Jo
 	return s.jobRepo.ClaimPending(ctx)
 }
 
-// ProcessJob runs the full enrichment pipeline for a claimed job.
+// ProcessJob dispatches to the chunk-based or pattern-based pipeline based on
+// which ID field the job carries.
 func (s *enrichmentService) ProcessJob(ctx context.Context, job *enrichmentjob.Job) error {
-	// Step 1: Load pattern from Postgres.
-	pattern, err := s.patternRepo.Get(ctx, job.PatternID)
+	if job.ChunkID != nil {
+		return s.processChunkJob(ctx, job)
+	}
+	return s.processPatternJob(ctx, job)
+}
+
+// processChunkJob runs the chunk-based enrichment pipeline:
+//  1. Load chunk from Postgres
+//  2. Generate embedding for chunk content
+//  3. Store embedding on the chunk row
+//  4. Mark chunk as enriched
+//  5. Check aggregate status: any-failed → mark pattern failed;
+//     all-enriched → run concept extraction + graph sync + mark pattern enriched
+//  6. Mark job completed
+func (s *enrichmentService) processChunkJob(ctx context.Context, job *enrichmentjob.Job) error {
+	// Step 1: Load chunk from Postgres.
+	chunk, err := s.chunkRepo.Get(ctx, *job.ChunkID)
 	if err != nil {
-		return s.failJob(ctx, job, fmt.Errorf("load pattern: %w", err))
+		return s.failJob(ctx, job, fmt.Errorf("load chunk: %w", err))
 	}
 
-	// Step 2: Generate embedding via OpenAI.
-	embedding, err := s.embeddingSvc.Embed(ctx, pattern.Content)
+	// Step 3: Generate embedding for chunk content.
+	embedding, err := s.embeddingSvc.Embed(ctx, chunk.Content)
 	if err != nil {
-		return s.failJob(ctx, job, fmt.Errorf("generate embedding: %w", err))
+		return s.failChunkJob(ctx, job, chunk.ID, chunk.PatternID, fmt.Errorf("embed chunk: %w", err))
 	}
 
-	// Step 3: Store embedding in Postgres.
-	if err := s.patternRepo.UpdateEmbedding(ctx, pattern.ID, embedding); err != nil {
-		return s.failJob(ctx, job, fmt.Errorf("store embedding: %w", err))
+	// Step 4: Store embedding on the chunk row.
+	if err := s.chunkRepo.UpdateEmbedding(ctx, chunk.ID, embedding); err != nil {
+		return s.failChunkJob(ctx, job, chunk.ID, chunk.PatternID, fmt.Errorf("store chunk embedding: %w", err))
 	}
 
-	// Step 4: Extract concepts via OpenAI.
+	// Step 5: Mark chunk enriched.
+	if err := s.chunkRepo.UpdateEnrichmentStatus(ctx, chunk.ID, "enriched", nil); err != nil {
+		return s.failChunkJob(ctx, job, chunk.ID, chunk.PatternID, fmt.Errorf("update chunk enrichment status: %w", err))
+	}
+
+	// Step 6: Check aggregate status.
+	anyFailed, err := s.chunkRepo.AnyFailedForPattern(ctx, chunk.PatternID)
+	if err != nil {
+		// Aggregate query failure: transient DB issue should not block this chunk's
+		// successful completion. Log and continue without updating pattern status.
+		s.logger.Error().
+			Err(err).
+			Str("pattern_id", chunk.PatternID.String()).
+			Msg("failed to check any-failed aggregate; continuing")
+	} else if anyFailed {
+		errMsg := "one or more chunks failed enrichment"
+		if updateErr := s.patternRepo.UpdateEnrichmentStatus(ctx, chunk.PatternID, "failed", &errMsg); updateErr != nil {
+			s.logger.Error().
+				Err(updateErr).
+				Str("pattern_id", chunk.PatternID.String()).
+				Msg("failed to mark pattern as failed after chunk failure")
+		}
+		// This chunk succeeded; another chunk caused the aggregate failure.
+		// Mark job completed and return.
+		if markErr := s.jobRepo.MarkCompleted(ctx, job.ID); markErr != nil {
+			return fmt.Errorf("mark job completed: %w", markErr)
+		}
+		return nil
+	}
+
+	allEnriched, err := s.chunkRepo.AllEnrichedForPattern(ctx, chunk.PatternID)
+	if err != nil {
+		// Aggregate query failure: transient DB issue should not block this chunk's
+		// successful completion. Log and continue without updating pattern status.
+		s.logger.Error().
+			Err(err).
+			Str("pattern_id", chunk.PatternID.String()).
+			Msg("failed to check all-enriched aggregate; continuing")
+	} else if allEnriched {
+		// AllEnrichedForPattern cannot be vacuously true here: at minimum the chunk
+		// this job processed exists, so the count is >= 1.
+		//
+		// All chunks are enriched: run concept extraction + graph sync.
+		// runGraphPipeline returns errPipelineFailed when a step fails and
+		// the failure was recorded, or a real error when recording failed.
+		// In either failure case we must not call MarkCompleted.
+		if pipeErr := s.runGraphPipeline(ctx, job, chunk.PatternID); pipeErr != nil {
+			if errors.Is(pipeErr, errPipelineFailed) {
+				// Failure was recorded successfully; return nil to the worker.
+				return nil
+			}
+			// Unrecoverable error recording the failure.
+			return pipeErr
+		}
+		// All graph steps succeeded; mark pattern enriched.
+		if updateErr := s.patternRepo.UpdateEnrichmentStatus(ctx, chunk.PatternID, "enriched", nil); updateErr != nil {
+			return fmt.Errorf("update enrichment status: %w", updateErr)
+		}
+	}
+
+	// Step 7: Mark job completed.
+	if err := s.jobRepo.MarkCompleted(ctx, job.ID); err != nil {
+		return fmt.Errorf("mark job completed: %w", err)
+	}
+
+	return nil
+}
+
+// runGraphPipeline loads a pattern, extracts concepts, and syncs the Neo4j
+// graph for the given patternID.
+//
+// On a pipeline step failure it calls failJob to record the failure and wraps
+// the result in errPipelineFailed (or returns the unrecoverable error directly).
+// Callers must check errors.Is(err, errPipelineFailed) to distinguish a
+// successfully-recorded failure from an unrecoverable recording error.
+func (s *enrichmentService) runGraphPipeline(ctx context.Context, job *enrichmentjob.Job, patternID uuid.UUID) error {
+	recordFail := func(cause error) error {
+		if err := s.failJob(ctx, job, cause); err != nil {
+			return err // unrecoverable
+		}
+		return errPipelineFailed // recorded successfully
+	}
+
+	// Load pattern.
+	pattern, err := s.patternRepo.Get(ctx, patternID)
+	if err != nil {
+		return recordFail(fmt.Errorf("load pattern: %w", err))
+	}
+
+	// Extract concepts via OpenAI.
 	concepts, err := s.extractionSvc.Extract(ctx, pattern.Content)
 	if err != nil {
-		return s.failJob(ctx, job, fmt.Errorf("extract concepts: %w", err))
+		return recordFail(fmt.Errorf("extract concepts: %w", err))
 	}
 
-	// Step 5: Sync pattern node to Neo4j.
+	// Sync pattern node to Neo4j.
 	graphPattern := &graphrepo.Pattern{
 		ID:          pattern.ID,
 		Name:        pattern.Name,
 		Description: pattern.Description,
 	}
 	if err := s.graphRepo.SyncPattern(ctx, graphPattern); err != nil {
-		return s.failJob(ctx, job, fmt.Errorf("sync pattern to neo4j: %w", err))
+		return recordFail(fmt.Errorf("sync pattern to neo4j: %w", err))
 	}
 
-	// Step 6: Sync concepts and MENTIONED_IN edges to Neo4j.
+	// Sync concepts and MENTIONED_IN edges to Neo4j.
 	// Explicit mapping between openai.Concept and graphrepo.Concept is intentional:
 	// the types are structurally similar but belong to different packages with
 	// different responsibilities (extraction vs. graph storage).
@@ -144,36 +263,79 @@ func (s *enrichmentService) ProcessJob(ctx context.Context, job *enrichmentjob.J
 		graphConcepts[i] = graphrepo.Concept{Name: c.Name, Type: c.Type}
 	}
 	if err := s.graphRepo.SyncConcepts(ctx, pattern.ID, graphConcepts); err != nil {
-		return s.failJob(ctx, job, fmt.Errorf("sync concepts to neo4j: %w", err))
+		return recordFail(fmt.Errorf("sync concepts to neo4j: %w", err))
 	}
 
-	// Step 7: Sync agent associations to Neo4j.
+	// Sync agent associations to Neo4j.
 	// patternrepo.AgentAssociation has AgentID (UUID), but Neo4j Agent nodes are
 	// keyed by name. Resolve agent names via agentRepo before syncing.
 	graphAssocs, err := s.resolveAgentAssociations(ctx, pattern.ID)
 	if err != nil {
-		return s.failJob(ctx, job, fmt.Errorf("get agent associations: %w", err))
+		return recordFail(fmt.Errorf("get agent associations: %w", err))
 	}
 	if err := s.graphRepo.SetPatternAgentRelevance(ctx, pattern.ID, graphAssocs); err != nil {
-		return s.failJob(ctx, job, fmt.Errorf("sync associations to neo4j: %w", err))
+		return recordFail(fmt.Errorf("sync associations to neo4j: %w", err))
 	}
 
-	// Step 8: Compute RELATED_TO edges based on shared concepts.
+	// Compute RELATED_TO edges based on shared concepts.
 	if err := s.graphRepo.ComputeRelatedToEdges(ctx, pattern.ID, s.cfg.RelatedToMinSimilarity); err != nil {
-		return s.failJob(ctx, job, fmt.Errorf("compute related_to: %w", err))
+		return recordFail(fmt.Errorf("compute related_to: %w", err))
 	}
 
-	// Step 9: Mark job completed (unrecoverable if this fails).
+	return nil
+}
+
+// processPatternJob runs the legacy pattern-level enrichment pipeline for jobs
+// where PatternID is set and ChunkID is nil.
+func (s *enrichmentService) processPatternJob(ctx context.Context, job *enrichmentjob.Job) error {
+	// Step 1: Validate job has a pattern ID.
+	if job.PatternID == nil {
+		return s.failJob(ctx, job, fmt.Errorf("load pattern: job has no pattern_id"))
+	}
+
+	// Steps 2-3: Per-chunk embedding pipeline replaces pattern-level embedding (Task 6).
+
+	// Steps 4-8: Extract concepts and sync graph.
+	if err := s.runGraphPipeline(ctx, job, *job.PatternID); err != nil {
+		if errors.Is(err, errPipelineFailed) {
+			// Failure recorded successfully; return nil to the worker.
+			return nil
+		}
+		// Unrecoverable error recording the pipeline failure.
+		return err
+	}
+
+	// Step 9: Update pattern enrichment status (unrecoverable if this fails).
+	if err := s.patternRepo.UpdateEnrichmentStatus(ctx, *job.PatternID, "enriched", nil); err != nil {
+		return fmt.Errorf("update enrichment status: %w", err)
+	}
+
+	// Step 10: Mark job completed (unrecoverable if this fails).
 	if err := s.jobRepo.MarkCompleted(ctx, job.ID); err != nil {
 		return fmt.Errorf("mark job completed: %w", err)
 	}
 
-	// Step 10: Update pattern enrichment status (unrecoverable if this fails).
-	if err := s.patternRepo.UpdateEnrichmentStatus(ctx, pattern.ID, "enriched", nil); err != nil {
-		return fmt.Errorf("update enrichment status: %w", err)
-	}
-
 	return nil
+}
+
+// failChunkJob marks both the chunk and its parent pattern as failed, then
+// marks the job failed. Use this when a chunk has been loaded (so PatternID
+// is known) but a subsequent step fails.
+func (s *enrichmentService) failChunkJob(ctx context.Context, job *enrichmentjob.Job, chunkID uuid.UUID, patternID uuid.UUID, cause error) error {
+	errMsg := cause.Error()
+	if err := s.chunkRepo.UpdateEnrichmentStatus(ctx, chunkID, "failed", &errMsg); err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("chunk_id", chunkID.String()).
+			Msg("failed to update chunk enrichment status")
+	}
+	if err := s.patternRepo.UpdateEnrichmentStatus(ctx, patternID, "failed", &errMsg); err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("pattern_id", patternID.String()).
+			Msg("failed to update pattern enrichment status")
+	}
+	return s.jobRepo.MarkFailed(ctx, job.ID, cause, s.cfg.RetryDelay)
 }
 
 // resolveAgentAssociations loads pattern-agent associations from Postgres and
@@ -217,12 +379,14 @@ func (s *enrichmentService) failJob(ctx context.Context, job *enrichmentjob.Job,
 	}
 
 	errMsg := cause.Error()
-	if err := s.patternRepo.UpdateEnrichmentStatus(ctx, job.PatternID, "failed", &errMsg); err != nil {
-		s.logger.Error().
-			Err(err).
-			Str("pattern_id", job.PatternID.String()).
-			Msg("failed to update pattern enrichment status")
-		return fmt.Errorf("update enrichment status: %w (original cause: %v)", err, cause)
+	if job.PatternID != nil {
+		if err := s.patternRepo.UpdateEnrichmentStatus(ctx, *job.PatternID, "failed", &errMsg); err != nil {
+			s.logger.Error().
+				Err(err).
+				Str("pattern_id", job.PatternID.String()).
+				Msg("failed to update pattern enrichment status")
+			return fmt.Errorf("update enrichment status: %w (original cause: %v)", err, cause)
+		}
 	}
 
 	return nil
@@ -258,7 +422,7 @@ func (s *enrichmentService) CleanupFailedJobs(ctx context.Context) (int64, error
 // Compile-time check that *enrichmentService implements Service.
 var _ Service = (*enrichmentService)(nil)
 
-// Compile-time check that New returns the Service interface.
+// Compile-time check that New returns (Service, error).
 var _ func(
 	enrichmentjob.Repository,
 	patternrepo.Repository,
@@ -267,5 +431,6 @@ var _ func(
 	openaisvc.EmbeddingService,
 	openaisvc.ExtractionService,
 	config.EnrichmentConfig,
+	chunkrepo.Repository,
 	zerolog.Logger,
-) Service = New
+) (Service, error) = New

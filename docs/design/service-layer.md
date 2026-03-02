@@ -107,6 +107,7 @@ graph TB
         SFR[SkillFileRepository]
         EJR[EnrichmentJobRepository]
         GR[GraphRepository]
+        CR[ChunkRepository]
     end
 
     REST --> PS
@@ -125,8 +126,9 @@ graph TB
     ES --> EJR
     ES --> GR
     ES --> AR
+    ES --> CR
     SEARCH --> EMB
-    SEARCH --> PR
+    SEARCH --> CR
     SEARCH --> AR
 
     PS --> PR
@@ -284,6 +286,11 @@ type CreateInput struct {
     Content           string
     Tags              []string
     AgentAssociations []AssociationInput
+    EntityType        string   // kebab-case, e.g. "best-practice"
+    Language          string   // go, agnostic, shell, python, typescript, sql
+    Domain            string   // backend, api-design, testing, frontend, infrastructure, data, agnostic
+    Version           *string
+    RelatedPatterns   []string // pattern names or IDs
 }
 
 // UpdateInput contains the fields for replacing a pattern.
@@ -293,6 +300,11 @@ type UpdateInput struct {
     Content           string
     Tags              []string
     AgentAssociations []AssociationInput
+    EntityType        string
+    Language          string
+    Domain            string
+    Version           *string
+    RelatedPatterns   []string
 }
 
 // AssociationInput represents an agent association in API input.
@@ -588,9 +600,9 @@ type EnrichmentService interface {
 
     // ProcessJob runs the full enrichment pipeline for a claimed job:
     //   1. Load pattern from Postgres
-    //   2. Generate embedding via EmbeddingService
-    //   3. Store embedding in Postgres
-    //   4. Extract concepts via ExtractionService
+    //   2. Split content at H2 headings into chunks
+    //   3. For each chunk: generate embedding, store in pattern_chunks
+    //   4. Extract concepts from full content via ExtractionService
     //   5. Sync pattern node to Neo4j
     //   6. Sync concepts and MENTIONED_IN edges to Neo4j
     //   7. Compute and create RELATED_TO edges
@@ -628,7 +640,6 @@ import (
     "context"
 
     "github.com/google/uuid"
-    patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
 )
 
 // SearchService handles semantic search over patterns.
@@ -641,21 +652,36 @@ type SearchService interface {
     // Steps:
     //   1. Generate embedding from query text via EmbeddingService
     //   2. If agentName is set, resolve agent -> pattern IDs
-    //   3. Call PatternRepository.FindSimilar with options
-    //   4. Return matches with similarity scores and search metadata
+    //   3. Call ChunkRepository.FindSimilar with options (searches pattern_chunks)
+    //   4. Return ChunkMatch results with similarity scores and search metadata
     //
     // The returned SearchResult includes metadata (query echo, total candidates
     // evaluated, search duration) required by the OpenAPI PatternSearchResponse.
     SearchPatterns(ctx context.Context, opts SearchOptions) (*SearchResult, error)
 }
 
+// ChunkMatch is a single chunk-level search result.
+// Returned by chunk-level vector search (pattern_chunks table).
+type ChunkMatch struct {
+    PatternID    uuid.UUID
+    PatternName  string
+    EntityType   string
+    Language     string
+    Domain       string
+    Tags         []string
+    SectionTitle string
+    ChunkIndex   int
+    Content      string
+    Similarity   float64
+}
+
 // SearchResult wraps similarity search matches with metadata required by
 // the OpenAPI PatternSearchResponse schema.
 type SearchResult struct {
-    Matches          []*patternrepo.Match
-    Query            string  // Echo of the original query text
-    TotalCandidates  int     // Total patterns evaluated (before threshold filtering)
-    SearchDurationMs int64   // Wall-clock search time in milliseconds
+    Matches          []*ChunkMatch // chunk-level hits (was []*patternrepo.Match)
+    Query            string        // Echo of the original query text
+    TotalCandidates  int           // Total chunks evaluated (before threshold filtering)
+    SearchDurationMs int64         // Wall-clock search time in milliseconds
 }
 
 // SearchOptions defines the parameters for a semantic search.
@@ -665,6 +691,8 @@ type SearchOptions struct {
     Threshold float64  // Min similarity (default 0.7)
     Tags      []string // Conjunctive tag filter
     AgentName string   // Optional agent name filter
+    Language  string   // Optional language filter (go, python, typescript, shell, sql, agnostic)
+    Domain    string   // Optional domain filter (backend, api-design, testing, frontend, infrastructure, data, agnostic)
 }
 ```
 

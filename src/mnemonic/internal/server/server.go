@@ -23,6 +23,7 @@ import (
 	"github.com/twistingmercury/mnemonic/internal/mcpserver"
 	"github.com/twistingmercury/mnemonic/internal/middleware"
 	agentrepo "github.com/twistingmercury/mnemonic/internal/repository/agent"
+	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	enrichmentjobrepo "github.com/twistingmercury/mnemonic/internal/repository/enrichmentjob"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
@@ -84,7 +85,10 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	}
 
 	// Wire all dependencies.
-	svc, toolDeps, enrichWorker := wireDependencies(pgPool, neo4jDriver, cfg, logger)
+	svc, toolDeps, enrichWorker, err := wireDependencies(pgPool, neo4jDriver, cfg, logger)
+	if err != nil {
+		return fmt.Errorf("failed to wire dependencies: %w", err)
+	}
 
 	// Create request metrics middleware.
 	requestMetrics, err := middleware.NewRequestMetrics(tel.Meter("mnemonic/http"))
@@ -179,7 +183,7 @@ func wireDependencies(
 	neo4jDriver neo4j.DriverWithContext,
 	cfg *config.MnemonicConfig,
 	logger zerolog.Logger,
-) (Services, mcpserver.ToolDependencies, *enricher.Worker) {
+) (Services, mcpserver.ToolDependencies, *enricher.Worker, error) {
 	// Repositories.
 	agentRepo := agentrepo.NewRepository(pgPool)
 	patternRepo := patternrepo.NewRepository(pgPool)
@@ -187,6 +191,7 @@ func wireDependencies(
 	skillFileRepo := skillfilerepo.NewRepository(pgPool)
 	enrichmentJobRepo := enrichmentjobrepo.NewRepository(pgPool)
 	graphRepo := graphrepo.NewRepository(neo4jDriver, cfg.Database.Neo4j.Database)
+	chunkRepo := chunkrepo.NewRepository(pgPool)
 
 	// External services.
 	embeddingSvc := openaisvc.NewEmbeddingService(cfg.OpenAI)
@@ -196,13 +201,16 @@ func wireDependencies(
 	agentSvc := agentsvc.New(agentRepo, graphRepo, logger)
 	skillSvc := skillsvc.New(skillRepo, logger)
 	skillFileSvc := skillfilesvc.New(skillFileRepo, skillRepo, logger)
-	searchSvc := searchsvc.New(embeddingSvc, patternRepo, agentRepo, logger)
-	patternSvc := patternsvc.New(patternRepo, enrichmentJobRepo, graphRepo, agentRepo, pgPool, logger)
-	enrichmentSvc := enrichmentsvc.New(
+	searchSvc := searchsvc.New(embeddingSvc, patternRepo, agentRepo, chunkRepo, logger)
+	patternSvc := patternsvc.New(patternRepo, enrichmentJobRepo, graphRepo, agentRepo, pgPool, chunkRepo, logger)
+	enrichmentSvc, err := enrichmentsvc.New(
 		enrichmentJobRepo, patternRepo, agentRepo, graphRepo,
 		embeddingSvc, extractionSvc,
-		cfg.Enrichment, logger,
+		cfg.Enrichment, chunkRepo, logger,
 	)
+	if err != nil {
+		return Services{}, nil, nil, fmt.Errorf("wire enrichment service: %w", err)
+	}
 
 	// MCP facade.
 	toolDeps := mcpserver.NewToolDependencies(searchSvc, patternSvc)
@@ -219,7 +227,7 @@ func wireDependencies(
 	// Enrichment worker.
 	enrichWorker := enricher.New(enrichmentSvc, cfg.Enrichment, logger)
 
-	return svc, toolDeps, enrichWorker
+	return svc, toolDeps, enrichWorker, nil
 }
 
 // runHTTPServer starts the admin API HTTP server and gracefully shuts it down

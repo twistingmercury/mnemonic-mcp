@@ -3,7 +3,6 @@ package enricher
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -48,17 +47,15 @@ func New(svc enrichmentsvc.Service, cfg config.EnrichmentConfig, logger zerolog.
 // returns. Run always returns nil on shutdown; worker goroutines never crash
 // the server.
 func (w *Worker) Run(ctx context.Context) error {
-	// drainCtx controls the lifetime of in-flight ProcessJob calls during
-	// shutdown. It remains live after ctx is cancelled, giving in-flight jobs
-	// a grace period to complete. It is cancelled after DrainTimeout elapses
-	// or when all in-flight jobs complete, whichever comes first.
+	// drainCtx is intentionally derived from Background, not ctx — it must
+	// remain live after ctx is cancelled to give in-flight jobs time to
+	// complete before shutdown.
 	drainCtx, drainCancel := context.WithCancel(context.Background())
 	defer drainCancel()
 
 	// inflight tracks the number of currently executing ProcessJob calls
 	// so Run can wait for them during the drain phase.
 	var inflight sync.WaitGroup
-	var inflightCount atomic.Int64
 
 	// allDone tracks all goroutines (workers + maintenance) so Run can wait
 	// for everything to finish before returning.
@@ -69,7 +66,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		allDone.Add(1)
 		go func() {
 			defer allDone.Done()
-			w.runWorker(ctx, drainCtx, workerID, &inflight, &inflightCount)
+			w.runWorker(ctx, drainCtx, workerID, &inflight)
 		}()
 	}
 
@@ -92,13 +89,9 @@ func (w *Worker) Run(ctx context.Context) error {
 	// by the drain timeout. Worker goroutines will stop claiming new jobs
 	// (because ctx is cancelled) and will exit after their current
 	// ProcessJob call finishes.
-	remaining := inflightCount.Load()
-	if remaining > 0 {
-		w.logger.Info().
-			Int64("in_flight_jobs", remaining).
-			Dur("drain_timeout", w.cfg.DrainTimeout).
-			Msg("draining in-flight enrichment jobs")
-	}
+	w.logger.Info().
+		Dur("drain_timeout", w.cfg.DrainTimeout).
+		Msg("draining in-flight jobs")
 
 	w.drainInFlight(&inflight, drainCancel)
 
@@ -138,9 +131,8 @@ func (w *Worker) drainInFlight(wg *sync.WaitGroup, drainCancel context.CancelFun
 // When claimCtx is cancelled, the worker stops claiming new jobs. Any
 // in-flight ProcessJob call uses drainCtx, which remains live during the
 // drain phase so that the job can finish its work gracefully. The inflight
-// WaitGroup and inflightCount track active ProcessJob calls for the drain
-// phase.
-func (w *Worker) runWorker(claimCtx, drainCtx context.Context, id int, inflight *sync.WaitGroup, inflightCount *atomic.Int64) {
+// WaitGroup tracks active ProcessJob calls for the drain phase.
+func (w *Worker) runWorker(claimCtx, drainCtx context.Context, id int, inflight *sync.WaitGroup) {
 	log := w.logger.With().Int("worker_id", id).Logger()
 	log.Debug().Msg("worker goroutine started")
 
@@ -169,18 +161,20 @@ func (w *Worker) runWorker(claimCtx, drainCtx context.Context, id int, inflight 
 			continue
 		}
 
-		log.Info().
-			Str("job_id", job.ID.String()).
-			Str("pattern_id", job.PatternID.String()).
-			Msg("processing enrichment job")
+		logEvent := log.Info().Str("job_id", job.ID.String())
+		if job.PatternID != nil {
+			logEvent = logEvent.Str("pattern_id", job.PatternID.String())
+		}
+		if job.ChunkID != nil {
+			logEvent = logEvent.Str("chunk_id", job.ChunkID.String())
+		}
+		logEvent.Msg("processing enrichment job")
 
 		// Track the in-flight job for graceful drain. Use drainCtx for the
 		// ProcessJob call so that in-flight work can complete even after
 		// claimCtx is cancelled.
 		inflight.Add(1)
-		inflightCount.Add(1)
 		w.processJob(drainCtx, job, log)
-		inflightCount.Add(-1)
 		inflight.Done()
 	}
 }

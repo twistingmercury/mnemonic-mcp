@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/twistingmercury/mnemonic/internal/mcpserver"
+	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
 	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
@@ -114,6 +115,14 @@ func (m *mockPatternService) FindRelated(ctx context.Context, patternID uuid.UUI
 	return args.Get(0).([]patternsvc.RelatedPatternResult), args.Error(1)
 }
 
+func (m *mockPatternService) ListChunks(ctx context.Context, patternID uuid.UUID) ([]*chunkrepo.Chunk, error) {
+	args := m.Called(ctx, patternID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*chunkrepo.Chunk), args.Error(1)
+}
+
 // --- Tests ---
 
 func TestSearchPatterns_DelegatesToSearchService(t *testing.T) {
@@ -134,8 +143,8 @@ func TestSearchPatterns_DelegatesToSearchService(t *testing.T) {
 		Query:            "error handling",
 		TotalCandidates:  3,
 		SearchDurationMs: 42,
-		Matches: []*patternrepo.Match{
-			{Pattern: &patternrepo.Pattern{Name: "go-error-handling"}, Similarity: 0.95},
+		Matches: []*searchsvc.ChunkMatch{
+			{PatternName: "go-error-handling", Similarity: 0.95},
 		},
 	}
 

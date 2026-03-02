@@ -19,29 +19,30 @@ func TestFormatSearchResults_WithResults(t *testing.T) {
 
 	result := &searchsvc.SearchResult{
 		Query: "error handling",
-		Matches: []*patternrepo.Match{
+		Matches: []*searchsvc.ChunkMatch{
 			{
-				Pattern: &patternrepo.Pattern{
-					Name:    "go-error-handling",
-					Tags:    []string{"go", "errors", "best-practices"},
-					Content: "Always wrap errors with context.",
-				},
-				Similarity: 0.92,
+				PatternID:    uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+				PatternName:  "go-error-handling",
+				SectionTitle: "Overview",
+				Tags:         []string{"go", "errors", "best-practices"},
+				Content:      "Always wrap errors with context.",
+				Similarity:   0.92,
 			},
 			{
-				Pattern: &patternrepo.Pattern{
-					Name:    "retry-logic",
-					Tags:    []string{"go", "resilience"},
-					Content: "Use exponential backoff.",
-				},
-				Similarity: 0.847,
+				PatternID:    uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+				PatternName:  "retry-logic",
+				SectionTitle: "Overview",
+				Tags:         []string{"go", "resilience"},
+				Content:      "Use exponential backoff.",
+				Similarity:   0.847,
 			},
 		},
 	}
 
 	md := formatSearchResults(result, "")
 
-	assert.Contains(t, md, "Found 2 patterns matching 'error handling':")
+	// 2 sections from 2 distinct patterns.
+	assert.Contains(t, md, "Found 2 sections across 2 patterns matching 'error handling':")
 	assert.Contains(t, md, "## go-error-handling (92% match)")
 	assert.Contains(t, md, "**Tags:** go, errors, best-practices")
 	assert.Contains(t, md, "Always wrap errors with context.")
@@ -55,17 +56,20 @@ func TestFormatSearchResults_WithAgentFilter(t *testing.T) {
 
 	result := &searchsvc.SearchResult{
 		Query: "testing",
-		Matches: []*patternrepo.Match{
+		Matches: []*searchsvc.ChunkMatch{
 			{
-				Pattern:    &patternrepo.Pattern{Name: "unit-testing", Content: "Test content"},
-				Similarity: 0.88,
+				PatternID:   uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+				PatternName: "unit-testing",
+				Content:     "Test content",
+				Similarity:  0.88,
 			},
 		},
 	}
 
 	md := formatSearchResults(result, "go-engineer")
 
-	assert.Contains(t, md, "Found 1 patterns matching 'testing' (filtered by agent: go-engineer):")
+	// 1 section from 1 distinct pattern.
+	assert.Contains(t, md, "Found 1 sections across 1 patterns matching 'testing' (filtered by agent: go-engineer):")
 }
 
 func TestFormatSearchResults_Empty(t *testing.T) {
@@ -73,7 +77,7 @@ func TestFormatSearchResults_Empty(t *testing.T) {
 
 	result := &searchsvc.SearchResult{
 		Query:   "nonexistent",
-		Matches: []*patternrepo.Match{},
+		Matches: []*searchsvc.ChunkMatch{},
 	}
 
 	md := formatSearchResults(result, "")
@@ -86,10 +90,12 @@ func TestFormatSearchResults_NoTags(t *testing.T) {
 
 	result := &searchsvc.SearchResult{
 		Query: "query",
-		Matches: []*patternrepo.Match{
+		Matches: []*searchsvc.ChunkMatch{
 			{
-				Pattern:    &patternrepo.Pattern{Name: "no-tags", Content: "Content without tags"},
-				Similarity: 0.75,
+				PatternID:   uuid.MustParse("dddddddd-dddd-dddd-dddd-dddddddddddd"),
+				PatternName: "no-tags",
+				Content:     "Content without tags",
+				Similarity:  0.75,
 			},
 		},
 	}
@@ -100,19 +106,45 @@ func TestFormatSearchResults_NoTags(t *testing.T) {
 	assert.NotContains(t, md, "**Tags:**")
 }
 
+func TestFormatSearchResults_MultipleChunksSamePattern(t *testing.T) {
+	t.Parallel()
+
+	// Two chunks from the same pattern and one from a different pattern: the
+	// header should report 3 sections across 2 patterns.
+	sharedID := uuid.MustParse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
+	otherID := uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff")
+
+	result := &searchsvc.SearchResult{
+		Query: "error handling",
+		Matches: []*searchsvc.ChunkMatch{
+			{PatternID: sharedID, PatternName: "go-errors", SectionTitle: "Overview", Content: "Part one.", Similarity: 0.9},
+			{PatternID: sharedID, PatternName: "go-errors", SectionTitle: "Details", Content: "Part two.", Similarity: 0.85},
+			{PatternID: otherID, PatternName: "retry-logic", SectionTitle: "Overview", Content: "Retry.", Similarity: 0.8},
+		},
+	}
+
+	md := formatSearchResults(result, "")
+
+	assert.Contains(t, md, "Found 3 sections across 2 patterns matching 'error handling':")
+}
+
 func TestFormatSearchResults_SimilarityRounding(t *testing.T) {
 	t.Parallel()
 
 	result := &searchsvc.SearchResult{
 		Query: "query",
-		Matches: []*patternrepo.Match{
+		Matches: []*searchsvc.ChunkMatch{
 			{
-				Pattern:    &patternrepo.Pattern{Name: "pattern-a", Content: "Content"},
-				Similarity: 0.925,
+				PatternID:   uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+				PatternName: "pattern-a",
+				Content:     "Content",
+				Similarity:  0.925,
 			},
 			{
-				Pattern:    &patternrepo.Pattern{Name: "pattern-b", Content: "Content"},
-				Similarity: 0.994,
+				PatternID:   uuid.MustParse("22222222-2222-2222-2222-222222222222"),
+				PatternName: "pattern-b",
+				Content:     "Content",
+				Similarity:  0.994,
 			},
 		},
 	}

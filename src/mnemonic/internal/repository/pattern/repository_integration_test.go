@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"sync"
 	"testing"
@@ -28,10 +27,6 @@ const (
 
 	// testAgentPrefix is used to identify test-created agents for cleanup.
 	testAgentPrefix = "test-integration-agent-"
-
-	// embeddingDimension is the dimension of embedding vectors used in tests.
-	// OpenAI ada-002 uses 1536 dimensions.
-	embeddingDimension = 1536
 )
 
 // setupTestDB creates a connection pool to the test database.
@@ -130,59 +125,6 @@ func testIntegrationAgent(suffix string) *agent.Agent {
 		Definition: definition,
 		CRC64:      "12345678901234",
 	}
-}
-
-// createNormalizedEmbedding creates a unit vector (normalized embedding) with a specific pattern.
-// The index parameter determines which dimension has the largest value.
-func createNormalizedEmbedding(index int) []float32 {
-	embedding := make([]float32, embeddingDimension)
-
-	// Create a sparse vector with a primary direction at the given index
-	// and some noise in other dimensions
-	embedding[index%embeddingDimension] = 0.9
-
-	// Add small values to nearby dimensions to create some structure
-	for i := 1; i <= 5; i++ {
-		idx := (index + i) % embeddingDimension
-		embedding[idx] = 0.1 / float32(i)
-	}
-
-	// Normalize to unit length for cosine similarity
-	var sum float32
-	for _, v := range embedding {
-		sum += v * v
-	}
-	norm := float32(math.Sqrt(float64(sum)))
-	for i := range embedding {
-		embedding[i] /= norm
-	}
-
-	return embedding
-}
-
-// createSimilarEmbedding creates an embedding similar to the given base embedding.
-// The similarity parameter (0.0-1.0) controls how similar the result is.
-func createSimilarEmbedding(base []float32, similarity float64) []float32 {
-	result := make([]float32, len(base))
-
-	// Copy base and add noise inversely proportional to desired similarity
-	noise := 1.0 - similarity
-	for i, v := range base {
-		// Add noise proportional to (1 - similarity)
-		result[i] = v + float32(noise*0.5*(float64(i%10)-5.0)/5.0)
-	}
-
-	// Normalize
-	var sum float32
-	for _, v := range result {
-		sum += v * v
-	}
-	norm := float32(math.Sqrt(float64(sum)))
-	for i := range result {
-		result[i] /= norm
-	}
-
-	return result
 }
 
 func TestIntegration_Create(t *testing.T) {
@@ -507,49 +449,6 @@ func TestIntegration_List(t *testing.T) {
 	})
 }
 
-func TestIntegration_UpdateEmbedding(t *testing.T) {
-	pool := setupTestDB(t)
-	cleanupTestPatterns(t, pool)
-	t.Cleanup(func() { cleanupTestPatterns(t, pool) })
-
-	repo := pattern.NewRepository(pool)
-	ctx := context.Background()
-
-	t.Run("updates embedding for existing pattern", func(t *testing.T) {
-		// Create a test pattern
-		testPattern := testIntegrationPattern("embedding-test")
-		require.NoError(t, repo.Create(ctx, testPattern))
-
-		// Initially, embedding should be nil
-		retrieved, err := repo.Get(ctx, testPattern.ID)
-		require.NoError(t, err)
-		assert.Nil(t, retrieved.Embedding)
-
-		// Update embedding
-		embedding := createNormalizedEmbedding(0)
-		err = repo.UpdateEmbedding(ctx, testPattern.ID, embedding)
-		require.NoError(t, err)
-
-		// Verify embedding was stored
-		retrieved, err = repo.Get(ctx, testPattern.ID)
-		require.NoError(t, err)
-		require.NotNil(t, retrieved.Embedding)
-		assert.Len(t, retrieved.Embedding, embeddingDimension)
-
-		// Verify values match (with floating point tolerance)
-		for i := range embedding {
-			assert.InDelta(t, embedding[i], retrieved.Embedding[i], 1e-6,
-				"embedding value at index %d should match", i)
-		}
-	})
-
-	t.Run("returns ErrNotFound for nonexistent pattern", func(t *testing.T) {
-		embedding := createNormalizedEmbedding(0)
-		err := repo.UpdateEmbedding(ctx, uuid.New(), embedding)
-		assert.ErrorIs(t, err, pattern.ErrNotFound)
-	})
-}
-
 func TestIntegration_UpdateEnrichmentStatus(t *testing.T) {
 	pool := setupTestDB(t)
 	cleanupTestPatterns(t, pool)
@@ -596,207 +495,6 @@ func TestIntegration_UpdateEnrichmentStatus(t *testing.T) {
 	t.Run("returns ErrNotFound for nonexistent pattern", func(t *testing.T) {
 		err := repo.UpdateEnrichmentStatus(ctx, uuid.New(), "enriched", nil)
 		assert.ErrorIs(t, err, pattern.ErrNotFound)
-	})
-}
-
-func TestIntegration_FindSimilar(t *testing.T) {
-	pool := setupTestDB(t)
-	cleanupTestPatterns(t, pool)
-	t.Cleanup(func() { cleanupTestPatterns(t, pool) })
-
-	repo := pattern.NewRepository(pool)
-	ctx := context.Background()
-
-	// Create patterns with known embeddings for similarity testing
-	// Pattern A: primary direction at index 0
-	patternA := testIntegrationPattern("similar-a")
-	patternA.Tags = []string{"go", "patterns"}
-	require.NoError(t, repo.Create(ctx, patternA))
-	embeddingA := createNormalizedEmbedding(0)
-	require.NoError(t, repo.UpdateEmbedding(ctx, patternA.ID, embeddingA))
-	require.NoError(t, repo.UpdateEnrichmentStatus(ctx, patternA.ID, "enriched", nil))
-
-	// Pattern B: similar to A (high similarity)
-	patternB := testIntegrationPattern("similar-b")
-	patternB.Tags = []string{"go", "best-practices"}
-	require.NoError(t, repo.Create(ctx, patternB))
-	embeddingB := createSimilarEmbedding(embeddingA, 0.9) // Very similar to A
-	require.NoError(t, repo.UpdateEmbedding(ctx, patternB.ID, embeddingB))
-	require.NoError(t, repo.UpdateEnrichmentStatus(ctx, patternB.ID, "enriched", nil))
-
-	// Pattern C: different direction (low similarity to A)
-	patternC := testIntegrationPattern("similar-c")
-	patternC.Tags = []string{"python", "patterns"}
-	require.NoError(t, repo.Create(ctx, patternC))
-	embeddingC := createNormalizedEmbedding(500) // Very different direction
-	require.NoError(t, repo.UpdateEmbedding(ctx, patternC.ID, embeddingC))
-	require.NoError(t, repo.UpdateEnrichmentStatus(ctx, patternC.ID, "enriched", nil))
-
-	// Pattern D: pending (should not appear in results)
-	patternD := testIntegrationPattern("similar-d-pending")
-	require.NoError(t, repo.Create(ctx, patternD))
-	// Don't enrich - leave as pending
-
-	t.Run("finds similar patterns ordered by similarity", func(t *testing.T) {
-		// Query with embedding similar to A
-		queryEmbedding := createSimilarEmbedding(embeddingA, 0.95)
-
-		matches, err := repo.FindSimilar(ctx, queryEmbedding, pattern.SimilarityOptions{
-			MaxResults: 10,
-		})
-
-		require.NoError(t, err)
-		require.GreaterOrEqual(t, len(matches), 2, "should find at least patterns A and B")
-
-		// Results should be ordered by similarity (highest first)
-		for i := 1; i < len(matches); i++ {
-			assert.GreaterOrEqual(t, matches[i-1].Similarity, matches[i].Similarity,
-				"results should be ordered by similarity descending")
-		}
-
-		// Pattern A or B should be first (depending on exact similarity calculation)
-		// Both should have high similarity to the query
-		topMatch := matches[0]
-		assert.True(t, topMatch.Pattern.Name == patternA.Name || topMatch.Pattern.Name == patternB.Name,
-			"top match should be pattern A or B, got %s", topMatch.Pattern.Name)
-		assert.Greater(t, topMatch.Similarity, 0.5, "top match should have high similarity")
-	})
-
-	t.Run("filters by minimum similarity threshold", func(t *testing.T) {
-		// Query with embedding similar to A
-		queryEmbedding := createSimilarEmbedding(embeddingA, 0.95)
-
-		matches, err := repo.FindSimilar(ctx, queryEmbedding, pattern.SimilarityOptions{
-			MinSimilarity: 0.5,
-			MaxResults:    10,
-		})
-
-		require.NoError(t, err)
-
-		// All results should have similarity >= threshold
-		for _, m := range matches {
-			assert.GreaterOrEqual(t, m.Similarity, 0.5,
-				"similarity %f should be >= 0.5", m.Similarity)
-		}
-	})
-
-	t.Run("limits results by MaxResults", func(t *testing.T) {
-		queryEmbedding := createSimilarEmbedding(embeddingA, 0.95)
-
-		matches, err := repo.FindSimilar(ctx, queryEmbedding, pattern.SimilarityOptions{
-			MaxResults: 1,
-		})
-
-		require.NoError(t, err)
-		assert.Len(t, matches, 1, "should return only 1 result")
-	})
-
-	t.Run("excludes pending patterns", func(t *testing.T) {
-		queryEmbedding := createSimilarEmbedding(embeddingA, 0.95)
-
-		matches, err := repo.FindSimilar(ctx, queryEmbedding, pattern.SimilarityOptions{
-			MaxResults: 100,
-		})
-
-		require.NoError(t, err)
-
-		// Pending pattern should not appear
-		for _, m := range matches {
-			assert.NotEqual(t, patternD.Name, m.Pattern.Name,
-				"pending pattern should not appear in results")
-			assert.Equal(t, "enriched", m.Pattern.EnrichmentStatus)
-		}
-	})
-
-	t.Run("filters by tags", func(t *testing.T) {
-		queryEmbedding := createSimilarEmbedding(embeddingA, 0.95)
-
-		matches, err := repo.FindSimilar(ctx, queryEmbedding, pattern.SimilarityOptions{
-			Tags:       []string{"go"},
-			MaxResults: 10,
-		})
-
-		require.NoError(t, err)
-
-		// All results should have "go" tag
-		for _, m := range matches {
-			assert.Contains(t, m.Pattern.Tags, "go",
-				"pattern %s should have 'go' tag", m.Pattern.Name)
-		}
-	})
-
-	t.Run("returns empty result when no matches", func(t *testing.T) {
-		// Use very different embedding and high threshold
-		queryEmbedding := createNormalizedEmbedding(1000)
-
-		matches, err := repo.FindSimilar(ctx, queryEmbedding, pattern.SimilarityOptions{
-			MinSimilarity: 0.99, // Very high threshold
-			MaxResults:    10,
-		})
-
-		require.NoError(t, err)
-		assert.Empty(t, matches)
-	})
-
-	t.Run("filters to specific pattern IDs", func(t *testing.T) {
-		queryEmbedding := createSimilarEmbedding(embeddingA, 0.95)
-
-		// Query with PatternIDs containing only A and B (not C)
-		matches, err := repo.FindSimilar(ctx, queryEmbedding, pattern.SimilarityOptions{
-			PatternIDs: []uuid.UUID{patternA.ID, patternB.ID},
-			MaxResults: 10,
-		})
-
-		require.NoError(t, err)
-		require.Len(t, matches, 2, "should return exactly patterns A and B")
-
-		// Verify only A and B are returned
-		matchedIDs := make(map[uuid.UUID]bool)
-		for _, m := range matches {
-			matchedIDs[m.Pattern.ID] = true
-		}
-		assert.True(t, matchedIDs[patternA.ID], "pattern A should be in results")
-		assert.True(t, matchedIDs[patternB.ID], "pattern B should be in results")
-		assert.False(t, matchedIDs[patternC.ID], "pattern C should not be in results")
-	})
-
-	t.Run("returns empty when PatternIDs match no enriched patterns", func(t *testing.T) {
-		queryEmbedding := createSimilarEmbedding(embeddingA, 0.95)
-
-		// Query with PatternIDs containing only the pending pattern D
-		matches, err := repo.FindSimilar(ctx, queryEmbedding, pattern.SimilarityOptions{
-			PatternIDs: []uuid.UUID{patternD.ID},
-			MaxResults: 10,
-		})
-
-		require.NoError(t, err)
-		assert.Empty(t, matches, "pending patterns should not appear in results")
-	})
-
-	t.Run("combines PatternIDs and similarity threshold", func(t *testing.T) {
-		queryEmbedding := createSimilarEmbedding(embeddingA, 0.95)
-
-		// Combine PatternIDs and MinSimilarity
-		matches, err := repo.FindSimilar(ctx, queryEmbedding, pattern.SimilarityOptions{
-			PatternIDs:    []uuid.UUID{patternA.ID, patternB.ID, patternC.ID},
-			MinSimilarity: 0.5,
-			MaxResults:    10,
-		})
-
-		require.NoError(t, err)
-
-		// All results should have similarity >= 0.5 and be in the specified IDs
-		allowedIDs := map[uuid.UUID]bool{
-			patternA.ID: true,
-			patternB.ID: true,
-			patternC.ID: true,
-		}
-		for _, m := range matches {
-			assert.True(t, allowedIDs[m.Pattern.ID],
-				"pattern %s should be in the allowed IDs", m.Pattern.Name)
-			assert.GreaterOrEqual(t, m.Similarity, 0.5,
-				"similarity %f should be >= 0.5", m.Similarity)
-		}
 	})
 }
 

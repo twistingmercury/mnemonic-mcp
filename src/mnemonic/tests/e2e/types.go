@@ -103,6 +103,11 @@ type Pattern struct {
 	EnrichmentStatus  string             `json:"enrichment_status,omitempty"`
 	EnrichmentError   string             `json:"enrichment_error,omitempty"`
 	EnrichedAt        string             `json:"enriched_at,omitempty"`
+	EntityType        string             `json:"entity_type,omitempty"`
+	Language          string             `json:"language,omitempty"`
+	Domain            string             `json:"domain,omitempty"`
+	Version           string             `json:"version,omitempty"`
+	RelatedPatterns   []string           `json:"related_patterns,omitempty"`
 }
 
 // PatternCreate represents request body for creating a new pattern.
@@ -113,6 +118,11 @@ type PatternCreate struct {
 	Content           string             `json:"content"`
 	Tags              []string           `json:"tags,omitempty"`
 	AgentAssociations []AgentAssociation `json:"agent_associations,omitempty"`
+	EntityType        string             `json:"entity_type,omitempty"`
+	Language          string             `json:"language,omitempty"`
+	Domain            string             `json:"domain,omitempty"`
+	Version           string             `json:"version,omitempty"`
+	RelatedPatterns   []string           `json:"related_patterns,omitempty"`
 }
 
 // PatternUpdate represents request body for updating a pattern.
@@ -123,6 +133,11 @@ type PatternUpdate struct {
 	Content           string             `json:"content"`
 	Tags              []string           `json:"tags,omitempty"`
 	AgentAssociations []AgentAssociation `json:"agent_associations,omitempty"`
+	EntityType        string             `json:"entity_type,omitempty"`
+	Language          string             `json:"language,omitempty"`
+	Domain            string             `json:"domain,omitempty"`
+	Version           string             `json:"version,omitempty"`
+	RelatedPatterns   []string           `json:"related_patterns,omitempty"`
 }
 
 // PatternSummary represents pattern summary without content.
@@ -143,16 +158,18 @@ type PatternList struct {
 	Pagination Pagination       `json:"pagination"`
 }
 
-// PatternSearchResult represents a single semantic search result.
-// OpenAPI: api/openapi/mnemonic-v1.yaml:705 (PatternSearchResult)
+// PatternSearchResult represents a single chunk-based semantic search result.
 type PatternSearchResult struct {
-	ID                string             `json:"id"`
-	Name              string             `json:"name"`
-	Description       string             `json:"description,omitempty"`
-	Content           string             `json:"content"`
-	Tags              []string           `json:"tags,omitempty"`
-	Similarity        float64            `json:"similarity"`
-	AgentAssociations []AgentAssociation `json:"agent_associations,omitempty"`
+	PatternID    string   `json:"pattern_id"`
+	PatternName  string   `json:"pattern_name"`
+	EntityType   string   `json:"entity_type"`
+	Language     string   `json:"language"`
+	Domain       string   `json:"domain"`
+	Tags         []string `json:"tags"`
+	SectionTitle string   `json:"section_title"`
+	ChunkIndex   int      `json:"chunk_index"`
+	Content      string   `json:"content"`
+	Similarity   float64  `json:"similarity"`
 }
 
 // PatternSearchMetadata contains metadata about a semantic search operation.
@@ -168,6 +185,19 @@ type PatternSearchMetadata struct {
 type PatternSearchResponse struct {
 	Results  []PatternSearchResult `json:"results"`
 	Metadata PatternSearchMetadata `json:"metadata"`
+}
+
+// ChunkSummary represents a pattern chunk summary (chunk_index, section_title, enrichment_status).
+type ChunkSummary struct {
+	ChunkIndex       int    `json:"chunk_index"`
+	SectionTitle     string `json:"section_title"`
+	EnrichmentStatus string `json:"enrichment_status"`
+}
+
+// ChunkListResponse is the response body for GET /v1/api/patterns/:id/chunks.
+type ChunkListResponse struct {
+	Chunks []ChunkSummary `json:"chunks"`
+	Count  int            `json:"count"`
 }
 
 // PatternAgentAssociations represents the request/response for pattern-agent associations.

@@ -1,7 +1,6 @@
 package pattern
 
 import (
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,9 +24,20 @@ type Pattern struct {
 	// Stored as JSONB in the database and unmarshaled during retrieval.
 	Tags []string `db:"-"`
 
-	// Embedding is the vector embedding (1536 dimensions) for semantic similarity search.
-	// Nil until enrichment completes.
-	Embedding []float32 `db:"-"`
+	// EntityType is the pattern category (e.g., "go-pattern", "e2e-testing").
+	EntityType string `db:"entity_type"`
+
+	// Language is the primary programming language (e.g., "go", "agnostic", "shell").
+	Language string `db:"language"`
+
+	// Domain is the technical domain (e.g., "backend", "api-design", "testing").
+	Domain string `db:"domain"`
+
+	// Version is the optional target version string (e.g., "Go 1.21+").
+	Version *string `db:"version"`
+
+	// RelatedPatterns is a list of related pattern entity names, stored as JSONB.
+	RelatedPatterns []string `db:"-"`
 
 	// EnrichmentStatus is the processing state: "pending", "enriched", or "failed".
 	EnrichmentStatus string `db:"enrichment_status"`
@@ -45,14 +55,6 @@ type Pattern struct {
 	UpdatedAt time.Time `db:"updated_at"`
 }
 
-// ValidEnrichmentStatuses defines the valid values for the EnrichmentStatus field.
-var ValidEnrichmentStatuses = []string{"pending", "enriched", "failed"}
-
-// IsValidEnrichmentStatus checks if the given status string is a valid enrichment status.
-func IsValidEnrichmentStatus(status string) bool {
-	return slices.Contains(ValidEnrichmentStatuses, status)
-}
-
 // Filter defines filtering options for pattern queries.
 type Filter struct {
 	// Tags filters patterns that have any of these tags.
@@ -63,6 +65,15 @@ type Filter struct {
 
 	// SearchQuery performs full-text search in name/description.
 	SearchQuery string
+
+	// Language filters patterns by programming language.
+	Language string
+
+	// Domain filters patterns by technical domain.
+	Domain string
+
+	// EntityType filters patterns by category.
+	EntityType string
 }
 
 // SimilarityOptions defines options for similarity search.
