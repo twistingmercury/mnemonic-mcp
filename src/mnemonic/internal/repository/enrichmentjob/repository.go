@@ -77,7 +77,7 @@ func (r *pgxRepository) Create(ctx context.Context, job *Job) error {
 
 	// Set defaults
 	if job.Status == "" {
-		job.Status = string(StatusPending)
+		job.Status = StatusPending
 	}
 	if job.MaxAttempts == 0 {
 		job.MaxAttempts = DefaultMaxAttempts
@@ -105,7 +105,7 @@ func (r *pgxRepository) Create(ctx context.Context, job *Job) error {
 		job.ID,
 		job.PatternID,
 		job.ChunkID,
-		job.Status,
+		string(job.Status),
 		job.Attempts,
 		job.MaxAttempts,
 		job.LastError,
@@ -122,10 +122,10 @@ func (r *pgxRepository) Create(ctx context.Context, job *Job) error {
 			case repository.PgErrCodeForeignKeyViolation:
 				return ErrPatternNotFound
 			case repository.PgErrCodeCheckViolation:
-				return err
+				return ErrInvalidJobTarget
 			}
 		}
-		return err
+		return fmt.Errorf("create enrichment job: %w", err)
 	}
 
 	return nil
@@ -254,7 +254,7 @@ func (r *pgxRepository) MarkProcessing(ctx context.Context, id uuid.UUID) error 
 
 	result, err := r.db.Exec(ctx, query, id, string(StatusProcessing))
 	if err != nil {
-		return err
+		return fmt.Errorf("mark job processing: %w", err)
 	}
 
 	if result.RowsAffected() == 0 {
@@ -278,7 +278,7 @@ func (r *pgxRepository) MarkCompleted(ctx context.Context, id uuid.UUID) error {
 
 	result, err := r.db.Exec(ctx, query, id, string(StatusCompleted))
 	if err != nil {
-		return err
+		return fmt.Errorf("mark job completed: %w", err)
 	}
 
 	if result.RowsAffected() == 0 {
@@ -337,7 +337,7 @@ func (r *pgxRepository) MarkFailed(ctx context.Context, id uuid.UUID, jobErr err
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
-		return err
+		return fmt.Errorf("mark job failed: %w", err)
 	}
 
 	return nil

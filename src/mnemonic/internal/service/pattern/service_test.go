@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -334,6 +335,64 @@ func (m *mockTxBeginner) Begin(ctx context.Context) (pgx.Tx, error) {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(pgx.Tx), args.Error(1)
+}
+
+// ---------- Mock: pgx.Tx ----------
+
+// mockPgxTx implements pgx.Tx for unit-testing the transaction lifecycle
+// (Begin/Commit/Rollback) inside the service layer. The DBTX methods (Exec,
+// Query, QueryRow) are never invoked during service-layer tests because mock
+// repository implementations intercept all data-access calls before they
+// reach the underlying connection; those methods therefore panic to catch
+// accidental use.
+type mockPgxTx struct {
+	mock.Mock
+}
+
+func (m *mockPgxTx) Begin(ctx context.Context) (pgx.Tx, error) {
+	panic("mockPgxTx.Begin called unexpectedly")
+}
+
+func (m *mockPgxTx) Commit(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *mockPgxTx) Rollback(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *mockPgxTx) Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error) {
+	panic("mockPgxTx.Exec called unexpectedly")
+}
+
+func (m *mockPgxTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	panic("mockPgxTx.Query called unexpectedly")
+}
+
+func (m *mockPgxTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	panic("mockPgxTx.QueryRow called unexpectedly")
+}
+
+func (m *mockPgxTx) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+	panic("mockPgxTx.CopyFrom called unexpectedly")
+}
+
+func (m *mockPgxTx) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults {
+	panic("mockPgxTx.SendBatch called unexpectedly")
+}
+
+func (m *mockPgxTx) LargeObjects() pgx.LargeObjects {
+	panic("mockPgxTx.LargeObjects called unexpectedly")
+}
+
+func (m *mockPgxTx) Prepare(ctx context.Context, name, sql string) (*pgconn.StatementDescription, error) {
+	panic("mockPgxTx.Prepare called unexpectedly")
+}
+
+func (m *mockPgxTx) Conn() *pgx.Conn {
+	panic("mockPgxTx.Conn called unexpectedly")
 }
 
 // ---------- Mock: chunkrepo.Repository ----------
@@ -847,6 +906,106 @@ func TestUpdate(t *testing.T) {
 		assert.True(t, errors.Is(err, service.ErrNotFound), "expected service.ErrNotFound, got: %v", err)
 
 		pr.AssertNotCalled(t, "Update")
+	})
+
+	t.Run("chunk-aware path deletes stale chunks, creates new chunks, and enqueues per-chunk jobs", func(t *testing.T) {
+		t.Parallel()
+
+		pr := new(mockPatternRepo)
+		er := new(mockEnrichmentRepo)
+		gr := new(mockGraphRepo)
+		ar := new(mockAgentRepo)
+		tb := new(mockTxBeginner)
+		cr := new(mockChunkRepo)
+		tx := new(mockPgxTx)
+		svc := newTestServiceWithChunkRepo(pr, er, gr, ar, tb, cr)
+
+		input := patternsvc.UpdateInput{
+			Name:    "go-error-handling-v2",
+			Content: "## Section One\nNew content.\n\n## Section Two\nMore new content.",
+			Tags:    []string{"golang", "errors"},
+		}
+
+		// Transaction lifecycle.
+		tb.On("Begin", mock.Anything).Return(tx, nil)
+		tx.On("Commit", mock.Anything).Return(nil)
+		// Rollback is always called by defer; pgx guarantees it is a no-op
+		// after a successful Commit.
+		tx.On("Rollback", mock.Anything).Return(nil)
+
+		// Get existing.
+		pr.On("Get", mock.Anything, testPatternID).Return(testPattern(), nil)
+
+		// Update (no agent associations in input, so no agent resolution needed).
+		pr.On("Update", mock.Anything, mock.MatchedBy(func(p *patternrepo.Pattern) bool {
+			return p.ID == testPatternID && p.Name == "go-error-handling-v2"
+		})).Return(nil)
+
+		// Chunk-aware path: delete stale chunks.
+		cr.On("DeleteByPatternID", mock.Anything, testPatternID).Return(nil)
+
+		// Create new chunks (content has 2 H2 sections → 2 chunks).
+		cr.On("CreateBatch", mock.Anything, mock.MatchedBy(func(chunks []*chunkrepo.Chunk) bool {
+			return len(chunks) == 2
+		})).Return(nil)
+
+		// Per-chunk enrichment jobs: expect 2 calls, each with a ChunkID set.
+		er.On("Create", mock.Anything, mock.MatchedBy(func(j *enrichmentrepo.Job) bool {
+			return j.ChunkID != nil && j.PatternID == nil && j.Status == enrichmentrepo.StatusPending
+		})).Return(nil).Times(2)
+
+		result, err := svc.Update(context.Background(), testPatternID, input)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, testPatternID, result.ID)
+		assert.Equal(t, "go-error-handling-v2", result.Name)
+
+		tb.AssertExpectations(t)
+		tx.AssertExpectations(t)
+		pr.AssertExpectations(t)
+		cr.AssertExpectations(t)
+		er.AssertExpectations(t)
+		gr.AssertNotCalled(t, "SetPatternAgentRelevance")
+	})
+
+	t.Run("chunk-aware path: delete stale chunks error rolls back transaction and propagates error", func(t *testing.T) {
+		t.Parallel()
+
+		pr := new(mockPatternRepo)
+		er := new(mockEnrichmentRepo)
+		gr := new(mockGraphRepo)
+		ar := new(mockAgentRepo)
+		tb := new(mockTxBeginner)
+		cr := new(mockChunkRepo)
+		tx := new(mockPgxTx)
+		svc := newTestServiceWithChunkRepo(pr, er, gr, ar, tb, cr)
+
+		input := patternsvc.UpdateInput{
+			Name:    "go-error-handling-v2",
+			Content: "## Section\nContent.",
+		}
+
+		// Transaction lifecycle: Begin succeeds, Rollback is called by defer.
+		tb.On("Begin", mock.Anything).Return(tx, nil)
+		tx.On("Rollback", mock.Anything).Return(nil)
+
+		pr.On("Get", mock.Anything, testPatternID).Return(testPattern(), nil)
+		pr.On("Update", mock.Anything, mock.Anything).Return(nil)
+		cr.On("DeleteByPatternID", mock.Anything, testPatternID).
+			Return(errors.New("delete failed"))
+
+		result, err := svc.Update(context.Background(), testPatternID, input)
+
+		assert.Nil(t, result)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "delete stale chunks")
+
+		tb.AssertExpectations(t)
+		tx.AssertExpectations(t)
+		tx.AssertNotCalled(t, "Commit")
+		cr.AssertNotCalled(t, "CreateBatch")
+		er.AssertNotCalled(t, "Create")
 	})
 }
 

@@ -20,7 +20,7 @@ type Job struct {
 
 	// Status is the job processing state.
 	// Valid values: pending, processing, completed, failed
-	Status string `db:"status"`
+	Status JobStatus `db:"status"`
 
 	// Attempts is the number of times processing has been attempted.
 	Attempts int `db:"attempts"`
@@ -47,54 +47,54 @@ type Job struct {
 	UpdatedAt time.Time `db:"updated_at"`
 }
 
-// Status represents the valid job status values.
-type Status string
+// JobStatus represents the valid job status values.
+type JobStatus string
 
 const (
 	// StatusPending indicates the job is awaiting processing.
-	StatusPending Status = "pending"
+	StatusPending JobStatus = "pending"
 
 	// StatusProcessing indicates the job is currently being processed by a worker.
-	StatusProcessing Status = "processing"
+	StatusProcessing JobStatus = "processing"
 
 	// StatusCompleted indicates the job finished successfully.
-	StatusCompleted Status = "completed"
+	StatusCompleted JobStatus = "completed"
 
 	// StatusFailed indicates processing failed (see LastError).
-	StatusFailed Status = "failed"
+	StatusFailed JobStatus = "failed"
 )
 
 // ValidStatuses defines the valid values for the Status field.
-var ValidStatuses = []string{
-	string(StatusPending),
-	string(StatusProcessing),
-	string(StatusCompleted),
-	string(StatusFailed),
+var ValidStatuses = []JobStatus{
+	StatusPending,
+	StatusProcessing,
+	StatusCompleted,
+	StatusFailed,
 }
 
 // IsValidStatus checks if the given status string is valid.
 func IsValidStatus(status string) bool {
-	return slices.Contains(ValidStatuses, status)
+	return slices.Contains(ValidStatuses, JobStatus(status))
 }
 
 // IsPending returns true if the job is in pending state.
 func (j *Job) IsPending() bool {
-	return j.Status == string(StatusPending)
+	return j.Status == StatusPending
 }
 
 // IsProcessing returns true if the job is currently being processed.
 func (j *Job) IsProcessing() bool {
-	return j.Status == string(StatusProcessing)
+	return j.Status == StatusProcessing
 }
 
 // IsCompleted returns true if the job completed successfully.
 func (j *Job) IsCompleted() bool {
-	return j.Status == string(StatusCompleted)
+	return j.Status == StatusCompleted
 }
 
 // IsFailed returns true if the job failed.
 func (j *Job) IsFailed() bool {
-	return j.Status == string(StatusFailed)
+	return j.Status == StatusFailed
 }
 
 // CanRetry returns true if the job can be retried.

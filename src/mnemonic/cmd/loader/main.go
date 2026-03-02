@@ -116,7 +116,10 @@ func loadFile(path, apiURL string) error {
 		req.RelatedPatterns = []string{}
 	}
 
-	body, _ := json.Marshal(req)
+	body, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("marshal pattern request: %w", err)
+	}
 
 	// Try POST first; fall back to PUT on 409 Conflict (pattern already exists).
 	resp, err := http.Post(apiURL+"/v1/api/patterns", "application/json", bytes.NewReader(body)) //nolint:noctx
@@ -126,8 +129,11 @@ func loadFile(path, apiURL string) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusConflict {
-		putReq, _ := http.NewRequest(http.MethodPut,
+		putReq, err := http.NewRequest(http.MethodPut,
 			apiURL+"/v1/api/patterns/"+name, bytes.NewReader(body))
+		if err != nil {
+			return fmt.Errorf("build PUT request: %w", err)
+		}
 		putReq.Header.Set("Content-Type", "application/json")
 		// G704: apiURL is an operator-supplied CLI flag, not user input — false positive.
 		putResp, putErr := http.DefaultClient.Do(putReq) //#nosec G704 -- nolint:gosec

@@ -84,3 +84,16 @@ alter table enrichment_jobs
     add column chunk_id uuid references pattern_chunks(id) on delete cascade;
 alter table enrichment_jobs
     alter column pattern_id drop not null;
+
+-- Prevent duplicate pending/processing jobs for the same chunk
+CREATE UNIQUE INDEX idx_enrichment_jobs_unique_pending_chunk
+    ON enrichment_jobs (chunk_id)
+    WHERE status IN ('pending', 'processing');
+
+-- Ensure each enrichment job targets exactly one of: a pattern or a chunk
+ALTER TABLE enrichment_jobs
+    ADD CONSTRAINT enrichment_jobs_target_exclusive
+        CHECK (
+            (pattern_id IS NOT NULL AND chunk_id IS NULL) OR
+            (chunk_id IS NOT NULL AND pattern_id IS NULL)
+        );

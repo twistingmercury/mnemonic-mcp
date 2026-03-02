@@ -104,7 +104,7 @@ func newTestJob() *enrichmentjob.Job {
 	return &enrichmentjob.Job{
 		ID:        uuid.New(),
 		PatternID: &pid,
-		Status:    string(enrichmentjob.StatusProcessing),
+		Status:    enrichmentjob.StatusProcessing,
 		Attempts:  1,
 	}
 }
@@ -117,7 +117,7 @@ func newPatternOnlyJob() *enrichmentjob.Job {
 		ID:        uuid.New(),
 		PatternID: &pid,
 		ChunkID:   nil,
-		Status:    string(enrichmentjob.StatusProcessing),
+		Status:    enrichmentjob.StatusProcessing,
 		Attempts:  1,
 	}
 }
@@ -130,7 +130,7 @@ func newChunkOnlyJob() *enrichmentjob.Job {
 		ID:        uuid.New(),
 		PatternID: nil,
 		ChunkID:   &cid,
-		Status:    string(enrichmentjob.StatusProcessing),
+		Status:    enrichmentjob.StatusProcessing,
 		Attempts:  1,
 	}
 }
@@ -143,7 +143,7 @@ func newBothIDsJob() *enrichmentjob.Job {
 		ID:        uuid.New(),
 		PatternID: &pid,
 		ChunkID:   &cid,
-		Status:    string(enrichmentjob.StatusProcessing),
+		Status:    enrichmentjob.StatusProcessing,
 		Attempts:  1,
 	}
 }

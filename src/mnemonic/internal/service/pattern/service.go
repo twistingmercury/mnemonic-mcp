@@ -282,7 +282,7 @@ func (s *patternService) Create(ctx context.Context, input CreateInput) (*patter
 		pid := pattern.ID
 		job := enrichmentrepo.Job{
 			PatternID: &pid,
-			Status:    string(enrichmentrepo.StatusPending),
+			Status:    enrichmentrepo.StatusPending,
 		}
 		if err := s.enrichmentRepo.Create(ctx, &job); err != nil {
 			return nil, fmt.Errorf("create pattern: creating enrichment job: %w", err)
@@ -368,32 +368,58 @@ func (s *patternService) Update(ctx context.Context, id uuid.UUID, input UpdateI
 	existing.Version = input.Version
 	existing.RelatedPatterns = input.RelatedPatterns
 
-	if err := s.patternRepo.Update(ctx, existing); err != nil {
-		if errors.Is(err, patternrepo.ErrNameExists) {
-			return nil, fmt.Errorf("%w: pattern %q", service.ErrConflict, input.Name)
+	// Trigger re-enrichment. When a chunk repository is configured, perform the
+	// four mutating writes (pattern update, agent associations, delete stale chunks,
+	// create new chunks) inside a single Postgres transaction so a crash between
+	// steps cannot leave chunks without enrichment jobs.
+	// Without a chunk repository, fall back to a legacy pattern-level job.
+	var newChunks []*chunkrepo.Chunk
+	if s.chunkRepo != nil {
+		var txErr error
+		newChunks, txErr = s.updateWithTransaction(ctx, existing, resolvedAssocs)
+		if txErr != nil {
+			return nil, txErr
 		}
-		return nil, fmt.Errorf("update pattern: %w", err)
+	} else {
+		if err := s.patternRepo.Update(ctx, existing); err != nil {
+			if errors.Is(err, patternrepo.ErrNameExists) {
+				return nil, fmt.Errorf("%w: pattern %q", service.ErrConflict, input.Name)
+			}
+			return nil, fmt.Errorf("update pattern: %w", err)
+		}
+
+		// Set agent associations if provided.
+		if len(resolvedAssocs) > 0 {
+			if err := s.patternRepo.SetAgentAssociations(ctx, existing.ID, resolvedAssocs); err != nil {
+				return nil, fmt.Errorf("update pattern: setting associations: %w", err)
+			}
+		}
+
+		// Legacy path: pattern-level enrichment job.
+		eid := existing.ID
+		job := enrichmentrepo.Job{
+			PatternID: &eid,
+			Status:    enrichmentrepo.StatusPending,
+		}
+		if err := s.enrichmentRepo.Create(ctx, &job); err != nil {
+			if !errors.Is(err, enrichmentrepo.ErrJobAlreadyPending) {
+				return nil, fmt.Errorf("update pattern: creating enrichment job: %w", err)
+			}
+			// A pending job already exists; skip creating a duplicate.
+		}
 	}
 
-	// Set agent associations if provided.
-	if len(resolvedAssocs) > 0 {
-		if err := s.patternRepo.SetAgentAssociations(ctx, existing.ID, resolvedAssocs); err != nil {
-			return nil, fmt.Errorf("update pattern: setting associations: %w", err)
+	// Enqueue per-chunk enrichment jobs outside the transaction. Failures are
+	// best-effort: a missed job can be recovered by manual re-enrichment.
+	for _, c := range newChunks {
+		chunkID := c.ID
+		job := enrichmentrepo.Job{
+			ChunkID: &chunkID,
+			Status:  enrichmentrepo.StatusPending,
 		}
-	}
-
-	// Create new enrichment job (update always triggers re-enrichment for MVP).
-	// TODO(Task 6): Replace with per-chunk job creation once update is chunk-aware.
-	eid := existing.ID
-	job := enrichmentrepo.Job{
-		PatternID: &eid,
-		Status:    string(enrichmentrepo.StatusPending),
-	}
-	if err := s.enrichmentRepo.Create(ctx, &job); err != nil {
-		if !errors.Is(err, enrichmentrepo.ErrJobAlreadyPending) {
-			return nil, fmt.Errorf("update pattern: creating enrichment job: %w", err)
+		if err := s.enrichmentRepo.Create(ctx, &job); err != nil {
+			s.logger.Warn().Err(err).Str("chunk_id", chunkID.String()).Msg("failed to create chunk enrichment job on update")
 		}
-		// A pending job already exists; skip creating a duplicate.
 	}
 
 	// Best-effort Neo4j sync for agent associations.
@@ -404,6 +430,70 @@ func (s *patternService) Update(ctx context.Context, id uuid.UUID, input UpdateI
 	}
 
 	return existing, nil
+}
+
+// updateWithTransaction performs the four mutating writes for the chunk-aware
+// Update path inside a single Postgres transaction:
+//  1. Update the pattern row.
+//  2. Replace agent associations (when provided).
+//  3. Delete stale chunks (cascades to their enrichment jobs).
+//  4. Insert new chunks.
+//
+// Returns the new chunks so the caller can enqueue enrichment jobs outside
+// the transaction. The transaction is rolled back automatically if any step
+// fails — the caller never sees a partial state.
+func (s *patternService) updateWithTransaction(
+	ctx context.Context,
+	existing *patternrepo.Pattern,
+	resolvedAssocs []patternrepo.AgentAssociation,
+) ([]*chunkrepo.Chunk, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("update pattern: begin transaction: %w", err)
+	}
+	// Rollback is a no-op after a successful Commit (pgx guarantees this).
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Step 1: update the pattern row.
+	if err = s.patternRepo.Update(ctx, existing); err != nil {
+		if errors.Is(err, patternrepo.ErrNameExists) {
+			return nil, fmt.Errorf("%w: pattern %q", service.ErrConflict, existing.Name)
+		}
+		return nil, fmt.Errorf("update pattern: %w", err)
+	}
+
+	// Step 2: replace agent associations (conditional).
+	if len(resolvedAssocs) > 0 {
+		if err = s.patternRepo.SetAgentAssociations(ctx, existing.ID, resolvedAssocs); err != nil {
+			return nil, fmt.Errorf("update pattern: setting associations: %w", err)
+		}
+	}
+
+	// Step 3: delete stale chunks (cascades to their enrichment jobs via ON DELETE CASCADE).
+	if err = s.chunkRepo.DeleteByPatternID(ctx, existing.ID); err != nil {
+		return nil, fmt.Errorf("update pattern: delete stale chunks: %w", err)
+	}
+
+	// Step 4: re-split and insert new chunks.
+	rawChunks := splitIntoChunks(existing.Content)
+	newChunks := make([]*chunkrepo.Chunk, len(rawChunks))
+	for i, rc := range rawChunks {
+		newChunks[i] = &chunkrepo.Chunk{
+			PatternID:    existing.ID,
+			SectionTitle: rc.SectionTitle,
+			ChunkIndex:   rc.ChunkIndex,
+			Content:      rc.Content,
+		}
+	}
+	if err = s.chunkRepo.CreateBatch(ctx, newChunks); err != nil {
+		return nil, fmt.Errorf("update pattern: create chunks: %w", err)
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("update pattern: commit transaction: %w", err)
+	}
+
+	return newChunks, nil
 }
 
 // Delete removes a pattern from Postgres and best-effort cleans up Neo4j.

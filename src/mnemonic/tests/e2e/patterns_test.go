@@ -761,7 +761,7 @@ func TestCreatePattern_ValidationErrors(t *testing.T) {
 		},
 		{
 			name:        "content exceeds max size",
-			body:        PatternCreate{Name: "valid-name", Content: strings.Repeat("x", 10241), EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        PatternCreate{Name: "valid-name", Content: strings.Repeat("x", 100_001), EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "content",
 		},
 		{
@@ -1690,7 +1690,7 @@ func TestUpdatePattern_ValidationErrors(t *testing.T) {
 		},
 		{
 			name:        "content exceeds max size",
-			body:        PatternUpdate{Name: "valid-name", Content: strings.Repeat("x", 10241), EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        PatternUpdate{Name: "valid-name", Content: strings.Repeat("x", 100_001), EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "content",
 		},
 		{

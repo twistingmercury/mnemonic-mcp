@@ -99,6 +99,7 @@ func (s *searchService) SearchPatterns(ctx context.Context, opts SearchOptions) 
 	}
 
 	// 2. If agent name provided, resolve to pattern IDs for pre-filtering.
+	var patternIDs []uuid.UUID
 	if opts.AgentName != "" {
 		agent, agentErr := s.agentRepo.Get(ctx, opts.AgentName)
 		if agentErr != nil {
@@ -114,7 +115,8 @@ func (s *searchService) SearchPatterns(ctx context.Context, opts SearchOptions) 
 			return nil, fmt.Errorf("resolve agent: %w", agentErr)
 		}
 
-		patternIDs, idsErr := s.patternRepo.GetPatternIDsByAgent(ctx, agent.ID)
+		var idsErr error
+		patternIDs, idsErr = s.patternRepo.GetPatternIDsByAgent(ctx, agent.ID)
 		if idsErr != nil {
 			return nil, fmt.Errorf("get agent patterns: %w", idsErr)
 		}
@@ -137,19 +139,13 @@ func (s *searchService) SearchPatterns(ctx context.Context, opts SearchOptions) 
 		return nil, fmt.Errorf("%w: chunk repository not configured", service.ErrServiceUnavailable)
 	}
 
-	// NOTE: patternIDs are resolved above to short-circuit when the agent has no
-	// patterns, but chunkrepo.SimilarityOptions does not yet support a PatternIDs
-	// filter. Agent-scoped chunk search is a known limitation; the result set is
-	// currently unfiltered by agent association.
-	// TODO: Add PatternIDs to chunkrepo.SimilarityOptions to enforce agent scoping.
-
-	// Tags from SearchOptions are not forwarded: chunkrepo.SimilarityOptions
-	// does not support tag filtering. This is a known limitation.
 	simOpts := chunkrepo.SimilarityOptions{
 		MinSimilarity: opts.Threshold,
 		MaxResults:    opts.Limit,
 		Language:      opts.Language,
 		Domain:        opts.Domain,
+		PatternIDs:    patternIDs,
+		Tags:          opts.Tags,
 	}
 
 	rawMatches, err := s.chunkRepo.FindSimilar(ctx, embedding, simOpts)

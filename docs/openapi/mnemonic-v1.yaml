@@ -648,6 +648,7 @@ components:
         content:
           type: string
           minLength: 1
+          maxLength: 100000
         tags:
           type: array
           maxItems: 20
@@ -723,6 +724,7 @@ components:
         content:
           type: string
           minLength: 1
+          maxLength: 100000
         tags:
           type: array
           maxItems: 20

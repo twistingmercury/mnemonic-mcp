@@ -182,7 +182,7 @@ func TestRepository_Create_GeneratesUUID(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, job.ID)
-	assert.Equal(t, "pending", job.Status)
+	assert.Equal(t, enrichmentjob.StatusPending, job.Status)
 	assert.Equal(t, 3, job.MaxAttempts)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -451,7 +451,7 @@ func TestRepository_ClaimPending(t *testing.T) {
 				assert.NoError(t, err)
 				if tt.wantJob {
 					assert.NotNil(t, job)
-					assert.Equal(t, "processing", job.Status)
+					assert.Equal(t, enrichmentjob.StatusProcessing, job.Status)
 				} else {
 					assert.Nil(t, job)
 				}
@@ -1038,20 +1038,20 @@ func TestJob_StatusHelpers(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		status       string
+		status       enrichmentjob.JobStatus
 		isPending    bool
 		isProcessing bool
 		isCompleted  bool
 		isFailed     bool
 	}{
-		{"pending", true, false, false, false},
-		{"processing", false, true, false, false},
-		{"completed", false, false, true, false},
-		{"failed", false, false, false, true},
+		{enrichmentjob.StatusPending, true, false, false, false},
+		{enrichmentjob.StatusProcessing, false, true, false, false},
+		{enrichmentjob.StatusCompleted, false, false, true, false},
+		{enrichmentjob.StatusFailed, false, false, false, true},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.status, func(t *testing.T) {
+		t.Run(string(tt.status), func(t *testing.T) {
 			t.Parallel()
 
 			job := &enrichmentjob.Job{Status: tt.status}

@@ -8,6 +8,9 @@
 -- =============================================================================
 
 -- Chunk-based jobs have pattern_id = NULL; purge them before restoring NOT NULL.
+ALTER TABLE enrichment_jobs DROP CONSTRAINT IF EXISTS enrichment_jobs_target_exclusive;
+DROP INDEX IF EXISTS idx_enrichment_jobs_unique_pending_chunk;
+
 delete from enrichment_jobs where pattern_id is null;
 
 alter table enrichment_jobs

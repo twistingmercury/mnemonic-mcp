@@ -338,12 +338,10 @@ func TestSearchPatterns_WithAgentFilter(t *testing.T) {
 		CRC64:      "123",
 	}, nil)
 	patternRepo.On("GetPatternIDsByAgent", mock.Anything, agentID).Return([]uuid.UUID{patternID1, patternID2}, nil)
-	// NOTE: patternIDs are not forwarded to FindSimilar (chunkrepo.SimilarityOptions
-	// has no PatternIDs field). This test verifies agent resolution and early exits
-	// but does not verify that results are scoped to the agent's patterns.
 	chunkRepo.On("FindSimilar", mock.Anything, testEmbedding, chunkrepo.SimilarityOptions{
 		MinSimilarity: 0.7,
 		MaxResults:    10,
+		PatternIDs:    []uuid.UUID{patternID1, patternID2},
 	}).Return([]*chunkrepo.Match{testChunkMatch(patternID1, "go-testing", 0.88)}, nil)
 
 	result, err := svc.SearchPatterns(context.Background(), search.SearchOptions{
@@ -518,10 +516,10 @@ func TestSearchPatterns_WithTags(t *testing.T) {
 	id1 := uuid.New()
 
 	embSvc.On("Embed", mock.Anything, "go patterns").Return(testEmbedding, nil)
-	// Tags are not passed to chunk search options — chunk repo doesn't support tag filtering.
 	chunkRepo.On("FindSimilar", mock.Anything, testEmbedding, chunkrepo.SimilarityOptions{
 		MinSimilarity: 0.7,
 		MaxResults:    10,
+		Tags:          []string{"go", "best-practices"},
 	}).Return([]*chunkrepo.Match{
 		testChunkMatch(id1, "go-best-practices", 0.91),
 	}, nil)

@@ -313,12 +313,12 @@ func validatePatternFields(name, content string, description *string, tags []str
 		errs = append(errs, handlers.FieldError{Field: "name", Code: "INVALID_FORMAT", Message: "name must match ^[a-z][a-z0-9-]*$"})
 	}
 
-	// content: 1-10240 bytes
-	contentLen := len(content)
-	if contentLen == 0 {
+	// content: must not be empty; upper bound of 100KB guards against DoS
+	// (real pattern files top out around 18KB per design doc)
+	if len(content) == 0 {
 		errs = append(errs, handlers.FieldError{Field: "content", Code: "REQUIRED", Message: "content is required"})
-	} else if contentLen > 10240 {
-		errs = append(errs, handlers.FieldError{Field: "content", Code: "MAX_LENGTH", Message: "content must be 10240 bytes or fewer"})
+	} else if len(content) > 100_000 {
+		errs = append(errs, handlers.FieldError{Field: "content", Code: "TOO_LARGE", Message: "content must be 100000 bytes or fewer"})
 	}
 
 	// description: optional, max 500 chars

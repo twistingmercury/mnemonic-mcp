@@ -92,6 +92,14 @@ type SimilarityOptions struct {
 	// Domain filters results to chunks whose parent pattern has this domain.
 	// Empty string disables this filter.
 	Domain string
+
+	// PatternIDs restricts results to chunks belonging to these patterns.
+	// Empty slice disables this filter.
+	PatternIDs []uuid.UUID
+
+	// Tags restricts results to patterns whose tags contain all of these values.
+	// Empty slice disables this filter.
+	Tags []string
 }
 
 // ValidEnrichmentStatuses defines the valid values for the EnrichmentStatus field.

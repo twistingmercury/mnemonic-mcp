@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 	"github.com/twistingmercury/mnemonic/internal/repository"
 )
@@ -89,27 +90,27 @@ func (r *pgxRepository) Create(ctx context.Context, c *Chunk) error {
 }
 
 // CreateBatch inserts multiple chunks in a single transaction.
+// When r.db is a *pgxpool.Pool it begins its own internal transaction.
+// When r.db is a pgx.Tx the caller already owns the transaction, so the
+// inserts are executed directly without creating a savepoint.
 func (r *pgxRepository) CreateBatch(ctx context.Context, chunks []*Chunk) error {
 	if len(chunks) == 0 {
 		return nil
 	}
 
-	txBeginner, canBeginTx := r.db.(interface {
-		Begin(ctx context.Context) (pgx.Tx, error)
-	})
-
-	if canBeginTx {
-		return r.createBatchWithTx(ctx, txBeginner, chunks)
+	// Only begin an internal transaction when backed by a pool. pgx.Tx also
+	// implements Begin (savepoints), but we must not create a nested savepoint
+	// when the caller already owns the outer transaction.
+	if pool, ok := r.db.(*pgxpool.Pool); ok {
+		return r.createBatchWithTx(ctx, pool, chunks)
 	}
 
 	// Already in a transaction — execute directly.
 	return r.createBatchDirect(ctx, r.db, chunks)
 }
 
-func (r *pgxRepository) createBatchWithTx(ctx context.Context, txBeginner interface {
-	Begin(ctx context.Context) (pgx.Tx, error)
-}, chunks []*Chunk) error {
-	tx, err := txBeginner.Begin(ctx)
+func (r *pgxRepository) createBatchWithTx(ctx context.Context, pool *pgxpool.Pool, chunks []*Chunk) error {
+	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
@@ -312,6 +313,13 @@ func (r *pgxRepository) UpdateEnrichmentStatus(ctx context.Context, id uuid.UUID
 func (r *pgxRepository) FindSimilar(ctx context.Context, embedding []float32, opts SimilarityOptions) ([]*Match, error) {
 	vec := pgvector.NewVector(embedding)
 
+	maxResults := opts.MaxResults
+	if maxResults <= 0 {
+		maxResults = 10
+	}
+
+	// Build query dynamically to support optional PatternIDs and Tags filters.
+	// Fixed parameters: $1 = embedding vector, $2 = min similarity, $3 = language, $4 = domain, $5 = limit.
 	query := `
 		SELECT pc.id, pc.pattern_id, p.name, p.entity_type, p.language, p.domain, p.tags,
 		       pc.section_title, pc.chunk_index, pc.content,
@@ -322,22 +330,31 @@ func (r *pgxRepository) FindSimilar(ctx context.Context, embedding []float32, op
 		  AND 1 - (pc.embedding <=> $1) >= $2
 		  AND ($3::text = '' OR p.language = $3)
 		  AND ($4::text = '' OR p.domain = $4)
-		ORDER BY pc.embedding <=> $1
-		LIMIT $5
 	`
 
-	maxResults := opts.MaxResults
-	if maxResults <= 0 {
-		maxResults = 10
+	args := []any{vec, opts.MinSimilarity, opts.Language, opts.Domain}
+	nextParam := 5
+
+	if len(opts.PatternIDs) > 0 {
+		query += fmt.Sprintf(" AND pc.pattern_id = ANY($%d)", nextParam)
+		args = append(args, opts.PatternIDs)
+		nextParam++
 	}
 
-	rows, err := r.db.Query(ctx, query,
-		vec,
-		opts.MinSimilarity,
-		opts.Language,
-		opts.Domain,
-		maxResults,
-	)
+	if len(opts.Tags) > 0 {
+		tagsJSON, err := json.Marshal(opts.Tags)
+		if err != nil {
+			return nil, fmt.Errorf("finding similar chunks: marshaling tags filter: %w", err)
+		}
+		query += fmt.Sprintf(" AND p.tags @> $%d::jsonb", nextParam)
+		args = append(args, string(tagsJSON))
+		nextParam++
+	}
+
+	query += fmt.Sprintf(" ORDER BY pc.embedding <=> $1 LIMIT $%d", nextParam)
+	args = append(args, maxResults)
+
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("finding similar chunks: %w", err)
 	}

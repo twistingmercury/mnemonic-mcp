@@ -882,10 +882,12 @@ func TestRepository_CreateBatch(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			// pgxmock.PgxPoolIface is not *pgxpool.Pool, so CreateBatch falls
+			// through to createBatchDirect and executes without an internal
+			// transaction (no Begin/Commit expected).
 			name:   "inserts each chunk and returns DB values",
 			chunks: chunks,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectBegin()
 				for range chunks {
 					rows := pgxmock.NewRows([]string{"enrichment_status", "created_at", "updated_at"}).
 						AddRow("pending", now, now)
@@ -899,7 +901,6 @@ func TestRepository_CreateBatch(t *testing.T) {
 						).
 						WillReturnRows(rows)
 				}
-				mock.ExpectCommit()
 			},
 			wantErr: false,
 		},
