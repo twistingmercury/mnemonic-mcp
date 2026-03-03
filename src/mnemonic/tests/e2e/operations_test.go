@@ -45,7 +45,7 @@ func TestHealthCheck_AllHealthyReturns200(t *testing.T) {
 	// The heartbeat library returns a Response struct with fields:
 	//   status, name, resource, machine, utc_DateTime, request_duration_ms, dependencies
 	// Use a flexible map to parse the response.
-	body := ParseJSON[map[string]interface{}](t, resp)
+	body := ParseJSON[map[string]any](t, resp)
 
 	status, ok := body["status"].(string)
 	if !ok {
@@ -98,14 +98,14 @@ func TestHealthCheck_ResponseContainsAllComponents(t *testing.T) {
 
 	AssertStatusCode(t, resp, http.StatusOK)
 
-	body := ParseJSON[map[string]interface{}](t, resp)
+	body := ParseJSON[map[string]any](t, resp)
 
 	depsRaw, ok := body["dependencies"]
 	if !ok {
 		t.Fatal("expected 'dependencies' field in health response")
 	}
 
-	deps, ok := depsRaw.([]interface{})
+	deps, ok := depsRaw.([]any)
 	if !ok {
 		t.Fatalf("expected 'dependencies' to be an array, got %T", depsRaw)
 	}
@@ -120,7 +120,7 @@ func TestHealthCheck_ResponseContainsAllComponents(t *testing.T) {
 	}
 
 	for _, d := range deps {
-		depMap, ok := d.(map[string]interface{})
+		depMap, ok := d.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -237,7 +237,7 @@ func TestVersion_FieldsArePresent(t *testing.T) {
 	AssertStatusCode(t, resp, http.StatusOK)
 
 	// Parse into a generic map to verify all expected keys exist.
-	body := ParseJSON[map[string]interface{}](t, resp)
+	body := ParseJSON[map[string]any](t, resp)
 
 	expectedFields := []string{"service", "version", "build_date", "commit"}
 	for _, field := range expectedFields {
@@ -299,6 +299,24 @@ func TestMetrics_NoAuthRequired(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", resp.StatusCode)
 	}
+}
+
+// -----------------------------------------------------------------------------
+// Swagger UI (GET /swagger/index.html)
+// -----------------------------------------------------------------------------
+
+// TestSwaggerUI_ReturnsOK verifies the Swagger UI index page is served and
+// returns HTTP 200. The endpoint is public and requires no authentication.
+func TestSwaggerUI_ReturnsOK(t *testing.T) {
+	client := NewUnauthenticatedClient(t)
+
+	resp, err := client.Get("/swagger/index.html")
+	if err != nil {
+		t.Fatalf("failed to GET /swagger/index.html: %v", err)
+	}
+	defer resp.Body.Close()
+
+	AssertStatusCode(t, resp, http.StatusOK)
 }
 
 // TestMetrics_ContainsStandardGoMetrics verifies the response body contains

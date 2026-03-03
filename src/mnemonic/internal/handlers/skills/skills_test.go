@@ -363,4 +363,3 @@ func TestSkillCreate_MissingVersion(t *testing.T) {
 	}
 	assert.True(t, found, "expected field error {field:version, code:REQUIRED}")
 }
-

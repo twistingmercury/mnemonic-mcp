@@ -105,7 +105,6 @@ func postRawBody(t *testing.T, client *TestClient, path string, raw []byte) (*ht
 	return client.Do(req)
 }
 
-
 // -----------------------------------------------------------------------------
 // List Skill Files (GET /v1/api/skills/{name}/{collection})
 // OpenAPI: listSkillScripts, listSkillReferences, listSkillAssets
