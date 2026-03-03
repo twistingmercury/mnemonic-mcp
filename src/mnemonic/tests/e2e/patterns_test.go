@@ -637,6 +637,8 @@ func TestCreatePattern_AllFieldsIncludingDescriptionTagsAssociations(t *testing.
 		Name:         agentName,
 		SystemPrompt: "You are a test agent",
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 	agentResp, err := client.Post("/v1/api/agents", agentBody)
 	if err != nil {
@@ -1939,6 +1941,8 @@ func TestGetPatternAgentAssociations_ReturnsAssociations(t *testing.T) {
 		Name:         agentName,
 		SystemPrompt: "You are a test agent for associations",
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 	agentResp, err := client.Post("/v1/api/agents", agentBody)
 	if err != nil {
@@ -2085,6 +2089,8 @@ func TestSetPatternAgentAssociations_ReplacesAllAssociations(t *testing.T) {
 			Name:         name,
 			SystemPrompt: "You are a test agent",
 			Model:        "sonnet",
+			Description:  "Test agent.",
+			Version:      "1.0.0",
 		}
 		agentResp, err := client.Post("/v1/api/agents", agentBody)
 		if err != nil {
@@ -2148,6 +2154,8 @@ func TestSetPatternAgentAssociations_ClearAssociationsWithEmptyArray(t *testing.
 		Name:         agentName,
 		SystemPrompt: "You are a test agent",
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 	agentResp, err := client.Post("/v1/api/agents", agentBody)
 	if err != nil {

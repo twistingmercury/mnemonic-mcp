@@ -17,11 +17,11 @@ import (
 //
 // Agents are core resource definitions. Each agent has:
 //   - name:          Unique identifier (pattern: ^[a-z]([a-z0-9](-[a-z0-9])*)*$, max 64)
-//   - system_prompt: Full prompt text (max 2048 chars)
+//   - system_prompt: Full prompt text (max 51200 chars)
 //   - model:         e.g., "sonnet"
-//   - description:   Optional (max 500 chars)
+//   - description:   Required (max 500 chars)
 //   - allowed_tools: Optional list of tool names
-//   - version:       Optional version string
+//   - version:       Required version string
 //
 // Authentication: None required (MVP). All endpoints are open.
 
@@ -41,6 +41,8 @@ func TestListAgents_ReturnsOKWithPaginatedResults(t *testing.T) {
 		Name:         agentName,
 		SystemPrompt: "You are a helpful assistant.",
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 	createResp, err := client.Post("/v1/api/agents", payload)
 	if err != nil {
@@ -95,12 +97,14 @@ func TestListAgents_PaginationWithLimitAndCursor(t *testing.T) {
 
 	// Create 5 uniquely named agents.
 	created := make(map[string]bool, 5)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		name := GenerateUniqueName("page")
 		payload := AgentCreate{
 			Name:         name,
 			SystemPrompt: fmt.Sprintf("Prompt for agent %d", i),
 			Model:        "sonnet",
+			Description:  "Test agent.",
+			Version:      "1.0.0",
 		}
 		resp, err := client.Post("/v1/api/agents", payload)
 		if err != nil {
@@ -269,6 +273,8 @@ func TestCreateAgent_HappyPathReturns201(t *testing.T) {
 		Name:         agentName,
 		SystemPrompt: "You are a helpful assistant.",
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 
 	resp, err := client.Post("/v1/api/agents", payload)
@@ -350,8 +356,8 @@ func TestCreateAgent_AllOptionalFields(t *testing.T) {
 	}
 }
 
-// TestCreateAgent_MinimalRequiredFields verifies that only name, system_prompt,
-// and model are required. Omitting optional fields succeeds with defaults.
+// TestCreateAgent_MinimalRequiredFields verifies that name, system_prompt,
+// model, description, and version are required. Omitting optional fields succeeds with defaults.
 func TestCreateAgent_MinimalRequiredFields(t *testing.T) {
 	client := NewTestClient(t)
 
@@ -360,6 +366,8 @@ func TestCreateAgent_MinimalRequiredFields(t *testing.T) {
 		Name:         agentName,
 		SystemPrompt: "Minimal prompt.",
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 
 	resp, err := client.Post("/v1/api/agents", payload)
@@ -393,6 +401,8 @@ func TestCreateAgent_DuplicateNameReturns409(t *testing.T) {
 		Name:         agentName,
 		SystemPrompt: "First creation.",
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 
 	resp1, err := client.Post("/v1/api/agents", payload)
@@ -466,7 +476,7 @@ func TestCreateAgent_ValidationErrors(t *testing.T) {
 		},
 		{
 			name:        "system_prompt too long",
-			payload:     AgentCreate{Name: "valid-name", SystemPrompt: stringOfLen("x", 2049), Model: "sonnet"},
+			payload:     AgentCreate{Name: "valid-name", SystemPrompt: stringOfLen("x", 51201), Model: "sonnet"},
 			expectField: "system_prompt",
 		},
 	}
@@ -562,6 +572,8 @@ func TestGetAgent_ExistingReturns200(t *testing.T) {
 		Name:         agentName,
 		SystemPrompt: "Detailed system prompt content.",
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 
 	createResp, err := client.Post("/v1/api/agents", payload)
@@ -600,6 +612,8 @@ func TestGetAgent_IncludesSystemPrompt(t *testing.T) {
 		Name:         agentName,
 		SystemPrompt: systemPrompt,
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 
 	createResp, err := client.Post("/v1/api/agents", payload)
@@ -656,6 +670,8 @@ func TestGetAgent_ResponseIncludesRequestIDHeader(t *testing.T) {
 		Name:         agentName,
 		SystemPrompt: "Request ID verification prompt.",
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 
 	createResp, err := client.Post("/v1/api/agents", payload)
@@ -690,6 +706,8 @@ func TestUpdateAgent_HappyPathReturns200(t *testing.T) {
 		Name:         agentName,
 		SystemPrompt: "Original prompt.",
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 
 	createResp, err := client.Post("/v1/api/agents", createPayload)
@@ -704,6 +722,8 @@ func TestUpdateAgent_HappyPathReturns200(t *testing.T) {
 		Name:         agentName,
 		SystemPrompt: "Updated prompt content.",
 		Model:        "opus",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 
 	updateResp, err := client.Put("/v1/api/agents/"+agentName, updatePayload)
@@ -732,8 +752,8 @@ func TestUpdateAgent_HappyPathReturns200(t *testing.T) {
 }
 
 // TestUpdateAgent_FullReplacement verifies that PUT replaces the entire
-// resource. Omitting optional fields (e.g., allowed_tools, description) in
-// the update body should reset them to defaults, not preserve old values.
+// resource. Omitting optional fields (e.g., allowed_tools) in the update
+// body should reset them to defaults, not preserve old values.
 func TestUpdateAgent_FullReplacement(t *testing.T) {
 	client := NewTestClient(t)
 
@@ -742,7 +762,7 @@ func TestUpdateAgent_FullReplacement(t *testing.T) {
 		Name:         agentName,
 		SystemPrompt: "Prompt with extras.",
 		Model:        "sonnet",
-		Description:  "Will be cleared.",
+		Description:  "Original description.",
 		AllowedTools: []string{"Read", "Write"},
 		Version:      "1.0.0",
 	}
@@ -754,11 +774,13 @@ func TestUpdateAgent_FullReplacement(t *testing.T) {
 	defer createResp.Body.Close()
 	AssertStatusCode(t, createResp, http.StatusCreated)
 
-	// Update without optional fields — they should be reset.
+	// Update with required fields changed; omit optional allowed_tools — it should be reset.
 	updatePayload := AgentUpdate{
 		Name:         agentName,
 		SystemPrompt: "Replacement prompt only.",
 		Model:        "haiku",
+		Description:  "Replacement description.",
+		Version:      "2.0.0",
 	}
 
 	updateResp, err := client.Put("/v1/api/agents/"+agentName, updatePayload)
@@ -771,15 +793,15 @@ func TestUpdateAgent_FullReplacement(t *testing.T) {
 
 	updated := ParseJSON[Agent](t, updateResp)
 
-	// Optional fields omitted from PUT body should be cleared/defaulted.
-	if updated.Description != "" {
-		t.Errorf("expected description to be cleared, got %q", updated.Description)
+	if updated.Description != updatePayload.Description {
+		t.Errorf("expected description %q, got %q", updatePayload.Description, updated.Description)
 	}
+	if updated.Version != updatePayload.Version {
+		t.Errorf("expected version %q, got %q", updatePayload.Version, updated.Version)
+	}
+	// allowed_tools omitted from PUT body should be cleared.
 	if len(updated.AllowedTools) != 0 {
 		t.Errorf("expected allowed_tools to be cleared, got %v", updated.AllowedTools)
-	}
-	if updated.Version != "" {
-		t.Errorf("expected version to be cleared, got %q", updated.Version)
 	}
 }
 
@@ -794,6 +816,8 @@ func TestUpdateAgent_NameInBodyMustMatchPath(t *testing.T) {
 		Name:         agentName,
 		SystemPrompt: "Original.",
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 
 	createResp, err := client.Post("/v1/api/agents", createPayload)
@@ -828,6 +852,8 @@ func TestUpdateAgent_NotFoundReturns404(t *testing.T) {
 		Name:         "nonexistent-agent",
 		SystemPrompt: "This agent does not exist.",
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 
 	resp, err := client.Put("/v1/api/agents/nonexistent-agent", payload)
@@ -859,7 +885,7 @@ func TestUpdateAgent_ValidationErrors(t *testing.T) {
 		},
 		{
 			name:        "system_prompt too long",
-			payload:     AgentUpdate{Name: "valid-name", SystemPrompt: stringOfLen("x", 2049), Model: "sonnet"},
+			payload:     AgentUpdate{Name: "valid-name", SystemPrompt: stringOfLen("x", 51201), Model: "sonnet"},
 			expectField: "system_prompt",
 		},
 	}
@@ -874,6 +900,8 @@ func TestUpdateAgent_ValidationErrors(t *testing.T) {
 				Name:         agentName,
 				SystemPrompt: "Setup prompt.",
 				Model:        "sonnet",
+				Description:  "Test agent.",
+				Version:      "1.0.0",
 			}
 			createResp, err := client.Post("/v1/api/agents", createPayload)
 			if err != nil {
@@ -933,6 +961,8 @@ func TestDeleteAgent_ExistingReturns204(t *testing.T) {
 		Name:         agentName,
 		SystemPrompt: "To be deleted.",
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 
 	createResp, err := client.Post("/v1/api/agents", payload)
@@ -990,6 +1020,8 @@ func TestDeleteAgent_SecondDeleteReturns404(t *testing.T) {
 		Name:         agentName,
 		SystemPrompt: "Double delete target.",
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 
 	createResp, err := client.Post("/v1/api/agents", payload)
@@ -1028,6 +1060,8 @@ func TestDeleteAgent_CascadesPatternAssociations(t *testing.T) {
 		Name:         agentName,
 		SystemPrompt: "Agent to be cascade-deleted.",
 		Model:        "sonnet",
+		Description:  "Test agent.",
+		Version:      "1.0.0",
 	}
 	agentResp, err := client.Post("/v1/api/agents", agentPayload)
 	if err != nil {

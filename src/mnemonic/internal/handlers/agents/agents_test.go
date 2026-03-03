@@ -171,6 +171,81 @@ func TestCreate_BadRequest(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestCreate_SystemPromptTooLong(t *testing.T) {
+	t.Parallel()
+	svc := new(mockAgentService)
+	router := newTestRouter(svc)
+
+	body, _ := json.Marshal(map[string]any{
+		"name":          "test-agent",
+		"description":   "desc",
+		"system_prompt": string(make([]byte, 51201)),
+		"model":         "sonnet",
+		"version":       "1.0.0",
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/agents", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	fieldErrs := resp["errors"].([]any)
+	found := false
+	for _, fe := range fieldErrs {
+		m := fe.(map[string]any)
+		if m["field"] == "system_prompt" && m["code"] == "MAX_LENGTH" {
+			found = true
+		}
+	}
+	assert.True(t, found, "expected field error {field:system_prompt, code:MAX_LENGTH}")
+}
+
+func TestCreate_MissingDescription(t *testing.T) {
+	t.Parallel()
+	svc := new(mockAgentService)
+	router := newTestRouter(svc)
+
+	// All required fields present except description — expects 400.
+	body := `{
+		"name": "test-agent",
+		"system_prompt": "You are a test agent",
+		"model": "sonnet",
+		"version": "1.0.0"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/agents", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestCreate_MissingVersion(t *testing.T) {
+	t.Parallel()
+	svc := new(mockAgentService)
+	router := newTestRouter(svc)
+
+	// All required fields present except version — expects 400.
+	body := `{
+		"name": "test-agent",
+		"description": "Test agent description",
+		"system_prompt": "You are a test agent",
+		"model": "sonnet"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/agents", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestGet_Success(t *testing.T) {
 	t.Parallel()
 	svc := new(mockAgentService)
@@ -293,6 +368,48 @@ func TestUpdate_NotFound(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestUpdate_MissingDescription(t *testing.T) {
+	t.Parallel()
+	svc := new(mockAgentService)
+	router := newTestRouter(svc)
+
+	// All required fields present except description — expects 400.
+	body := `{
+		"system_prompt": "You are a test agent",
+		"model": "sonnet",
+		"version": "1.0.0"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/v1/api/agents/test-agent", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	svc.AssertNotCalled(t, "Update", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUpdate_MissingVersion(t *testing.T) {
+	t.Parallel()
+	svc := new(mockAgentService)
+	router := newTestRouter(svc)
+
+	// All required fields present except version — expects 400.
+	body := `{
+		"description": "Test agent description",
+		"system_prompt": "You are a test agent",
+		"model": "sonnet"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/v1/api/agents/test-agent", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	svc.AssertNotCalled(t, "Update", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestDelete_Success(t *testing.T) {

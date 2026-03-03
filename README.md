@@ -1,10 +1,10 @@
-z# Mnemonic
+# Mnemonic
 
 [![Mnemonic CD](https://github.com/twistingmercury/ace/actions/workflows/mnemonic-cd.yaml/badge.svg)](https://github.com/twistingmercury/ace/actions/workflows/mnemonic-cd.yaml)
 
 > **Maturity Level**: Emerging - Pivot completed, MCP server and Admin API under development
 
-***
+---
 
 Mnemonic is a team knowledge graph and tooling synchronization service for Claude Code, providing semantic pattern search over curated institutional knowledge and synchronized access to agents, skills, and commands across team members.
 

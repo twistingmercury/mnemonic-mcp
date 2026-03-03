@@ -65,8 +65,10 @@ func createTestSkill(t *testing.T, client *TestClient) string {
 	t.Helper()
 	name := GenerateUniqueName("skill")
 	body := SkillCreate{
-		Name:    name,
-		Content: "# Test skill content",
+		Name:        name,
+		Description: "Test skill.",
+		Content:     "# Test skill content",
+		Version:     "1.0.0",
 	}
 	resp, err := client.Post("/v1/api/skills", body)
 	if err != nil {
@@ -103,15 +105,6 @@ func postRawBody(t *testing.T, client *TestClient, path string, raw []byte) (*ht
 	return client.Do(req)
 }
 
-// putRawBody performs a PUT request with a raw (pre-serialized) body.
-func putRawBody(t *testing.T, client *TestClient, path string, raw []byte) (*http.Response, error) {
-	t.Helper()
-	req, err := http.NewRequest(http.MethodPut, client.BaseURL+path, bytes.NewReader(raw))
-	if err != nil {
-		return nil, err
-	}
-	return client.Do(req)
-}
 
 // -----------------------------------------------------------------------------
 // List Skill Files (GET /v1/api/skills/{name}/{collection})
