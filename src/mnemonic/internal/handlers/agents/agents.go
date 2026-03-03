@@ -130,11 +130,11 @@ func validateAgentFields(name, systemPrompt, model, description, version string)
 		errs = append(errs, handlers.FieldError{Field: "name", Code: "INVALID_FORMAT", Message: "name must match ^[a-z]([a-z0-9](-[a-z0-9])*)*$"})
 	}
 
-	// system_prompt: required, max 2048
+	// system_prompt: required, max 51200
 	if systemPrompt == "" {
 		errs = append(errs, handlers.FieldError{Field: "system_prompt", Code: "REQUIRED", Message: "system_prompt is required"})
-	} else if utf8.RuneCountInString(systemPrompt) > 2048 {
-		errs = append(errs, handlers.FieldError{Field: "system_prompt", Code: "MAX_LENGTH", Message: "system_prompt must be 2048 characters or fewer"})
+	} else if utf8.RuneCountInString(systemPrompt) > 51200 {
+		errs = append(errs, handlers.FieldError{Field: "system_prompt", Code: "MAX_LENGTH", Message: "system_prompt must be 51200 characters or fewer"})
 	}
 
 	// model: required

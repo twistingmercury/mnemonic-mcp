@@ -171,6 +171,39 @@ func TestCreate_BadRequest(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestCreate_SystemPromptTooLong(t *testing.T) {
+	t.Parallel()
+	svc := new(mockAgentService)
+	router := newTestRouter(svc)
+
+	body, _ := json.Marshal(map[string]any{
+		"name":          "test-agent",
+		"description":   "desc",
+		"system_prompt": string(make([]byte, 51201)),
+		"model":         "sonnet",
+		"version":       "1.0.0",
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/agents", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	fieldErrs := resp["errors"].([]any)
+	found := false
+	for _, fe := range fieldErrs {
+		m := fe.(map[string]any)
+		if m["field"] == "system_prompt" && m["code"] == "MAX_LENGTH" {
+			found = true
+		}
+	}
+	assert.True(t, found, "expected field error {field:system_prompt, code:MAX_LENGTH}")
+}
+
 func TestCreate_MissingDescription(t *testing.T) {
 	t.Parallel()
 	svc := new(mockAgentService)

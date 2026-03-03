@@ -156,6 +156,12 @@ func (h *Handler) Create(c *gin.Context) {
 	if req.Content == "" {
 		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "content", Code: "REQUIRED", Message: "content is required"})
 	}
+	if req.Description == "" {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "description", Code: "REQUIRED", Message: "description is required"})
+	}
+	if req.Version == "" {
+		fieldErrs = append(fieldErrs, handlers.FieldError{Field: "version", Code: "REQUIRED", Message: "version is required"})
+	}
 
 	// Name format validation.
 	if req.Name != "" && (len(req.Name) > 64 || !skillNameRe.MatchString(req.Name)) {

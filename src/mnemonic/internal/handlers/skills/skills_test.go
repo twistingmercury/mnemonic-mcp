@@ -302,3 +302,65 @@ func TestSkillDelete_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
+func TestSkillCreate_MissingDescription(t *testing.T) {
+	t.Parallel()
+	svc := new(mockSkillService)
+	router := newTestRouter(svc)
+
+	body := `{
+		"name": "code-review",
+		"content": "# Skill Content",
+		"version": "1.0.0"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/skills", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	fieldErrs := resp["errors"].([]any)
+	found := false
+	for _, fe := range fieldErrs {
+		m := fe.(map[string]any)
+		if m["field"] == "description" && m["code"] == "REQUIRED" {
+			found = true
+		}
+	}
+	assert.True(t, found, "expected field error {field:description, code:REQUIRED}")
+}
+
+func TestSkillCreate_MissingVersion(t *testing.T) {
+	t.Parallel()
+	svc := new(mockSkillService)
+	router := newTestRouter(svc)
+
+	body := `{
+		"name": "code-review",
+		"description": "Test skill",
+		"content": "# Skill Content"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/skills", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	fieldErrs := resp["errors"].([]any)
+	found := false
+	for _, fe := range fieldErrs {
+		m := fe.(map[string]any)
+		if m["field"] == "version" && m["code"] == "REQUIRED" {
+			found = true
+		}
+	}
+	assert.True(t, found, "expected field error {field:version, code:REQUIRED}")
+}
+
