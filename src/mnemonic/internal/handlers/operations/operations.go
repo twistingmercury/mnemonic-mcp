@@ -18,6 +18,12 @@ func SetupHandlers(r *gin.Engine, deps []heartbeat.DependencyDescriptor) {
 
 // GetVersion handles GET /version
 // See api/openapi/mnemonic-v1.yaml:2276
+//
+// @Summary      Get service version
+// @Tags         Operations
+// @Produce      json
+// @Success      200  {object}  map[string]string
+// @Router       /version [get]
 func GetVersion(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"service":    "mnemonic",
@@ -26,3 +32,4 @@ func GetVersion(c *gin.Context) {
 		"commit":     version.Commit(),
 	})
 }
+

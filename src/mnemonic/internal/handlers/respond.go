@@ -22,29 +22,32 @@ import (
 const ProblemBaseURI = "https://mnemonic.example.com/problems/"
 
 // ProblemDetail represents an RFC 7807 Problem Details response.
+// @Description RFC 7807 Problem Details error response
 type ProblemDetail struct {
-	Type     string       `json:"type"`
-	Title    string       `json:"title"`
-	Status   int          `json:"status"`
-	Detail   string       `json:"detail,omitempty"`
-	Instance string       `json:"instance,omitempty"`
-	TraceID  string       `json:"traceId,omitempty"`
+	Type     string       `json:"type"             example:"https://mnemonic.example.com/problems/not-found"`
+	Title    string       `json:"title"            example:"Not Found"`
+	Status   int          `json:"status"           example:"404"`
+	Detail   string       `json:"detail,omitempty" example:"agent not found"`
+	Instance string       `json:"instance,omitempty" example:"/v1/api/agents/my-agent"`
+	TraceID  string       `json:"traceId,omitempty"  example:"trace-abc123"`
 	Errors   []FieldError `json:"errors,omitempty"`
 }
 
-// FieldError represents a field-level validation error.
+// FieldError represents a single field-level validation error.
+// @Description Field-level validation error returned inside a ProblemDetail
 type FieldError struct {
-	Field   string `json:"field"`
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Field   string `json:"field"   example:"name"`
+	Code    string `json:"code"    example:"REQUIRED"`
+	Message string `json:"message" example:"name is required"`
 }
 
 // Pagination represents cursor-based pagination metadata.
+// @Description Cursor-based pagination metadata returned with list responses
 type Pagination struct {
-	Limit      int     `json:"limit"`
-	Cursor     *string `json:"cursor"`
-	NextCursor *string `json:"next_cursor"`
-	HasMore    bool    `json:"has_more"`
+	Limit      int     `json:"limit"       example:"100"`
+	Cursor     *string `json:"cursor"      example:"dGVzdA=="`
+	NextCursor *string `json:"next_cursor" example:"dGVzdA=="`
+	HasMore    bool    `json:"has_more"    example:"false"`
 }
 
 // CursorPayload encodes pagination state as an opaque string.

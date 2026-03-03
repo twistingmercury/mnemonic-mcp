@@ -1,0 +1,79 @@
+
+[Cycle 1 — Add swaggo deps] DONE
+- `go build ./...` exits 0 (verify passed)
+- Note: go mod tidy removes the three swaggo pkgs as unused until actual imports are added in later cycles. They are available in the module cache and will be retained as direct deps once Cycles 5–10 add handler annotations and Cycle 10 wires the route.
+
+[Cycle 2 — Add `make docs-swagger` target] DONE
+- Added `docs-swagger` target to Makefile; runs `go install` for swag CLI then `swag init`
+- `make docs-swagger && test -f docs/swagger/swagger.json` exits 0 (verify passed)
+- Note: `swag init` emits a warning about no Go files in the module root dir but still generates docs/swagger/swagger.json, swagger.yaml, and docs.go correctly
+
+[Cycle 3 — Top-level annotations in cmd/main/main.go] DONE
+- Added @title, @version, @description, @host, @BasePath, @schemes annotations above func main()
+- `make docs-swagger && grep -q '"title"' ... && grep -q '"basePath"' ...` exits 0 (verify passed)
+- Note: generated docs.go imports github.com/swaggo/swag which go mod tidy had removed; re-ran go get for swaggo/swag, swaggo/gin-swagger, swaggo/files and go mod tidy — go build ./... now exits 0
+
+[Cycle 4 — Shared response type annotations in internal/handlers/respond.go] DONE
+- Added // @Description comments and example: struct tags to ProblemDetail, FieldError, Pagination
+- Added swagSharedTypes anchor function referencing Pagination and ProblemDetail to force definitions emission
+- `make docs-swagger && grep -q '"definitions"' docs/swagger/swagger.json` exits 0 (verify passed)
+- Post-cycle diagnostic fixes: changed //nolint:unused → //nolint:unusedfunc on swagSharedTypes (unusedfunc analyzer requires specific directive)
+- Note: github.com/swaggo/files listed as indirect in go.mod but flagged unused — will resolve in Cycle 10 when gin-swagger route is registered
+
+[Cycle 5 — Annotate internal/handlers/operations/operations.go] DONE
+- Added swag anchor types (versionResponse, healthResponse, healthDependency) and annotations to GetVersion
+- Added swagHealthAnchor stub for the external heartbeat.Handler GET /health route
+- `make docs-swagger && grep -q '"Operations"' docs/swagger/swagger.json` exits 0 (verify passed)
+- Post-cycle diagnostic fix: agent used //nolint:unused but linter is unusedfunc — changed all four to //nolint:unusedfunc
+- Note: github.com/swaggo/files go.mod warning remains; deferred to Cycle 10
+
+[Cycle 6 — Annotate internal/handlers/agents/agents.go] DONE
+- Added // @Description comments to agentCreateRequest, agentUpdateRequest, agentResponse, agentListResponse (required for --parseInternal to pick up unexported types)
+- Added @Summary, @Tags Agents, @Accept, @Produce, @Param, @Success, @Failure, @Router annotations to Create, List, Get, Update, Delete handlers
+- `make docs-swagger && grep -q '"Agents"' docs/swagger/swagger.json` exits 0 (verify passed)
+- Note: github.com/swaggo/files go.mod warning pre-existing; deferred to Cycle 10
+
+[Cycle 8 — Annotate internal/handlers/skills/skills.go] DONE
+- Added // @Description comments to skillCreateRequest, skillUpdateRequest, fileCounts, skillResponse, skillListResponse
+- Added @Summary, @Tags Skills, @Accept/@Produce, @Param, @Success, @Failure, @Router annotations to Create, List, Get, Update, Delete handlers
+- `make docs-swagger && grep -q '"Skills"' docs/swagger/swagger.json` exits 0 (verify passed)
+- `go build ./...` exits 0
+- Note: github.com/swaggo/files go.mod warning pre-existing; deferred to Cycle 10
+
+[Cycle 7 — Annotate internal/handlers/patterns/patterns.go] DONE
+- Added // @Description comments to all 12 unexported request/response types
+- Added @Summary, @Tags Patterns, @Accept/@Produce, @Param, @Success, @Failure, @Router annotations to all 9 handlers: Create, List, Search, Get, Update, Delete, GetAgentAssociations, SetAgentAssociations, GetChunks
+- `make docs-swagger && grep -q '"Patterns"' docs/swagger/swagger.json` exits 0 (verify passed)
+- `go build ./...` exits 0
+- Note: github.com/swaggo/files go.mod warning pre-existing; deferred to Cycle 10
+
+[Cycle 9 — Annotate internal/handlers/skillfiles/skillfiles.go] DONE
+- Added // @Description comments to fileCreateRequest, fileUpdateRequest, fileResponse, fileSummaryResponse, fileListResponse
+- Added 15 swag anchor stub functions (swagListScripts, swagCreateScript, swagGetScript, swagUpdateScript, swagDeleteScript + references + assets), all tagged SkillFiles, all marked //nolint:unusedfunc
+- `make docs-swagger && grep -q '"SkillFiles"' docs/swagger/swagger.json` exits 0 (verify passed)
+- `go build ./...` exits 0
+- Note: unusedfunc IDE diagnostics are expected — same pattern as prior cycles; github.com/swaggo/files go.mod warning pre-existing; deferred to Cycle 10
+
+[Cycle 10 — Register /swagger/*any route] DONE
+- Added swaggerFiles/ginSwagger imports and blank import of generated docs package to routes.go
+- Registered `router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))` before the v1 group
+- Added github.com/swaggo/gin-swagger v1.6.1 as direct dep; promoted swaggo/files from indirect to direct
+- `make docs-swagger && go build ./...` exits 0 (verify passed)
+- Note: IDE showed stale UnusedImport diagnostics for ginSwagger/swaggerFiles after the edit; `go build ./...` confirmed no actual compiler errors
+
+[Cycle 11 — Add swag gen step to build/Dockerfile] DONE
+- Added two RUN lines after `COPY . .` and before `RUN goimports -w .`:
+    RUN go install github.com/swaggo/swag/cmd/swag@latest
+    RUN swag init -g cmd/main/main.go -o docs/swagger --parseInternal
+- Fixed blocker: previous cycles used `//nolint:unusedfunc` which is not a valid golangci-lint linter name; the correct directive is `//nolint:unused`. Replaced in respond.go, operations/operations.go, skillfiles/skillfiles.go.
+- `docker build -f build/Dockerfile .` exits 0 (all 13 build steps + final image produced)
+
+[Cycle 12 — Add `docs/swagger/` to `.gitignore`] DONE
+- Created src/mnemonic/.gitignore with `docs/swagger/`
+- Added `src/mnemonic/docs/swagger/` to root .gitignore under # Go artifacts
+- `grep -q 'docs/swagger' src/mnemonic/.gitignore` exits 0 (verify passed)
+
+[Cycle 13 — Update src/mnemonic/README.md] DONE
+- Added `## API Documentation` section between `## Building Locally` and `## CI/CD`
+- Section includes: `make docs-swagger` regen command, `/swagger/index.html` UI URL, contributor note about generated files not being committed
+- `grep -q 'docs-swagger' README.md && grep -q 'swagger/index.html' README.md` exits 0 (verify passed)

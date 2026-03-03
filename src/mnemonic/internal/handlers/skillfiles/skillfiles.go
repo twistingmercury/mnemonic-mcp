@@ -79,6 +79,8 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 
 // --- Request/Response Types ---
 
+// fileCreateRequest is the request body for creating a skill file.
+// @Description Request body for creating a skill file
 type fileCreateRequest struct {
 	Filename    string `json:"filename" binding:"required"`
 	ContentType string `json:"content_type" binding:"required"`
@@ -86,12 +88,16 @@ type fileCreateRequest struct {
 	Encoding    string `json:"encoding"`
 }
 
+// fileUpdateRequest is the request body for updating a skill file.
+// @Description Request body for updating a skill file
 type fileUpdateRequest struct {
 	ContentType string `json:"content_type" binding:"required"`
 	Content     string `json:"content" binding:"required"`
 	Encoding    string `json:"encoding"`
 }
 
+// fileResponse is the full representation of a skill file.
+// @Description Full skill file resource returned by create, get, and update operations
 type fileResponse struct {
 	Filename    string `json:"filename"`
 	ContentType string `json:"content_type"`
@@ -102,6 +108,8 @@ type fileResponse struct {
 	UpdatedAt   string `json:"updated_at"`
 }
 
+// fileSummaryResponse is a compact skill file representation used in list results.
+// @Description Summary of a skill file used in list responses (no content field)
 type fileSummaryResponse struct {
 	Filename    string `json:"filename"`
 	ContentType string `json:"content_type"`
@@ -110,6 +118,8 @@ type fileSummaryResponse struct {
 	UpdatedAt   string `json:"updated_at"`
 }
 
+// fileListResponse is the envelope returned by list endpoints.
+// @Description List of skill file summaries
 type fileListResponse struct {
 	Data []fileSummaryResponse `json:"data"`
 }
@@ -380,3 +390,4 @@ func (h *Handler) deleteFile(fileType string) gin.HandlerFunc {
 		c.Status(http.StatusNoContent)
 	}
 }
+

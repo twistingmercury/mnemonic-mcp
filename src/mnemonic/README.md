@@ -51,6 +51,21 @@ The build script runs the same steps locally and in CI:
 - Builds the Docker image with embedded build metadata
 - Runs end-to-end tests against Postgres and Neo4j via Docker Compose
 
+## API Documentation
+
+Mnemonic exposes an interactive Swagger 2.0 UI from the running service.
+
+**Regenerate docs locally:**
+
+```bash
+cd src/mnemonic
+make docs-swagger
+```
+
+Once the service is running, the Swagger UI is available at `http://localhost:8080/swagger/index.html` by default. Override the port with `MNEMONIC_SERVER_PORT`.
+
+> **Contributors:** Run `make docs-swagger` locally to preview docs before committing. Generated files are not committed to the repository.
+
 ## CI/CD
 
 Mnemonic has automated CI/CD workflows:

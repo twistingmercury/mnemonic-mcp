@@ -60,11 +60,15 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 
 // --- Request/Response Types ---
 
+// associationRequest maps a single agent association in create/update requests.
+// @Description Agent association entry used in pattern create and update requests
 type associationRequest struct {
 	AgentName string  `json:"agent_name" binding:"required"`
 	Relevance float64 `json:"relevance"`
 }
 
+// patternCreateRequest maps the OpenAPI PatternCreate schema.
+// @Description Request body for creating a new pattern
 type patternCreateRequest struct {
 	Name              string               `json:"name"`
 	Description       *string              `json:"description"`
@@ -78,6 +82,8 @@ type patternCreateRequest struct {
 	RelatedPatterns   []string             `json:"related_patterns"`
 }
 
+// patternUpdateRequest maps the OpenAPI PatternUpdate schema.
+// @Description Request body for updating an existing pattern
 type patternUpdateRequest struct {
 	Name              string               `json:"name"`
 	Description       *string              `json:"description"`
@@ -91,11 +97,15 @@ type patternUpdateRequest struct {
 	RelatedPatterns   []string             `json:"related_patterns"`
 }
 
+// associationResponse represents a single agent association in a pattern response.
+// @Description Agent association returned in pattern responses
 type associationResponse struct {
 	AgentName string  `json:"agent_name"`
 	Relevance float64 `json:"relevance"`
 }
 
+// relatedPatternResponse represents a related pattern entry in graph context.
+// @Description Related pattern entry returned in graph context
 type relatedPatternResponse struct {
 	ID           string  `json:"id"`
 	Name         string  `json:"name"`
@@ -103,27 +113,37 @@ type relatedPatternResponse struct {
 	Strength     float64 `json:"strength"`
 }
 
+// conceptResponse represents a concept node in graph context.
+// @Description Concept node returned in graph context
 type conceptResponse struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 }
 
+// graphContextResponse contains the graph context for a pattern.
+// @Description Graph context containing related patterns and concepts
 type graphContextResponse struct {
 	RelatedPatterns []relatedPatternResponse `json:"related_patterns"`
 	Concepts        []conceptResponse        `json:"concepts"`
 }
 
+// chunkSummary represents a single content chunk summary for a pattern.
+// @Description Summary of a single content chunk belonging to a pattern
 type chunkSummary struct {
 	ChunkIndex       int    `json:"chunk_index"`
 	SectionTitle     string `json:"section_title"`
 	EnrichmentStatus string `json:"enrichment_status"`
 }
 
+// chunkListResponse is the response body for listing pattern chunks.
+// @Description List of chunk summaries for a pattern
 type chunkListResponse struct {
 	Chunks []chunkSummary `json:"chunks"`
 	Count  int            `json:"count"`
 }
 
+// patternResponse maps a pattern repository object to the OpenAPI Pattern schema.
+// @Description Full pattern resource returned by create, get, and update operations
 type patternResponse struct {
 	ID               string                `json:"id"`
 	Name             string                `json:"name"`
@@ -145,6 +165,8 @@ type patternResponse struct {
 	UpdatedAt        string                `json:"updated_at"`
 }
 
+// patternSummaryResponse maps the OpenAPI PatternSummary schema.
+// @Description Abbreviated pattern resource returned in list responses
 type patternSummaryResponse struct {
 	ID               string   `json:"id"`
 	Name             string   `json:"name"`
@@ -155,19 +177,27 @@ type patternSummaryResponse struct {
 	UpdatedAt        string   `json:"updated_at"`
 }
 
+// patternListResponse maps the OpenAPI PatternList schema.
+// @Description Paginated list of pattern summaries
 type patternListResponse struct {
 	Data       []patternSummaryResponse `json:"data"`
 	Pagination handlers.Pagination      `json:"pagination"`
 }
 
+// associationsRequest is the request body for setting agent associations on a pattern.
+// @Description Request body for setting agent associations on a pattern
 type associationsRequest struct {
 	Associations []associationRequest `json:"associations" binding:"required"`
 }
 
+// associationsResponse is the response body for agent association operations.
+// @Description Response body containing the current agent associations for a pattern
 type associationsResponse struct {
 	Associations []associationResponse `json:"associations"`
 }
 
+// searchResultResponse represents a single semantic search result.
+// @Description Single semantic search result matching a query
 type searchResultResponse struct {
 	PatternID    string   `json:"pattern_id"`
 	PatternName  string   `json:"pattern_name"`
@@ -181,12 +211,16 @@ type searchResultResponse struct {
 	Similarity   float64  `json:"similarity"`
 }
 
+// searchMetadata contains metadata about a semantic search operation.
+// @Description Metadata returned alongside semantic search results
 type searchMetadata struct {
 	Query            string `json:"query"`
 	TotalCandidates  int    `json:"total_candidates"`
 	SearchDurationMs int64  `json:"search_duration_ms"`
 }
 
+// searchResponse is the response body for semantic pattern search.
+// @Description Response body for a semantic pattern search operation
 type searchResponse struct {
 	Results  []searchResultResponse `json:"results"`
 	Metadata searchMetadata         `json:"metadata"`
@@ -374,6 +408,17 @@ func validateAssociationRelevance(assocs []associationRequest, fieldPrefix strin
 // --- Handlers ---
 
 // Create handles POST /v1/api/patterns.
+//
+// @Summary      Create pattern
+// @Tags         Patterns
+// @Accept       json
+// @Produce      json
+// @Param        body  body      patternCreateRequest  true  "Pattern to create"
+// @Success      202   {object}  patternResponse
+// @Failure      400   {object}  handlers.ProblemDetail
+// @Failure      409   {object}  handlers.ProblemDetail
+// @Failure      500   {object}  handlers.ProblemDetail
+// @Router       /patterns [post]
 func (h *Handler) Create(c *gin.Context) {
 	var req patternCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -441,6 +486,21 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 // List handles GET /v1/api/patterns.
+//
+// @Summary      List patterns
+// @Tags         Patterns
+// @Produce      json
+// @Param        limit        query     int     false  "Max results (1–100, default 20)"
+// @Param        cursor       query     string  false  "Pagination cursor"
+// @Param        tags         query     string  false  "Comma-separated tag filter"
+// @Param        search       query     string  false  "Keyword search filter"
+// @Param        language     query     string  false  "Language filter"
+// @Param        domain       query     string  false  "Domain filter"
+// @Param        entity_type  query     string  false  "Entity type filter"
+// @Success      200          {object}  patternListResponse
+// @Failure      400          {object}  handlers.ProblemDetail
+// @Failure      500          {object}  handlers.ProblemDetail
+// @Router       /patterns [get]
 func (h *Handler) List(c *gin.Context) {
 	limit, ok := handlers.ParseIntQueryStrict(c, "limit", 20, 1, 100)
 	if !ok {
@@ -512,6 +572,16 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 // Get handles GET /v1/api/patterns/:id.
+//
+// @Summary      Get pattern
+// @Tags         Patterns
+// @Produce      json
+// @Param        id   path      string  true  "Pattern UUID"
+// @Success      200  {object}  patternResponse
+// @Failure      400  {object}  handlers.ProblemDetail
+// @Failure      404  {object}  handlers.ProblemDetail
+// @Failure      500  {object}  handlers.ProblemDetail
+// @Router       /patterns/{id} [get]
 func (h *Handler) Get(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -569,6 +639,19 @@ func (h *Handler) Get(c *gin.Context) {
 }
 
 // Update handles PUT /v1/api/patterns/:id.
+//
+// @Summary      Update pattern
+// @Tags         Patterns
+// @Accept       json
+// @Produce      json
+// @Param        id    path      string                true  "Pattern UUID"
+// @Param        body  body      patternUpdateRequest  true  "Pattern fields to update"
+// @Success      200   {object}  patternResponse
+// @Failure      400   {object}  handlers.ProblemDetail
+// @Failure      404   {object}  handlers.ProblemDetail
+// @Failure      409   {object}  handlers.ProblemDetail
+// @Failure      500   {object}  handlers.ProblemDetail
+// @Router       /patterns/{id} [put]
 func (h *Handler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -642,6 +725,15 @@ func (h *Handler) Update(c *gin.Context) {
 }
 
 // Delete handles DELETE /v1/api/patterns/:id.
+//
+// @Summary      Delete pattern
+// @Tags         Patterns
+// @Param        id   path      string  true  "Pattern UUID"
+// @Success      204  {string}  string  "no content"
+// @Failure      400  {object}  handlers.ProblemDetail
+// @Failure      404  {object}  handlers.ProblemDetail
+// @Failure      500  {object}  handlers.ProblemDetail
+// @Router       /patterns/{id} [delete]
 func (h *Handler) Delete(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -660,6 +752,16 @@ func (h *Handler) Delete(c *gin.Context) {
 }
 
 // GetAgentAssociations handles GET /v1/api/patterns/:id/agents.
+//
+// @Summary      Get pattern agent associations
+// @Tags         Patterns
+// @Produce      json
+// @Param        id   path      string  true  "Pattern UUID"
+// @Success      200  {object}  associationsResponse
+// @Failure      400  {object}  handlers.ProblemDetail
+// @Failure      404  {object}  handlers.ProblemDetail
+// @Failure      500  {object}  handlers.ProblemDetail
+// @Router       /patterns/{id}/agents [get]
 func (h *Handler) GetAgentAssociations(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -689,6 +791,18 @@ func (h *Handler) GetAgentAssociations(c *gin.Context) {
 }
 
 // SetAgentAssociations handles PUT /v1/api/patterns/:id/agents.
+//
+// @Summary      Set pattern agent associations
+// @Tags         Patterns
+// @Accept       json
+// @Produce      json
+// @Param        id    path      string               true  "Pattern UUID"
+// @Param        body  body      associationsRequest  true  "Agent associations to set"
+// @Success      200   {object}  associationsResponse
+// @Failure      400   {object}  handlers.ProblemDetail
+// @Failure      404   {object}  handlers.ProblemDetail
+// @Failure      500   {object}  handlers.ProblemDetail
+// @Router       /patterns/{id}/agents [put]
 func (h *Handler) SetAgentAssociations(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -732,6 +846,16 @@ func (h *Handler) SetAgentAssociations(c *gin.Context) {
 }
 
 // GetChunks handles GET /v1/api/patterns/:id/chunks.
+//
+// @Summary      Get pattern chunks
+// @Tags         Patterns
+// @Produce      json
+// @Param        id   path      string  true  "Pattern UUID"
+// @Success      200  {object}  chunkListResponse
+// @Failure      400  {object}  handlers.ProblemDetail
+// @Failure      404  {object}  handlers.ProblemDetail
+// @Failure      500  {object}  handlers.ProblemDetail
+// @Router       /patterns/{id}/chunks [get]
 func (h *Handler) GetChunks(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -766,6 +890,21 @@ func (h *Handler) GetChunks(c *gin.Context) {
 }
 
 // Search handles GET /v1/api/patterns/search.
+//
+// @Summary      Search patterns
+// @Tags         Patterns
+// @Produce      json
+// @Param        q          query     string   true   "Search query (required, max 1000 chars)"
+// @Param        limit      query     int      false  "Max results (1–50, default 10)"
+// @Param        threshold  query     number   false  "Similarity threshold (0–1, default 0.7)"
+// @Param        tags       query     string   false  "Comma-separated tag filter"
+// @Param        agent      query     string   false  "Agent name filter"
+// @Param        language   query     string   false  "Language filter"
+// @Param        domain     query     string   false  "Domain filter"
+// @Success      200        {object}  searchResponse
+// @Failure      400        {object}  handlers.ProblemDetail
+// @Failure      500        {object}  handlers.ProblemDetail
+// @Router       /patterns/search [get]
 func (h *Handler) Search(c *gin.Context) {
 	query := c.Query("q")
 	if query == "" {

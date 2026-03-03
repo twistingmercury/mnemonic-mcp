@@ -44,6 +44,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 }
 
 // agentCreateRequest maps the OpenAPI AgentCreate schema.
+// @Description Request body for creating a new agent
 type agentCreateRequest struct {
 	Name         string   `json:"name"`
 	Description  string   `json:"description"`
@@ -54,6 +55,7 @@ type agentCreateRequest struct {
 }
 
 // agentUpdateRequest maps the OpenAPI AgentUpdate schema.
+// @Description Request body for updating an existing agent
 type agentUpdateRequest struct {
 	Name         string   `json:"name"`
 	Description  string   `json:"description"`
@@ -64,6 +66,7 @@ type agentUpdateRequest struct {
 }
 
 // agentResponse maps an agent repository object to the OpenAPI Agent schema.
+// @Description Agent resource returned by create, get, and update operations
 type agentResponse struct {
 	ID           string   `json:"id"`
 	Name         string   `json:"name"`
@@ -78,6 +81,7 @@ type agentResponse struct {
 }
 
 // agentListResponse maps the OpenAPI AgentList schema.
+// @Description Paginated list of agents
 type agentListResponse struct {
 	Data       []agentResponse     `json:"data"`
 	Pagination handlers.Pagination `json:"pagination"`
@@ -160,6 +164,17 @@ func validateAgentFields(name, systemPrompt, model, description, version string)
 }
 
 // Create handles POST /v1/api/agents.
+//
+// @Summary      Create agent
+// @Tags         Agents
+// @Accept       json
+// @Produce      json
+// @Param        body  body      agentCreateRequest  true  "Agent to create"
+// @Success      201   {object}  agentResponse
+// @Failure      400   {object}  handlers.ProblemDetail
+// @Failure      409   {object}  handlers.ProblemDetail
+// @Failure      500   {object}  handlers.ProblemDetail
+// @Router       /agents [post]
 func (h *Handler) Create(c *gin.Context) {
 	var req agentCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -199,6 +214,16 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 // List handles GET /v1/api/agents.
+//
+// @Summary      List agents
+// @Tags         Agents
+// @Produce      json
+// @Param        limit   query     int     false  "Max results (1–200, default 100)"
+// @Param        cursor  query     string  false  "Pagination cursor"
+// @Success      200     {object}  agentListResponse
+// @Failure      400     {object}  handlers.ProblemDetail
+// @Failure      500     {object}  handlers.ProblemDetail
+// @Router       /agents [get]
 func (h *Handler) List(c *gin.Context) {
 	limit, ok := handlers.ParseIntQueryStrict(c, "limit", 100, 1, 200)
 	if !ok {
@@ -262,6 +287,15 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 // Get handles GET /v1/api/agents/:name.
+//
+// @Summary      Get agent
+// @Tags         Agents
+// @Produce      json
+// @Param        name  path      string  true  "Agent name"
+// @Success      200   {object}  agentResponse
+// @Failure      404   {object}  handlers.ProblemDetail
+// @Failure      500   {object}  handlers.ProblemDetail
+// @Router       /agents/{name} [get]
 func (h *Handler) Get(c *gin.Context) {
 	name := c.Param("name")
 
@@ -280,6 +314,19 @@ func (h *Handler) Get(c *gin.Context) {
 }
 
 // Update handles PUT /v1/api/agents/:name.
+//
+// @Summary      Update agent
+// @Tags         Agents
+// @Accept       json
+// @Produce      json
+// @Param        name  path      string              true  "Agent name"
+// @Param        body  body      agentUpdateRequest  true  "Agent fields to update"
+// @Success      200   {object}  agentResponse
+// @Failure      400   {object}  handlers.ProblemDetail
+// @Failure      404   {object}  handlers.ProblemDetail
+// @Failure      409   {object}  handlers.ProblemDetail
+// @Failure      500   {object}  handlers.ProblemDetail
+// @Router       /agents/{name} [put]
 func (h *Handler) Update(c *gin.Context) {
 	name := c.Param("name")
 
@@ -332,6 +379,15 @@ func (h *Handler) Update(c *gin.Context) {
 }
 
 // Delete handles DELETE /v1/api/agents/:name.
+//
+// @Summary      Delete agent
+// @Tags         Agents
+// @Produce      json
+// @Param        name  path  string  true  "Agent name"
+// @Success      204   "No Content"
+// @Failure      404   {object}  handlers.ProblemDetail
+// @Failure      500   {object}  handlers.ProblemDetail
+// @Router       /agents/{name} [delete]
 func (h *Handler) Delete(c *gin.Context) {
 	name := c.Param("name")
 

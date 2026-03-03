@@ -1,3 +1,10 @@
+// Package skills provides HTTP handlers for skill CRUD operations.
+// It registers Gin routes for creating, reading, updating, and deleting
+// skill definitions via the REST API.
+//
+// Documentation:
+//   - API: docs/api/openapi/mnemonic-v1.yaml (Skill Endpoints)
+//   - Design: docs/design/service-layer.md (SkillService)
 package skills
 
 import (
@@ -38,6 +45,8 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 
 // --- Request/Response Types ---
 
+// skillCreateRequest maps the OpenAPI SkillCreate schema.
+// @Description Request body for creating a skill
 type skillCreateRequest struct {
 	Name          string            `json:"name"`
 	Description   string            `json:"description"`
@@ -50,6 +59,8 @@ type skillCreateRequest struct {
 	Version       string            `json:"version"`
 }
 
+// skillUpdateRequest maps the OpenAPI SkillUpdate schema.
+// @Description Request body for updating a skill
 type skillUpdateRequest struct {
 	Name          string            `json:"name"`
 	Description   string            `json:"description"`
@@ -62,12 +73,16 @@ type skillUpdateRequest struct {
 	Version       string            `json:"version"`
 }
 
+// fileCounts holds the file counts for a skill.
+// @Description File counts for a skill
 type fileCounts struct {
 	ScriptsCount    int `json:"scripts_count"`
 	ReferencesCount int `json:"references_count"`
 	AssetsCount     int `json:"assets_count"`
 }
 
+// skillResponse maps a skill repository object to the OpenAPI Skill schema.
+// @Description Skill resource representation returned by create, get, and update operations
 type skillResponse struct {
 	ID            string            `json:"id"`
 	Name          string            `json:"name"`
@@ -85,6 +100,8 @@ type skillResponse struct {
 	UpdatedAt     string            `json:"updated_at"`
 }
 
+// skillListResponse maps the OpenAPI SkillList schema.
+// @Description Paginated list of skills
 type skillListResponse struct {
 	Data       []skillResponse     `json:"data"`
 	Pagination handlers.Pagination `json:"pagination"`
@@ -140,6 +157,17 @@ func toSkillResponse(s *skillrepo.Skill) skillResponse {
 // --- Handlers ---
 
 // Create handles POST /v1/api/skills.
+//
+// @Summary      Create a skill
+// @Tags         Skills
+// @Accept       json
+// @Produce      json
+// @Param        body  body      skillCreateRequest  true  "Skill to create"
+// @Success      201   {object}  skillResponse
+// @Failure      400   {object}  handlers.ProblemDetail
+// @Failure      409   {object}  handlers.ProblemDetail
+// @Failure      500   {object}  handlers.ProblemDetail
+// @Router       /skills [post]
 func (h *Handler) Create(c *gin.Context) {
 	var req skillCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -241,6 +269,17 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 // List handles GET /v1/api/skills.
+//
+// @Summary      List skills
+// @Tags         Skills
+// @Produce      json
+// @Param        limit   query     int     false  "Max results (1–200, default 100)"
+// @Param        cursor  query     string  false  "Pagination cursor"
+// @Param        tags    query     string  false  "Comma-separated tag filter"
+// @Success      200     {object}  skillListResponse
+// @Failure      400     {object}  handlers.ProblemDetail
+// @Failure      500     {object}  handlers.ProblemDetail
+// @Router       /skills [get]
 func (h *Handler) List(c *gin.Context) {
 	limit, ok := handlers.ParseIntQueryStrict(c, "limit", 100, 1, 200)
 	if !ok {
@@ -311,6 +350,15 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 // Get handles GET /v1/api/skills/:name.
+//
+// @Summary      Get a skill by name
+// @Tags         Skills
+// @Produce      json
+// @Param        name  path      string  true  "Skill name"
+// @Success      200   {object}  skillResponse
+// @Failure      404   {object}  handlers.ProblemDetail
+// @Failure      500   {object}  handlers.ProblemDetail
+// @Router       /skills/{name} [get]
 func (h *Handler) Get(c *gin.Context) {
 	name := c.Param("name")
 
@@ -324,6 +372,18 @@ func (h *Handler) Get(c *gin.Context) {
 }
 
 // Update handles PUT /v1/api/skills/:name.
+//
+// @Summary      Update a skill
+// @Tags         Skills
+// @Accept       json
+// @Produce      json
+// @Param        name  path      string              true  "Skill name"
+// @Param        body  body      skillUpdateRequest  true  "Skill fields to update"
+// @Success      200   {object}  skillResponse
+// @Failure      400   {object}  handlers.ProblemDetail
+// @Failure      404   {object}  handlers.ProblemDetail
+// @Failure      500   {object}  handlers.ProblemDetail
+// @Router       /skills/{name} [put]
 func (h *Handler) Update(c *gin.Context) {
 	name := c.Param("name")
 
@@ -420,6 +480,14 @@ func (h *Handler) Update(c *gin.Context) {
 }
 
 // Delete handles DELETE /v1/api/skills/:name.
+//
+// @Summary      Delete a skill
+// @Tags         Skills
+// @Param        name  path  string  true  "Skill name"
+// @Success      204   "No Content"
+// @Failure      404   {object}  handlers.ProblemDetail
+// @Failure      500   {object}  handlers.ProblemDetail
+// @Router       /skills/{name} [delete]
 func (h *Handler) Delete(c *gin.Context) {
 	name := c.Param("name")
 
