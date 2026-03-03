@@ -1,3 +1,4 @@
+# This docker compose file is used to run mnemonic locally so it can be developed against.
 
 services:
   postgres:
