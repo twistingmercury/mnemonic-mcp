@@ -43,7 +43,7 @@ curl -X POST http://localhost:8080/v1/api/patterns \
 curl -X GET "http://localhost:8080/v1/api/patterns/search?q=error+handling&limit=5"
 ```
 
-See the [API Specification](docs/design/2026-02-15-pivot-api-specification.md)
+See the [API Specification](docs/openapi/mnemonic-v1.yaml)
 for complete endpoint documentation.
 
 ## How it works
