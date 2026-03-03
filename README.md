@@ -81,8 +81,8 @@ Mnemonic originally focused on deterministic agent routing but pivoted in Februa
 Clone and build:
 
 ```bash
-git clone https://github.com/twistingmercury/ace.git
-cd ace/src/mnemonic
+git clone https://github.com/twistingmercury/mnemonic.git
+cd mnemonic/src/mnemonic
 ./build/build.sh
 ```
 
