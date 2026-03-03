@@ -301,3 +301,4 @@ func TestSkillDelete_NotFound(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
+

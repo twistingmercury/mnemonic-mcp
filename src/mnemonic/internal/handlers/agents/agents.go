@@ -118,7 +118,7 @@ func toAgentResponse(a *agentrepo.Agent) (agentResponse, error) {
 
 // validateAgentFields checks field-level constraints for create/update and
 // returns a non-nil slice of FieldErrors when any constraint is violated.
-func validateAgentFields(name, systemPrompt, model, description string) []handlers.FieldError {
+func validateAgentFields(name, systemPrompt, model, description, version string) []handlers.FieldError {
 	var errs []handlers.FieldError
 
 	// name: required, regex, max 64
@@ -142,9 +142,18 @@ func validateAgentFields(name, systemPrompt, model, description string) []handle
 		errs = append(errs, handlers.FieldError{Field: "model", Code: "REQUIRED", Message: "model is required"})
 	}
 
-	// description: optional, max 500
-	if utf8.RuneCountInString(description) > 500 {
+	// description: required, max 500
+	if description == "" {
+		errs = append(errs, handlers.FieldError{Field: "description", Code: "REQUIRED", Message: "description is required"})
+	} else if utf8.RuneCountInString(description) > 500 {
 		errs = append(errs, handlers.FieldError{Field: "description", Code: "MAX_LENGTH", Message: "description must be 500 characters or fewer"})
+	}
+
+	// version: required, max 50
+	if version == "" {
+		errs = append(errs, handlers.FieldError{Field: "version", Code: "REQUIRED", Message: "version is required"})
+	} else if utf8.RuneCountInString(version) > 50 {
+		errs = append(errs, handlers.FieldError{Field: "version", Code: "MAX_LENGTH", Message: "version must be 50 characters or fewer"})
 	}
 
 	return errs
@@ -158,7 +167,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	if fieldErrs := validateAgentFields(req.Name, req.SystemPrompt, req.Model, req.Description); len(fieldErrs) > 0 {
+	if fieldErrs := validateAgentFields(req.Name, req.SystemPrompt, req.Model, req.Description, req.Version); len(fieldErrs) > 0 {
 		handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
 		return
 	}
@@ -293,7 +302,7 @@ func (h *Handler) Update(c *gin.Context) {
 	if effectiveName == "" {
 		effectiveName = name
 	}
-	if fieldErrs := validateAgentFields(effectiveName, req.SystemPrompt, req.Model, req.Description); len(fieldErrs) > 0 {
+	if fieldErrs := validateAgentFields(effectiveName, req.SystemPrompt, req.Model, req.Description, req.Version); len(fieldErrs) > 0 {
 		handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
 		return
 	}

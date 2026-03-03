@@ -267,6 +267,7 @@ func TestUpdateScript_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+
 func TestDeleteScript_Success(t *testing.T) {
 	t.Parallel()
 	svc := new(mockSkillFileService)

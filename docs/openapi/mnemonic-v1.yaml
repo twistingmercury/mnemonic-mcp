@@ -1572,6 +1572,8 @@ paths:
                   cursor: null
                   next_cursor: null
                   has_more: false
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -1618,6 +1620,8 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/api/agents/{name}:
     parameters:
@@ -1689,6 +1693,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -1804,6 +1810,8 @@ paths:
                   cursor: null
                   next_cursor: "eyJpZCI6IjU1MGU4NDAw..."
                   has_more: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -1875,6 +1883,8 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/api/patterns/search:
     get:
@@ -2046,6 +2056,8 @@ paths:
                       description: Package-level error variables for comparison
                 created_at: "2026-01-10T08:00:00Z"
                 updated_at: "2026-01-10T08:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2078,6 +2090,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -2092,6 +2106,8 @@ paths:
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2165,6 +2181,8 @@ paths:
                     relevance: 0.95
                   - agent_name: go-software-architect
                     relevance: 0.80
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -2266,6 +2284,8 @@ paths:
                   cursor: null
                   next_cursor: null
                   has_more: false
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "500":
           $ref: "#/components/responses/InternalError"
 
