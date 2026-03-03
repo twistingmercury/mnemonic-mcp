@@ -34,14 +34,6 @@ tests-db-pattern: ## Run pattern repository integration tests
 tests-db-graph: ## Run graph repository integration tests
 	./internal/repository/tests/run-graph-integration-tests.sh
 	
-tests-e2e: ## Runs the end-to-end tests
-	docker compose -f "./tests/docker-compose-dev.yaml" up \
-        --build \
-        --abort-on-container-exit \
-        --exit-code-from mnemonic_tests \
-        mnemonic_api mnemonic_tests
-		docker system prune -f
-
 tests-unit: ## Run the unit tests
 	go test ./internal/... -coverprofile=coverage.out
 	go tool cover -html=coverage.out

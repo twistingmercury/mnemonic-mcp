@@ -16,7 +16,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - mnemonic-network
+      - mnemonic-dev-network
 
   migrate:
     image: migrate/migrate
@@ -24,13 +24,13 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - ../../migrations/postgres:/migrations:ro
+      - ./src/migrations/postgres:/migrations:ro
     command:
       - "-path=/migrations"
       - "-database=postgres://mnemonic:mnemonic_dev@postgres:5432/mnemonic?sslmode=disable"
       - "up"
     networks:
-      - mnemonic-network
+      - mnemonic-dev-network
 
   neo4j:
     image: neo4j:5
@@ -50,11 +50,11 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - mnemonic-network
+      - mnemonic-dev-network
 
   mnemonic_api:
     build:
-      context: ..
+      context: ./src/mnemonic
       dockerfile: build/Dockerfile
     image: ghcr.io/twistingmercury/mnemonic:latest
     pull_policy: never
@@ -69,7 +69,7 @@ services:
       MNEMONIC_DATABASE_POSTGRES_SSL_MODE: disable
       MNEMONIC_DATABASE_NEO4J_URI:  bolt://neo4j:7687
       MNEMONIC_DATABASE_NEO4J_PASSWORD: mnemonic_dev
-      MNEMONIC_OPENAI_API_KEY: sk-test-dummy
+      MNEMONIC_OPENAI_API_KEY: ${MNEMONIC_OPENAI_API_KEY}
       MNEMONIC_MCP_PORT: 8081
     depends_on:
       migrate:
@@ -82,26 +82,12 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - mnemonic-network
-
-  # mnemonic_tests:
-  #   build:
-  #     context: ./e2e
-  #     dockerfile: Dockerfile
-  #   container_name: mnemonic_tests
-  #   environment:
-  #     - API_URL=http://mnemonic_api:8080
-  #     - METRICS_URL=http://mnemonic_api:9090
-  #   depends_on:
-  #     mnemonic_api:
-  #       condition: service_healthy
-  #   networks:
-  #     - mnemonic-network
+      - mnemonic-dev-network
 
 volumes:
   postgres-data:
   neo4j-data:
 
 networks:
-  mnemonic-network:
+  mnemonic-dev-network:
     driver: bridge
