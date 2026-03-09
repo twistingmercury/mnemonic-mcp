@@ -88,3 +88,8 @@
 - TestPatternCreate_InvalidLanguage already uses "INVALID_LANG" (set during Cycle 1) — not valid kebab-case, handler rejects with 400 as expected
 - No other tests assert 400 for kebab-valid language/domain values
 - `go test ./internal/handlers/patterns/...` exits 0 — no file changes needed
+
+[Cycle 3 — Fix E2E tests: language/domain format] DONE
+- In TestCreatePattern_ValidationErrors: changed "cobol" → "COBOL" and "not-a-valid-domain" → "Not A Domain"
+- In TestUpdatePattern_ValidationErrors: same two changes
+- `go build ./... && go vet ./...` in tests/e2e exits 0

@@ -30,7 +30,7 @@ Remove hardcoded enum constraints from `language` and `domain` on the pattern AP
   - Verify: `cd src/mnemonic && go test ./internal/handlers/patterns/... -v 2>&1 | tail -20`
   - Done: `go test ./internal/handlers/patterns/...` exits 0.
 
-- [ ] **Cycle 3 — Fix E2E tests: language/domain format**
+- [x] **Cycle 3 — Fix E2E tests: language/domain format**
   - Agent: `go software engineer`
   - Files: `src/mnemonic/tests/e2e/patterns_test.go`
   - Steps:

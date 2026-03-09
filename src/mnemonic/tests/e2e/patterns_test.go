@@ -800,12 +800,12 @@ func TestCreatePattern_ValidationErrors(t *testing.T) {
 		},
 		{
 			name:        "invalid language value",
-			body:        PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "cobol", Domain: "backend"},
+			body:        PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "COBOL", Domain: "backend"},
 			expectField: "language",
 		},
 		{
 			name:        "invalid domain value",
-			body:        PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "not-a-valid-domain"},
+			body:        PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "Not A Domain"},
 			expectField: "domain",
 		},
 	}
@@ -1729,12 +1729,12 @@ func TestUpdatePattern_ValidationErrors(t *testing.T) {
 		},
 		{
 			name:        "invalid language value",
-			body:        PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "cobol", Domain: "backend"},
+			body:        PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "COBOL", Domain: "backend"},
 			expectField: "language",
 		},
 		{
 			name:        "invalid domain value",
-			body:        PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "not-a-valid-domain"},
+			body:        PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "Not A Domain"},
 			expectField: "domain",
 		},
 	}
