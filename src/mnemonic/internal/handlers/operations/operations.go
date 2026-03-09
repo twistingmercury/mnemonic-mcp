@@ -32,4 +32,3 @@ func GetVersion(c *gin.Context) {
 		"commit":     version.Commit(),
 	})
 }
-
