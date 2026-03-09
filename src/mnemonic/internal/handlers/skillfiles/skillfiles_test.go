@@ -264,7 +264,7 @@ func TestUpdateScript_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, http.StatusNoContent, w.Code)
 }
 
 func TestDeleteScript_Success(t *testing.T) {

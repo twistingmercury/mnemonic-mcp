@@ -643,10 +643,9 @@ func (h *Handler) Get(c *gin.Context) {
 // @Summary      Update pattern
 // @Tags         Patterns
 // @Accept       json
-// @Produce      json
 // @Param        id    path      string                true  "Pattern UUID"
 // @Param        body  body      patternUpdateRequest  true  "Pattern fields to update"
-// @Success      200   {object}  patternResponse
+// @Success      204   "No Content"
 // @Failure      400   {object}  handlers.ProblemDetail
 // @Failure      404   {object}  handlers.ProblemDetail
 // @Failure      409   {object}  handlers.ProblemDetail
@@ -687,7 +686,7 @@ func (h *Handler) Update(c *gin.Context) {
 		req.RelatedPatterns = []string{}
 	}
 
-	pattern, err := h.patternSvc.Update(c.Request.Context(), id, patternsvc.UpdateInput{
+	if _, err := h.patternSvc.Update(c.Request.Context(), id, patternsvc.UpdateInput{
 		Name:              req.Name,
 		Description:       req.Description,
 		Content:           req.Content,
@@ -698,30 +697,12 @@ func (h *Handler) Update(c *gin.Context) {
 		Domain:            req.Domain,
 		Version:           req.Version,
 		RelatedPatterns:   req.RelatedPatterns,
-	})
-	if err != nil {
+	}); err != nil {
 		handlers.RespondError(c, err)
 		return
 	}
 
-	ctx := c.Request.Context()
-	pgAssocs, err := h.patternSvc.GetAgentAssociations(ctx, id)
-	if err != nil {
-		handlers.RespondError(c, err)
-		return
-	}
-
-	agentIDs := make([]uuid.UUID, len(pgAssocs))
-	for i, a := range pgAssocs {
-		agentIDs[i] = a.AgentID
-	}
-	names, err := h.patternSvc.ResolveAgentNames(ctx, agentIDs)
-	if err != nil {
-		handlers.RespondError(c, err)
-		return
-	}
-
-	c.JSON(http.StatusOK, toPatternResponse(pattern, nil, toAssociationResponses(pgAssocs, names)))
+	c.Status(http.StatusNoContent)
 }
 
 // Delete handles DELETE /v1/api/patterns/:id.
@@ -795,10 +776,9 @@ func (h *Handler) GetAgentAssociations(c *gin.Context) {
 // @Summary      Set pattern agent associations
 // @Tags         Patterns
 // @Accept       json
-// @Produce      json
 // @Param        id    path      string               true  "Pattern UUID"
 // @Param        body  body      associationsRequest  true  "Agent associations to set"
-// @Success      200   {object}  associationsResponse
+// @Success      204   "No Content"
 // @Failure      400   {object}  handlers.ProblemDetail
 // @Failure      404   {object}  handlers.ProblemDetail
 // @Failure      500   {object}  handlers.ProblemDetail
@@ -829,20 +809,7 @@ func (h *Handler) SetAgentAssociations(c *gin.Context) {
 		return
 	}
 
-	// Return the newly set associations.
-	assocs := make([]associationResponse, len(req.Associations))
-	for i, a := range req.Associations {
-		relevance := a.Relevance
-		if relevance == 0 {
-			relevance = 1.0
-		}
-		assocs[i] = associationResponse{
-			AgentName: a.AgentName,
-			Relevance: relevance,
-		}
-	}
-
-	c.JSON(http.StatusOK, associationsResponse{Associations: assocs})
+	c.Status(http.StatusNoContent)
 }
 
 // GetChunks handles GET /v1/api/patterns/:id/chunks.

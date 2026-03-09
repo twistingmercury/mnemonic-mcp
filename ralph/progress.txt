@@ -104,3 +104,14 @@
 - Each replaced with pattern: '^[a-z][a-z0-9-]*$' and maxLength: 64
 - Each description updated with "Allowed values defined in mnemonic-patterns/config/validate.yaml."
 - 12 enum: entries remain in file, all on non-language/domain fields (e.g. enrichment_status)
+
+[Cycle 5 — PUT handlers return 204] DONE
+- patterns.go Update: removed post-update GetAgentAssociations/ResolveAgentNames calls, changed c.JSON(200,...) → c.Status(204)
+- patterns.go SetAgentAssociations: removed assocs slice construction, changed c.JSON(200,...) → c.Status(204)
+- agents.go Update: removed toAgentResponse call, changed c.JSON(200,...) → c.Status(204)
+- skills.go Update: removed toSkillResponse call, changed c.JSON(200,...) → c.Status(204)
+- skillfiles.go updateFile: removed toFileResponse call, changed c.JSON(200,...) → c.Status(204)
+- All swaggo @Success annotations updated from 200 to 204 on PUT handlers
+- mnemonic-v1.yaml: all 7 PUT operations changed from 200 response with body to 204 No Content
+- Unit tests updated: patterns_test.go, agents_test.go, skills_test.go, skillfiles_test.go
+- go build ./... && go vet ./... && make analyze all exit 0

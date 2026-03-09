@@ -376,10 +376,9 @@ func (h *Handler) Get(c *gin.Context) {
 // @Summary      Update a skill
 // @Tags         Skills
 // @Accept       json
-// @Produce      json
 // @Param        name  path      string              true  "Skill name"
 // @Param        body  body      skillUpdateRequest  true  "Skill fields to update"
-// @Success      200   {object}  skillResponse
+// @Success      204   "No Content"
 // @Failure      400   {object}  handlers.ProblemDetail
 // @Failure      404   {object}  handlers.ProblemDetail
 // @Failure      500   {object}  handlers.ProblemDetail
@@ -461,7 +460,7 @@ func (h *Handler) Update(c *gin.Context) {
 		req.AllowedTools = []string{}
 	}
 
-	skill, err := h.svc.Update(c.Request.Context(), name, skillsvc.UpdateInput{
+	if _, err := h.svc.Update(c.Request.Context(), name, skillsvc.UpdateInput{
 		Description:   req.Description,
 		Content:       req.Content,
 		Tags:          req.Tags,
@@ -470,13 +469,12 @@ func (h *Handler) Update(c *gin.Context) {
 		Metadata:      req.Metadata,
 		AllowedTools:  req.AllowedTools,
 		Version:       req.Version,
-	})
-	if err != nil {
+	}); err != nil {
 		handlers.RespondError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, toSkillResponse(skill))
+	c.Status(http.StatusNoContent)
 }
 
 // Delete handles DELETE /v1/api/skills/:name.

@@ -453,8 +453,6 @@ func TestPatternUpdate_Success(t *testing.T) {
 
 	pattern := makePattern("go-error-handling")
 	psvc.On("Update", mock.Anything, pattern.ID, mock.Anything).Return(pattern, nil)
-	psvc.On("GetAgentAssociations", mock.Anything, pattern.ID).Return([]patternrepo.AgentAssociation{}, nil)
-	psvc.On("ResolveAgentNames", mock.Anything, []uuid.UUID{}).Return(map[uuid.UUID]string{}, nil)
 
 	body := `{
 		"name": "go-error-handling",
@@ -469,14 +467,8 @@ func TestPatternUpdate_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusOK, w.Code)
-
-	var resp map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, "go-error-handling", resp["name"])
-	assert.Equal(t, "go-pattern", resp["entity_type"])
-	assert.Equal(t, "go", resp["language"])
-	assert.Equal(t, "backend", resp["domain"])
+	require.Equal(t, http.StatusNoContent, w.Code)
+	assert.Empty(t, w.Body.Bytes())
 
 	psvc.AssertExpectations(t)
 }
@@ -534,12 +526,8 @@ func TestSetAgentAssociations_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusOK, w.Code)
-
-	var resp map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assocs := resp["associations"].([]any)
-	assert.Len(t, assocs, 1)
+	require.Equal(t, http.StatusNoContent, w.Code)
+	assert.Empty(t, w.Body.Bytes())
 }
 
 func TestGetAgentAssociations_Success(t *testing.T) {

@@ -250,7 +250,7 @@ func TestSkillUpdate_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, http.StatusNoContent, w.Code)
 }
 
 func TestSkillUpdate_NameMismatch(t *testing.T) {

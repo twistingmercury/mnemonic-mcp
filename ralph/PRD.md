@@ -54,7 +54,7 @@ Remove hardcoded enum constraints from `language` and `domain` on the pattern AP
   - Verify: `grep -c "enum:" docs/openapi/mnemonic-v1.yaml` is unchanged (other fields use enum); confirm `grep -A5 "language:\|domain:" docs/openapi/mnemonic-v1.yaml` shows no enum on those fields.
   - Done: No `enum:` blocks remain on any `language` or `domain` field.
 
-- [ ] **Cycle 5 — PUT handlers return 204**
+- [x] **Cycle 5 — PUT handlers return 204**
   - Agent: `go software engineer`
   - Files:
     - `src/mnemonic/internal/handlers/patterns/patterns.go`
