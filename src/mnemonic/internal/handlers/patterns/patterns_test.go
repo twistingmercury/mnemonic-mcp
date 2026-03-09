@@ -273,7 +273,7 @@ func TestPatternCreate_InvalidLanguage(t *testing.T) {
 		"name": "go-error-handling",
 		"content": "# Test Pattern\n\nContent here",
 		"entity_type": "go-pattern",
-		"language": "brainfuck",
+		"language": "INVALID_LANG",
 		"domain": "backend"
 	}`
 

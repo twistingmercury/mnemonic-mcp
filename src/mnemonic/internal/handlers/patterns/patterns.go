@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -26,9 +25,6 @@ import (
 
 // kebabCaseRe matches lowercase kebab-case identifiers (e.g., "go-pattern", "go-error-handling").
 var kebabCaseRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
-
-var allowedLanguages = []string{"go", "agnostic", "shell", "python", "typescript", "sql"}
-var allowedDomains = []string{"backend", "api-design", "testing", "frontend", "infrastructure", "data", "agnostic"}
 
 // Handler provides HTTP handlers for pattern CRUD and search operations.
 type Handler struct {
@@ -371,18 +367,22 @@ func validatePatternFields(name, content string, description *string, tags []str
 		errs = append(errs, handlers.FieldError{Field: "entity_type", Code: "INVALID_FORMAT", Message: "entity_type must match ^[a-z][a-z0-9-]*$"})
 	}
 
-	// language: required, must be in allowedLanguages
+	// language: required, must be kebab-case, max 64 chars
 	if language == "" {
 		errs = append(errs, handlers.FieldError{Field: "language", Code: "REQUIRED", Message: "language is required"})
-	} else if !slices.Contains(allowedLanguages, language) {
-		errs = append(errs, handlers.FieldError{Field: "language", Code: "INVALID_VALUE", Message: "language must be one of: go, agnostic, shell, python, typescript, sql"})
+	} else if len(language) > 64 {
+		errs = append(errs, handlers.FieldError{Field: "language", Code: "MAX_LENGTH", Message: "language must be 64 characters or fewer"})
+	} else if !kebabCaseRe.MatchString(language) {
+		errs = append(errs, handlers.FieldError{Field: "language", Code: "INVALID_FORMAT", Message: "language must match ^[a-z][a-z0-9-]*$"})
 	}
 
-	// domain: required, must be in allowedDomains
+	// domain: required, must be kebab-case, max 64 chars
 	if domain == "" {
 		errs = append(errs, handlers.FieldError{Field: "domain", Code: "REQUIRED", Message: "domain is required"})
-	} else if !slices.Contains(allowedDomains, domain) {
-		errs = append(errs, handlers.FieldError{Field: "domain", Code: "INVALID_VALUE", Message: "domain must be one of: backend, api-design, testing, frontend, infrastructure, data, agnostic"})
+	} else if len(domain) > 64 {
+		errs = append(errs, handlers.FieldError{Field: "domain", Code: "MAX_LENGTH", Message: "domain must be 64 characters or fewer"})
+	} else if !kebabCaseRe.MatchString(domain) {
+		errs = append(errs, handlers.FieldError{Field: "domain", Code: "INVALID_FORMAT", Message: "domain must match ^[a-z][a-z0-9-]*$"})
 	}
 
 	return errs
