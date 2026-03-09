@@ -2,7 +2,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE_FILE="${SCRIPT_DIR}/docker-compose-dev.yaml"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+COMPOSE_FILE="${PROJECT_ROOT}/docker-compose-dev.yaml"
+
+if [ ! -f "${COMPOSE_FILE}" ]; then
+    printf 'ERROR: docker-compose-dev.yaml not found at %s\n' "${COMPOSE_FILE}" >&2
+    exit 1
+fi
 API_URL="http://localhost:8080"
 METRICS_URL="http://localhost:9090"
 MAX_RETRIES=30
