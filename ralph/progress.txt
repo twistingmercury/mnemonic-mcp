@@ -115,3 +115,15 @@
 - mnemonic-v1.yaml: all 7 PUT operations changed from 200 response with body to 204 No Content
 - Unit tests updated: patterns_test.go, agents_test.go, skills_test.go, skillfiles_test.go
 - go build ./... && go vet ./... && make analyze all exit 0
+
+[Cycle 6 — Fix unit tests: PUT returns 204] DONE
+- Verify ran: go test ./internal/handlers/... exits 0 (all 5 test packages pass)
+- No file changes needed — Cycle 5 already updated all unit test assertions from StatusOK to StatusNoContent and removed body assertions
+
+[Cycle 7 — Fix E2E tests: PUT returns 204] DONE
+- agents_test.go: renamed TestUpdateAgent_HappyPathReturns200 → TestUpdateAgent_HappyPathReturns204; fixed StatusOK → StatusNoContent + removed body assertions in TestUpdateAgent_HappyPathReturns204, TestUpdateAgent_FullReplacement, TestDeleteAgent_CascadesPatternAssociations
+- patterns_test.go: renamed TestUpdatePattern_ReturnsOKWithUpdatedPattern → TestUpdatePattern_ReturnsNoContent; fixed 4 pattern update tests and 2 SetPatternAgentAssociations tests and TestPatternEnrichment_ContentUpdateTriggersReenrichment
+- skillfiles_test.go: fixed TestUpdateSkillFile_Success
+- skills_test.go: fixed TestUpdateSkill_Success and TestUpdateSkill_FullReplacement
+- Docker image rebuilt (docker compose build mnemonic_api) since image predated cycle 5 handler changes
+- bash tests/run-e2e.sh exits 0, all tests pass (ok ...tests/e2e 40.133s)

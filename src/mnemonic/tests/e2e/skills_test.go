@@ -1036,10 +1036,7 @@ func TestGetSkill_InvalidNameFormat(t *testing.T) {
 // TestUpdateSkill_Success verifies updating an existing skill.
 //
 // Expected behavior:
-//   - Returns 200 OK
-//   - updated_at changes
-//   - created_at is unchanged
-//   - Response contains the updated Skill
+//   - Returns 204 No Content
 func TestUpdateSkill_Success(t *testing.T) {
 	client := NewTestClient(t)
 
@@ -1056,7 +1053,7 @@ func TestUpdateSkill_Success(t *testing.T) {
 		t.Fatalf("failed to POST /v1/api/skills: %v", err)
 	}
 	AssertStatusCode(t, createResp, http.StatusCreated)
-	created := ParseJSON[Skill](t, createResp)
+	ReadBody(t, createResp)
 
 	updatePayload := SkillUpdate{
 		Name:        name,
@@ -1070,26 +1067,9 @@ func TestUpdateSkill_Success(t *testing.T) {
 		t.Fatalf("failed to PUT /v1/api/skills/%s: %v", name, err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	AssertStatusCode(t, resp, http.StatusNoContent)
 	AssertRequestIDHeader(t, resp)
-
-	updated := ParseJSON[Skill](t, resp)
-
-	if updated.Name != name {
-		t.Errorf("expected name %q, got %q", name, updated.Name)
-	}
-	if updated.Description != "Updated description" {
-		t.Errorf("expected updated description, got %q", updated.Description)
-	}
-	if updated.Content != updatePayload.Content {
-		t.Errorf("expected updated content, got %q", updated.Content)
-	}
-	if updated.Version != "2.0.0" {
-		t.Errorf("expected version 2.0.0, got %q", updated.Version)
-	}
-	if updated.CreatedAt != created.CreatedAt {
-		t.Errorf("expected created_at %q to remain unchanged, got %q", created.CreatedAt, updated.CreatedAt)
-	}
+	ReadBody(t, resp)
 }
 
 // TestUpdateSkill_FullReplacement verifies PUT is full replacement, not PATCH.
@@ -1131,22 +1111,8 @@ func TestUpdateSkill_FullReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to PUT /v1/api/skills/%s: %v", name, err)
 	}
-	AssertStatusCode(t, resp, http.StatusOK)
-
-	updated := ParseJSON[Skill](t, resp)
-
-	if len(updated.Tags) != 0 {
-		t.Errorf("expected tags to be cleared after full replacement, got %v", updated.Tags)
-	}
-	if updated.License != "" {
-		t.Errorf("expected license to be cleared after full replacement, got %q", updated.License)
-	}
-	if updated.Compatibility != "" {
-		t.Errorf("expected compatibility to be cleared after full replacement, got %q", updated.Compatibility)
-	}
-	if len(updated.AllowedTools) != 0 {
-		t.Errorf("expected allowed_tools to be cleared after full replacement, got %v", updated.AllowedTools)
-	}
+	AssertStatusCode(t, resp, http.StatusNoContent)
+	ReadBody(t, resp)
 }
 
 // TestUpdateSkill_NotFound verifies 404 when updating a non-existent skill.

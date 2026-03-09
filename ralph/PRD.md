@@ -74,7 +74,7 @@ Remove hardcoded enum constraints from `language` and `domain` on the pattern AP
   - Verify: `cd src/mnemonic && go build ./... && go vet ./... && make analyze`
   - Done: All commands exit 0.
 
-- [ ] **Cycle 6 — Fix unit tests: PUT returns 204**
+- [x] **Cycle 6 — Fix unit tests: PUT returns 204**
   - Agent: `go software engineer`
   - Files:
     - `src/mnemonic/internal/handlers/patterns/patterns_test.go`
@@ -88,7 +88,7 @@ Remove hardcoded enum constraints from `language` and `domain` on the pattern AP
   - Verify: `cd src/mnemonic && go test ./internal/handlers/...`
   - Done: `go test ./internal/handlers/...` exits 0.
 
-- [ ] **Cycle 7 — Fix E2E tests: PUT returns 204**
+- [x] **Cycle 7 — Fix E2E tests: PUT returns 204**
   - Agent: `go software engineer`
   - Files:
     - `src/mnemonic/tests/e2e/agents_test.go`

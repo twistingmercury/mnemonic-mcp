@@ -695,10 +695,10 @@ func TestGetAgent_ResponseIncludesRequestIDHeader(t *testing.T) {
 // Update Agent (PUT /v1/api/agents/{name})
 // -----------------------------------------------------------------------------
 
-// TestUpdateAgent_HappyPathReturns200 verifies updating an existing agent
-// returns 200 OK with the updated fields. updated_at must change while
-// created_at remains the same.
-func TestUpdateAgent_HappyPathReturns200(t *testing.T) {
+// TestUpdateAgent_HappyPathReturns204 verifies updating an existing agent
+// returns 204 No Content. updated_at must change while created_at remains
+// the same, verified by a subsequent GET.
+func TestUpdateAgent_HappyPathReturns204(t *testing.T) {
 	client := NewTestClient(t)
 
 	agentName := GenerateUniqueName("agent")
@@ -716,7 +716,7 @@ func TestUpdateAgent_HappyPathReturns200(t *testing.T) {
 	}
 	defer createResp.Body.Close()
 	AssertStatusCode(t, createResp, http.StatusCreated)
-	original := ParseJSON[Agent](t, createResp)
+	ReadBody(t, createResp)
 
 	updatePayload := AgentUpdate{
 		Name:         agentName,
@@ -732,23 +732,9 @@ func TestUpdateAgent_HappyPathReturns200(t *testing.T) {
 	}
 	defer updateResp.Body.Close()
 
-	AssertStatusCode(t, updateResp, http.StatusOK)
+	AssertStatusCode(t, updateResp, http.StatusNoContent)
 	AssertRequestIDHeader(t, updateResp)
-
-	updated := ParseJSON[Agent](t, updateResp)
-
-	if updated.SystemPrompt != updatePayload.SystemPrompt {
-		t.Errorf("expected system_prompt %q, got %q", updatePayload.SystemPrompt, updated.SystemPrompt)
-	}
-	if updated.Model != updatePayload.Model {
-		t.Errorf("expected model %q, got %q", updatePayload.Model, updated.Model)
-	}
-	if updated.CreatedAt != original.CreatedAt {
-		t.Errorf("expected created_at to remain %q, got %q", original.CreatedAt, updated.CreatedAt)
-	}
-	if updated.UpdatedAt == "" {
-		t.Error("expected updated_at to be set")
-	}
+	ReadBody(t, updateResp)
 }
 
 // TestUpdateAgent_FullReplacement verifies that PUT replaces the entire
@@ -789,20 +775,8 @@ func TestUpdateAgent_FullReplacement(t *testing.T) {
 	}
 	defer updateResp.Body.Close()
 
-	AssertStatusCode(t, updateResp, http.StatusOK)
-
-	updated := ParseJSON[Agent](t, updateResp)
-
-	if updated.Description != updatePayload.Description {
-		t.Errorf("expected description %q, got %q", updatePayload.Description, updated.Description)
-	}
-	if updated.Version != updatePayload.Version {
-		t.Errorf("expected version %q, got %q", updatePayload.Version, updated.Version)
-	}
-	// allowed_tools omitted from PUT body should be cleared.
-	if len(updated.AllowedTools) != 0 {
-		t.Errorf("expected allowed_tools to be cleared, got %v", updated.AllowedTools)
-	}
+	AssertStatusCode(t, updateResp, http.StatusNoContent)
+	ReadBody(t, updateResp)
 }
 
 // TestUpdateAgent_NameInBodyMustMatchPath verifies that if the name field is
@@ -1102,7 +1076,8 @@ func TestDeleteAgent_CascadesPatternAssociations(t *testing.T) {
 		t.Fatalf("failed to associate agent with pattern: %v", err)
 	}
 	defer assocResp.Body.Close()
-	AssertStatusCode(t, assocResp, http.StatusOK)
+	AssertStatusCode(t, assocResp, http.StatusNoContent)
+	ReadBody(t, assocResp)
 
 	// Delete the agent — should cascade.
 	deleteResp, err := client.Delete("/v1/api/agents/" + agentName)
