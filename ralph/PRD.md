@@ -39,7 +39,7 @@ Remove hardcoded enum constraints from `language` and `domain` on the pattern AP
   - Verify: `cd src/mnemonic && go build ./tests/... && go vet ./tests/...`
   - Done: Both commands exit 0.
 
-- [ ] **Cycle 4 — Update OpenAPI spec: remove enums**
+- [x] **Cycle 4 — Update OpenAPI spec: remove enums**
   - Agent: `api architect`
   - Files: `docs/openapi/mnemonic-v1.yaml`
   - Steps:

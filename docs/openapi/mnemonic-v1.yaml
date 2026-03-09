@@ -551,25 +551,14 @@ components:
             - best-practice
         language:
           type: string
-          description: Primary programming language
-          enum:
-            - go
-            - agnostic
-            - shell
-            - python
-            - typescript
-            - sql
+          description: Primary programming language. Allowed values defined in mnemonic-patterns/config/validate.yaml.
+          pattern: '^[a-z][a-z0-9-]*$'
+          maxLength: 64
         domain:
           type: string
-          description: Problem domain
-          enum:
-            - backend
-            - api-design
-            - testing
-            - frontend
-            - infrastructure
-            - data
-            - agnostic
+          description: Problem domain. Allowed values defined in mnemonic-patterns/config/validate.yaml.
+          pattern: '^[a-z][a-z0-9-]*$'
+          maxLength: 64
         version:
           type:
             - string
@@ -670,25 +659,14 @@ components:
             - best-practice
         language:
           type: string
-          description: Primary programming language
-          enum:
-            - go
-            - agnostic
-            - shell
-            - python
-            - typescript
-            - sql
+          description: Primary programming language. Allowed values defined in mnemonic-patterns/config/validate.yaml.
+          pattern: '^[a-z][a-z0-9-]*$'
+          maxLength: 64
         domain:
           type: string
-          description: Problem domain
-          enum:
-            - backend
-            - api-design
-            - testing
-            - frontend
-            - infrastructure
-            - data
-            - agnostic
+          description: Problem domain. Allowed values defined in mnemonic-patterns/config/validate.yaml.
+          pattern: '^[a-z][a-z0-9-]*$'
+          maxLength: 64
         version:
           type: string
           description: Optional semantic version of the pattern
@@ -744,25 +722,14 @@ components:
             - best-practice
         language:
           type: string
-          description: Primary programming language
-          enum:
-            - go
-            - agnostic
-            - shell
-            - python
-            - typescript
-            - sql
+          description: Primary programming language. Allowed values defined in mnemonic-patterns/config/validate.yaml.
+          pattern: '^[a-z][a-z0-9-]*$'
+          maxLength: 64
         domain:
           type: string
-          description: Problem domain
-          enum:
-            - backend
-            - api-design
-            - testing
-            - frontend
-            - infrastructure
-            - data
-            - agnostic
+          description: Problem domain. Allowed values defined in mnemonic-patterns/config/validate.yaml.
+          pattern: '^[a-z][a-z0-9-]*$'
+          maxLength: 64
         version:
           type: string
           description: Optional semantic version of the pattern
@@ -1752,29 +1719,18 @@ paths:
           example: error handling
         - name: language
           in: query
-          description: Filter by language
+          description: Filter by language. Allowed values defined in mnemonic-patterns/config/validate.yaml.
           schema:
             type: string
-            enum:
-              - go
-              - agnostic
-              - shell
-              - python
-              - typescript
-              - sql
+            pattern: '^[a-z][a-z0-9-]*$'
+            maxLength: 64
         - name: domain
           in: query
-          description: Filter by domain
+          description: Filter by domain. Allowed values defined in mnemonic-patterns/config/validate.yaml.
           schema:
             type: string
-            enum:
-              - backend
-              - api-design
-              - testing
-              - frontend
-              - infrastructure
-              - data
-              - agnostic
+            pattern: '^[a-z][a-z0-9-]*$'
+            maxLength: 64
         - name: entity_type
           in: query
           description: Filter by entity type (kebab-case)
@@ -1934,29 +1890,18 @@ paths:
           example: go-software-engineer
         - name: language
           in: query
-          description: Filter results to patterns with this language
+          description: Filter results to patterns with this language. Allowed values defined in mnemonic-patterns/config/validate.yaml.
           schema:
             type: string
-            enum:
-              - go
-              - agnostic
-              - shell
-              - python
-              - typescript
-              - sql
+            pattern: '^[a-z][a-z0-9-]*$'
+            maxLength: 64
         - name: domain
           in: query
-          description: Filter results to patterns with this domain
+          description: Filter results to patterns with this domain. Allowed values defined in mnemonic-patterns/config/validate.yaml.
           schema:
             type: string
-            enum:
-              - backend
-              - api-design
-              - testing
-              - frontend
-              - infrastructure
-              - data
-              - agnostic
+            pattern: '^[a-z][a-z0-9-]*$'
+            maxLength: 64
       responses:
         "200":
           description: Search results ranked by similarity

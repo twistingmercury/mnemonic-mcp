@@ -93,3 +93,14 @@
 - In TestCreatePattern_ValidationErrors: changed "cobol" → "COBOL" and "not-a-valid-domain" → "Not A Domain"
 - In TestUpdatePattern_ValidationErrors: same two changes
 - `go build ./... && go vet ./...` in tests/e2e exits 0
+
+[Cycle 4 — Update OpenAPI spec: remove enums] DONE
+- Removed enum blocks from language and domain in all 10 locations:
+  - Pattern schema (language + domain)
+  - PatternCreate schema (language + domain)
+  - PatternUpdate schema (language + domain)
+  - GET /v1/api/patterns query params (language + domain)
+  - GET /v1/api/patterns/search query params (language + domain)
+- Each replaced with pattern: '^[a-z][a-z0-9-]*$' and maxLength: 64
+- Each description updated with "Allowed values defined in mnemonic-patterns/config/validate.yaml."
+- 12 enum: entries remain in file, all on non-language/domain fields (e.g. enrichment_status)
