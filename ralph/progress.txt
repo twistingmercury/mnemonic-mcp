@@ -127,3 +127,12 @@
 - skills_test.go: fixed TestUpdateSkill_Success and TestUpdateSkill_FullReplacement
 - Docker image rebuilt (docker compose build mnemonic_api) since image predated cycle 5 handler changes
 - bash tests/run-e2e.sh exits 0, all tests pass (ok ...tests/e2e 40.133s)
+
+[Cycle 8 — Add VocabularyConfig to config package] DONE
+- Added VocabularyConfig struct with Languages/Domains []string fields
+- Added Vocabulary VocabularyConfig field to MnemonicConfig
+- Added validate() method on VocabularyConfig (fail fast: empty Languages or Domains returns ValidationError)
+- Called c.Vocabulary.validate() inside MnemonicConfig.Validate()
+- Created src/mnemonic/config.yaml with canonical language/domain lists
+- Updated config_test.go: added vocabulary to validConfig() helper and inline YAML fixtures; added applyTestVocabulary() viper helper; added TestVocabularyConfig_Validate covering 3 cases
+- go build ./... && go vet ./... && go test ./internal/config/... && make analyze all exit 0

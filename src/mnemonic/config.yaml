@@ -1,0 +1,20 @@
+vocabulary:
+  languages:
+    - agnostic
+    - go
+    - python
+    - dotnet
+    - shell
+    - typescript
+    - react
+    - sql
+    - cypher
+  domains:
+    - api-design
+    - backend
+    - frontend
+    - testing
+    - devops
+    - cli
+    - data-design
+    - documentation

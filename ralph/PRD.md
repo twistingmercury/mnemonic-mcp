@@ -101,3 +101,99 @@ Remove hardcoded enum constraints from `language` and `domain` on the pattern AP
     - Search all three files for any remaining `StatusOK` on PUT calls and update them.
   - Verify: `cd src/mnemonic && bash tests/run-e2e.sh`
   - Done: `run-e2e.sh` exits 0 with all tests passing. Fix any failures and re-run until clean.
+
+- [x] **Cycle 8 — Add VocabularyConfig to config package**
+  - Agent: `go software engineer`
+  - Files:
+    - `src/mnemonic/internal/config/config.go`
+    - `src/mnemonic/internal/config/config_test.go`
+    - `src/mnemonic/config.yaml` (create if absent)
+  - Steps:
+    - Add `VocabularyConfig` struct to `config.go`:
+      ```go
+      // VocabularyConfig holds the allowed values for pattern language and domain fields.
+      type VocabularyConfig struct {
+          Languages []string `mapstructure:"languages"`
+          Domains   []string `mapstructure:"domains"`
+      }
+      ```
+    - Add `Vocabulary VocabularyConfig `mapstructure:"vocabulary"`` field to `MnemonicConfig`.
+    - Add a `validate()` method on `VocabularyConfig` that returns a `ValidationError` if `Languages` is empty and another if `Domains` is empty. No defaults — fail fast.
+    - Call `c.Vocabulary.validate()` inside `MnemonicConfig.Validate()`.
+    - Do NOT add `SetDefaults` entries for vocabulary — the lists must be explicitly configured.
+    - Create `src/mnemonic/config.yaml` with a `vocabulary:` block containing the canonical lists:
+      ```yaml
+      vocabulary:
+        languages:
+          - agnostic
+          - go
+          - python
+          - dotnet
+          - shell
+          - typescript
+          - react
+          - sql
+          - cypher
+        domains:
+          - api-design
+          - backend
+          - frontend
+          - testing
+          - devops
+          - cli
+          - data-design
+          - documentation
+      ```
+    - Add unit tests in `config_test.go` covering: (a) empty Languages fails validation, (b) empty Domains fails validation, (c) both populated passes validation.
+  - Verify: `cd src/mnemonic && go build ./... && go vet ./... && go test ./internal/config/... && make analyze`
+  - Done: All commands exit 0.
+
+- [ ] **Cycle 9 — Wire vocabulary into pattern handler**
+  - Agent: `go software engineer`
+  - Files:
+    - `src/mnemonic/internal/handlers/patterns/patterns.go`
+    - `src/mnemonic/internal/server/routes.go`
+  - Steps:
+    - In `patterns.go`:
+      - Add `allowedLanguages []string` and `allowedDomains []string` fields to the `Handler` struct.
+      - Update `New` signature to accept a `config.VocabularyConfig` as a third parameter: `func New(patternSvc patternsvc.Service, searchSvc searchsvc.Service, vocab config.VocabularyConfig) *Handler`. Store `vocab.Languages` and `vocab.Domains` on the handler.
+      - In `validatePatternFields`, after the kebab-case format check for `language`, add a membership check: if the value is not in `h.allowedLanguages`, append `FieldError{Field: "language", Code: "INVALID_VALUE"}`. Same for `domain` against `h.allowedDomains`.
+      - Also fix the `len()` → `utf8.RuneCountInString()` bug on the language and domain max-length checks (HIGH finding H1 from the code review).
+      - Add the `unicode/utf8` import if not already present.
+    - In `routes.go`:
+      - Update `RegisterAPIRoutes` signature to accept `cfg config.VocabularyConfig` as a third parameter.
+      - Pass `cfg` to `patternhandler.New`.
+  - Verify: `cd src/mnemonic && go build ./... && go vet ./... && go test ./internal/handlers/patterns/... && make analyze`
+  - Done: All commands exit 0.
+
+- [ ] **Cycle 10 — Wire vocabulary through server startup**
+  - Agent: `go software engineer`
+  - Files:
+    - `src/mnemonic/internal/server/server.go`
+  - Steps:
+    - Find the call to `RegisterAPIRoutes` in `server.go`. Update the call to pass `cfg.Vocabulary` as the third argument (where `cfg` is the `*config.MnemonicConfig` already available in the server setup).
+    - If `cfg` is not directly accessible at the call site, trace the call chain and thread it through — do not introduce a global variable.
+  - Verify: `cd src/mnemonic && go build ./... && go vet ./... && make analyze`
+  - Done: All commands exit 0.
+
+- [ ] **Cycle 11 — Fix unit tests: vocabulary validation**
+  - Agent: `go software engineer`
+  - Files:
+    - `src/mnemonic/internal/handlers/patterns/patterns_test.go`
+  - Steps:
+    - The `New` function now requires a `config.VocabularyConfig` argument. Find all calls to `patternhandler.New` (or the handler constructor) in `patterns_test.go` and add a `config.VocabularyConfig` with `Languages` and `Domains` populated with reasonable test values (include the values used in existing happy-path tests).
+    - Find `TestPatternCreate_InvalidLanguage` and `TestPatternUpdate_InvalidLanguage` (or equivalent). The test currently sends a non-kebab value and expects `INVALID_FORMAT`. That test remains correct. Add a new sub-case (or separate test) that sends a valid kebab-case value that is NOT in the allowed list and expects `INVALID_VALUE`.
+    - Do the same for domain: add a test case that sends a kebab-case domain not in the allowed list and expects `INVALID_VALUE`.
+  - Verify: `cd src/mnemonic && go test ./internal/handlers/patterns/... -v 2>&1 | tail -30`
+  - Done: `go test ./internal/handlers/patterns/...` exits 0.
+
+- [ ] **Cycle 12 — Run E2E tests until all pass**
+  - Agent: `go software engineer`
+  - Files: `src/mnemonic/tests/e2e/patterns_test.go` (fix as needed)
+  - Steps:
+    - Run `cd src/mnemonic && bash tests/run-e2e.sh`.
+    - If any test fails because the running server now rejects a language/domain value that was valid under the old open-vocabulary rules, update the E2E test to use a value in the allowed vocabulary list.
+    - Do not change business logic — only fix test data.
+    - Iterate until `run-e2e.sh` exits 0.
+  - Verify: `cd src/mnemonic && bash tests/run-e2e.sh`
+  - Done: `run-e2e.sh` exits 0 with all tests passing.
