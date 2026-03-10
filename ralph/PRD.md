@@ -148,7 +148,7 @@ Remove hardcoded enum constraints from `language` and `domain` on the pattern AP
   - Verify: `cd src/mnemonic && go build ./... && go vet ./... && go test ./internal/config/... && make analyze`
   - Done: All commands exit 0.
 
-- [ ] **Cycle 9 — Wire vocabulary into pattern handler**
+- [x] **Cycle 9 — Wire vocabulary into pattern handler**
   - Agent: `go software engineer`
   - Files:
     - `src/mnemonic/internal/handlers/patterns/patterns.go`

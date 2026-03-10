@@ -17,6 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/twistingmercury/mnemonic/internal/config"
 	"github.com/twistingmercury/mnemonic/internal/handlers"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
 	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
@@ -28,16 +29,30 @@ var kebabCaseRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 // Handler provides HTTP handlers for pattern CRUD and search operations.
 type Handler struct {
-	patternSvc patternsvc.Service
-	searchSvc  searchsvc.Service
+	patternSvc       patternsvc.Service
+	searchSvc        searchsvc.Service
+	allowedLanguages []string
+	allowedDomains   []string
 }
 
-// New creates a new pattern Handler backed by the given services.
-func New(patternSvc patternsvc.Service, searchSvc searchsvc.Service) *Handler {
+// New creates a new pattern Handler backed by the given services and vocabulary config.
+func New(patternSvc patternsvc.Service, searchSvc searchsvc.Service, vocab config.VocabularyConfig) *Handler {
 	return &Handler{
-		patternSvc: patternSvc,
-		searchSvc:  searchSvc,
+		patternSvc:       patternSvc,
+		searchSvc:        searchSvc,
+		allowedLanguages: vocab.Languages,
+		allowedDomains:   vocab.Domains,
 	}
+}
+
+// containsString reports whether slice contains s.
+func containsString(slice []string, s string) bool {
+	for _, v := range slice {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 // RegisterRoutes binds pattern endpoints to the given router group.
@@ -326,7 +341,9 @@ func toAssociationInputs(reqs []associationRequest) []patternsvc.AssociationInpu
 
 // validatePatternFields checks field-level constraints for create/update and
 // returns a non-nil slice of FieldErrors when any constraint is violated.
-func validatePatternFields(name, content string, description *string, tags []string, entityType, language, domain string) []handlers.FieldError {
+// When allowedLanguages or allowedDomains are non-empty, the supplied values
+// must appear in the respective list.
+func (h *Handler) validatePatternFields(name, content string, description *string, tags []string, entityType, language, domain string) []handlers.FieldError {
 	var errs []handlers.FieldError
 
 	// name: must match ^[a-z][a-z0-9-]*$, length 1-128
@@ -367,22 +384,28 @@ func validatePatternFields(name, content string, description *string, tags []str
 		errs = append(errs, handlers.FieldError{Field: "entity_type", Code: "INVALID_FORMAT", Message: "entity_type must match ^[a-z][a-z0-9-]*$"})
 	}
 
-	// language: required, must be kebab-case, max 64 chars
+	// language: required, must be kebab-case, max 64 chars, and (when a vocabulary
+	// is configured) must be one of the allowed values.
 	if language == "" {
 		errs = append(errs, handlers.FieldError{Field: "language", Code: "REQUIRED", Message: "language is required"})
-	} else if len(language) > 64 {
+	} else if utf8.RuneCountInString(language) > 64 {
 		errs = append(errs, handlers.FieldError{Field: "language", Code: "MAX_LENGTH", Message: "language must be 64 characters or fewer"})
 	} else if !kebabCaseRe.MatchString(language) {
 		errs = append(errs, handlers.FieldError{Field: "language", Code: "INVALID_FORMAT", Message: "language must match ^[a-z][a-z0-9-]*$"})
+	} else if len(h.allowedLanguages) > 0 && !containsString(h.allowedLanguages, language) {
+		errs = append(errs, handlers.FieldError{Field: "language", Code: "INVALID_VALUE", Message: "language is not an allowed value"})
 	}
 
-	// domain: required, must be kebab-case, max 64 chars
+	// domain: required, must be kebab-case, max 64 chars, and (when a vocabulary
+	// is configured) must be one of the allowed values.
 	if domain == "" {
 		errs = append(errs, handlers.FieldError{Field: "domain", Code: "REQUIRED", Message: "domain is required"})
-	} else if len(domain) > 64 {
+	} else if utf8.RuneCountInString(domain) > 64 {
 		errs = append(errs, handlers.FieldError{Field: "domain", Code: "MAX_LENGTH", Message: "domain must be 64 characters or fewer"})
 	} else if !kebabCaseRe.MatchString(domain) {
 		errs = append(errs, handlers.FieldError{Field: "domain", Code: "INVALID_FORMAT", Message: "domain must match ^[a-z][a-z0-9-]*$"})
+	} else if len(h.allowedDomains) > 0 && !containsString(h.allowedDomains, domain) {
+		errs = append(errs, handlers.FieldError{Field: "domain", Code: "INVALID_VALUE", Message: "domain is not an allowed value"})
 	}
 
 	return errs
@@ -426,7 +449,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	if fieldErrs := validatePatternFields(req.Name, req.Content, req.Description, req.Tags, req.EntityType, req.Language, req.Domain); len(fieldErrs) > 0 {
+	if fieldErrs := h.validatePatternFields(req.Name, req.Content, req.Description, req.Tags, req.EntityType, req.Language, req.Domain); len(fieldErrs) > 0 {
 		handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
 		return
 	}
@@ -666,7 +689,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	if fieldErrs := validatePatternFields(req.Name, req.Content, req.Description, req.Tags, req.EntityType, req.Language, req.Domain); len(fieldErrs) > 0 {
+	if fieldErrs := h.validatePatternFields(req.Name, req.Content, req.Description, req.Tags, req.EntityType, req.Language, req.Domain); len(fieldErrs) > 0 {
 		handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
 		return
 	}

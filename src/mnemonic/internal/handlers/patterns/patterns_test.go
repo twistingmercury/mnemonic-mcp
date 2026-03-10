@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/twistingmercury/mnemonic/internal/config"
 	"github.com/twistingmercury/mnemonic/internal/handlers/patterns"
 	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
@@ -136,9 +137,15 @@ func (m *mockSearchService) SearchPatterns(ctx context.Context, opts searchsvc.S
 
 // --- Helpers ---
 
+// testVocab contains the canonical vocabulary used across tests.
+var testVocab = config.VocabularyConfig{
+	Languages: []string{"agnostic", "go", "python", "dotnet", "shell", "typescript", "react", "sql", "cypher"},
+	Domains:   []string{"api-design", "backend", "frontend", "testing", "devops", "cli", "data-design", "documentation"},
+}
+
 func newTestRouter(psvc patternsvc.Service, ssvc searchsvc.Service) *gin.Engine {
 	router := gin.New()
-	h := patterns.New(psvc, ssvc)
+	h := patterns.New(psvc, ssvc, testVocab)
 	v1 := router.Group("/v1/api")
 	h.RegisterRoutes(v1)
 	return router

@@ -136,3 +136,14 @@
 - Created src/mnemonic/config.yaml with canonical language/domain lists
 - Updated config_test.go: added vocabulary to validConfig() helper and inline YAML fixtures; added applyTestVocabulary() viper helper; added TestVocabularyConfig_Validate covering 3 cases
 - go build ./... && go vet ./... && go test ./internal/config/... && make analyze all exit 0
+
+[Cycle 9 — Wire vocabulary into pattern handler] DONE
+- Added allowedLanguages/allowedDomains []string fields to Handler struct
+- Updated New() to accept config.VocabularyConfig as third param; stores vocab slices on handler
+- Converted validatePatternFields standalone function to method on *Handler
+- Fixed len() → utf8.RuneCountInString() bug for language and domain max-length checks
+- Added containsString() helper; added membership checks for language and domain (INVALID_VALUE when not in allowed list)
+- Updated routes.go: RegisterAPIRoutes accepts vocab config.VocabularyConfig as third param; passes it to patternhandler.New
+- Updated server.go call site to pass config.VocabularyConfig{} placeholder (Cycle 10 wires real value)
+- Updated patterns_test.go: added testVocab with canonical lists; passes it to patterns.New in newTestRouter
+- go build ./... && go vet ./... && go test ./internal/handlers/patterns/... && make analyze all exit 0
