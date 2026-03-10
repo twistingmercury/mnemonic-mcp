@@ -49,7 +49,6 @@ func TestListPatterns_ReturnsOKWithPaginatedSummaries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 
@@ -73,7 +72,6 @@ func TestListPatterns_DefaultPaginationValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 
@@ -92,7 +90,6 @@ func TestListPatterns_CustomLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns?limit=5: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 
@@ -191,7 +188,6 @@ func TestListPatterns_SummaryExcludesContentField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 	list := ParseJSON[PatternList](t, resp)
@@ -248,7 +244,6 @@ func TestListPatterns_FilterByTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns?tags=...: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 	list := ParseJSON[PatternList](t, resp)
@@ -324,7 +319,6 @@ func TestListPatterns_FilterByMultipleTagsUsesANDLogic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns?tags=...: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 	list := ParseJSON[PatternList](t, resp)
@@ -372,7 +366,6 @@ func TestListPatterns_FullTextSearchByNameAndDescription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns?search=...: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 	list := ParseJSON[PatternList](t, resp)
@@ -434,7 +427,6 @@ func TestListPatterns_CombinedTagAndSearchFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET %s: %v", path, err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 	list := ParseJSON[PatternList](t, resp)
@@ -525,7 +517,6 @@ func TestCreatePattern_ReturnsAcceptedWithPendingEnrichment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/patterns: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusAccepted)
 
@@ -580,7 +571,6 @@ func TestCreatePattern_ServerGeneratesUUID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/patterns: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusAccepted)
 
@@ -611,7 +601,6 @@ func TestCreatePattern_MinimalFieldsOnlyNameAndContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/patterns: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusAccepted)
 
@@ -666,7 +655,6 @@ func TestCreatePattern_AllFieldsIncludingDescriptionTagsAssociations(t *testing.
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/patterns: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusAccepted)
 
@@ -818,7 +806,6 @@ func TestCreatePattern_ValidationErrors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to POST /v1/api/patterns: %v", err)
 			}
-			defer resp.Body.Close()
 
 			AssertStatusCode(t, resp, http.StatusBadRequest)
 
@@ -948,7 +935,6 @@ func TestSearchPatterns_ReturnsRankedResultsWithSimilarity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns/search: %v", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
 		ReadBody(t, resp)
@@ -973,7 +959,6 @@ func TestSearchPatterns_ResultsIncludeContentAndScores(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns/search: %v", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
 		ReadBody(t, resp)
@@ -1003,7 +988,6 @@ func TestSearchPatterns_ResponseIncludesMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns/search: %v", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
 		ReadBody(t, resp)
@@ -1032,7 +1016,6 @@ func TestSearchPatterns_MetadataEchoesQueryString(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns/search: %v", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
 		ReadBody(t, resp)
@@ -1056,7 +1039,6 @@ func TestSearchPatterns_DefaultLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns/search: %v", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
 		ReadBody(t, resp)
@@ -1081,7 +1063,6 @@ func TestSearchPatterns_CustomLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns/search: %v", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
 		ReadBody(t, resp)
@@ -1105,7 +1086,6 @@ func TestSearchPatterns_CustomThreshold(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns/search: %v", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
 		ReadBody(t, resp)
@@ -1132,7 +1112,6 @@ func TestSearchPatterns_FilterByTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns/search?tags=...: %v", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
 		ReadBody(t, resp)
@@ -1157,7 +1136,6 @@ func TestSearchPatterns_FilterByAgent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns/search?agent=...: %v", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
 		ReadBody(t, resp)
@@ -1198,7 +1176,6 @@ func TestSearchPatterns_OnlyEnrichedPatternsAppear(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns/search: %v", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
 		ReadBody(t, resp)
@@ -1339,7 +1316,6 @@ func TestGetPattern_ReturnsFullPatternWithContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET %s: %v", patternPath(created.ID), err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 
@@ -1377,7 +1353,6 @@ func TestGetPattern_IncludesEnrichmentStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET %s: %v", patternPath(created.ID), err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 
@@ -1496,7 +1471,6 @@ func TestUpdatePattern_ReturnsNoContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to PUT %s: %v", patternPath(created.ID), err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusNoContent)
 	ReadBody(t, resp)
@@ -1531,7 +1505,6 @@ func TestUpdatePattern_UpdatedAtChangesCreatedAtPreserved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to PUT %s: %v", patternPath(created.ID), err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusNoContent)
 	ReadBody(t, resp)
@@ -1569,7 +1542,6 @@ func TestUpdatePattern_FullReplacementResetsOmittedFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to PUT %s: %v", patternPath(created.ID), err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusNoContent)
 	ReadBody(t, resp)
@@ -1604,7 +1576,6 @@ func TestUpdatePattern_ContentChangeResetsEnrichmentToPending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to PUT %s: %v", patternPath(created.ID), err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusNoContent)
 	ReadBody(t, resp)
@@ -1729,7 +1700,6 @@ func TestUpdatePattern_ValidationErrors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to PUT %s: %v", patternPath(created.ID), err)
 			}
-			defer resp.Body.Close()
 
 			AssertStatusCode(t, resp, http.StatusBadRequest)
 
@@ -1942,7 +1912,6 @@ func TestGetPatternAgentAssociations_ReturnsAssociations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET %s: %v", patternAgentsPath(created.ID), err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 
@@ -1977,7 +1946,6 @@ func TestGetPatternAgentAssociations_EmptyListWhenNoAssociations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET %s: %v", patternAgentsPath(created.ID), err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 
@@ -2098,7 +2066,6 @@ func TestSetPatternAgentAssociations_ReplacesAllAssociations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to PUT %s: %v", patternAgentsPath(created.ID), err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusNoContent)
 	ReadBody(t, resp)
@@ -2149,7 +2116,6 @@ func TestSetPatternAgentAssociations_ClearAssociationsWithEmptyArray(t *testing.
 	if err != nil {
 		t.Fatalf("failed to PUT %s: %v", patternAgentsPath(created.ID), err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusNoContent)
 	ReadBody(t, resp)
@@ -2337,7 +2303,6 @@ func TestPatternEnrichment_NewPatternStartsWithPendingStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusAccepted)
 
@@ -2511,7 +2476,6 @@ func TestPatternEnrichment_ContentUpdateTriggersReenrichment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to PUT %s: %v", patternPath(created.ID), err)
 	}
-	defer updateResp.Body.Close()
 
 	AssertStatusCode(t, updateResp, http.StatusNoContent)
 	ReadBody(t, updateResp)
@@ -2536,7 +2500,6 @@ func TestGetPatternChunks_ReturnsChunksForPattern(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	defer createResp.Body.Close()
 	AssertStatusCode(t, createResp, http.StatusAccepted)
 
 	created := ParseJSON[Pattern](t, createResp)
@@ -2546,7 +2509,6 @@ func TestGetPatternChunks_ReturnsChunksForPattern(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET chunks: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 

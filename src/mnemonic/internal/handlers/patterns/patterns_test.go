@@ -139,7 +139,7 @@ func (m *mockSearchService) SearchPatterns(ctx context.Context, opts searchsvc.S
 
 // testVocab contains the canonical vocabulary used across tests.
 var testVocab = config.VocabularyConfig{
-	Languages: []string{"agnostic", "go", "python", "dotnet", "shell", "typescript", "react", "sql", "cypher"},
+	Languages: []string{"agnostic", "go", "python", "csharp", "shell", "typescript", "javascript", "sql", "cypher"},
 	Domains:   []string{"api-design", "backend", "frontend", "testing", "devops", "cli", "data-design", "documentation"},
 }
 
@@ -312,6 +312,14 @@ func TestPatternCreate_InvalidLanguageValue(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	errs := resp["errors"].([]any)
+	require.NotEmpty(t, errs)
+	first := errs[0].(map[string]any)
+	assert.Equal(t, "language", first["field"])
+	assert.Equal(t, "INVALID_VALUE", first["code"])
 }
 
 func TestPatternCreate_InvalidDomainValue(t *testing.T) {
@@ -334,6 +342,14 @@ func TestPatternCreate_InvalidDomainValue(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	errs := resp["errors"].([]any)
+	require.NotEmpty(t, errs)
+	first := errs[0].(map[string]any)
+	assert.Equal(t, "domain", first["field"])
+	assert.Equal(t, "INVALID_VALUE", first["code"])
 }
 
 func TestPatternUpdate_InvalidLanguageValue(t *testing.T) {
@@ -358,6 +374,14 @@ func TestPatternUpdate_InvalidLanguageValue(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	errs := resp["errors"].([]any)
+	require.NotEmpty(t, errs)
+	first := errs[0].(map[string]any)
+	assert.Equal(t, "language", first["field"])
+	assert.Equal(t, "INVALID_VALUE", first["code"])
 }
 
 func TestPatternUpdate_InvalidDomainValue(t *testing.T) {
@@ -382,6 +406,14 @@ func TestPatternUpdate_InvalidDomainValue(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	errs := resp["errors"].([]any)
+	require.NotEmpty(t, errs)
+	first := errs[0].(map[string]any)
+	assert.Equal(t, "domain", first["field"])
+	assert.Equal(t, "INVALID_VALUE", first["code"])
 }
 
 func TestPatternGet_Success(t *testing.T) {

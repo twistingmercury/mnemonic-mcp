@@ -74,7 +74,6 @@ func createTestSkill(t *testing.T, client *TestClient) string {
 	if err != nil {
 		t.Fatalf("failed to create skill: %v", err)
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		b := ReadBody(t, resp)
 		t.Fatalf("expected 201 creating skill, got %d: %s", resp.StatusCode, string(b))

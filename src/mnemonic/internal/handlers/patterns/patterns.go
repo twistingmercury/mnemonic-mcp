@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -37,23 +38,18 @@ type Handler struct {
 
 // New creates a new pattern Handler backed by the given services and vocabulary config.
 func New(patternSvc patternsvc.Service, searchSvc searchsvc.Service, vocab config.VocabularyConfig) *Handler {
+	langs := make([]string, len(vocab.Languages))
+	copy(langs, vocab.Languages)
+	doms := make([]string, len(vocab.Domains))
+	copy(doms, vocab.Domains)
 	return &Handler{
 		patternSvc:       patternSvc,
 		searchSvc:        searchSvc,
-		allowedLanguages: vocab.Languages,
-		allowedDomains:   vocab.Domains,
+		allowedLanguages: langs,
+		allowedDomains:   doms,
 	}
 }
 
-// containsString reports whether slice contains s.
-func containsString(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
 
 // RegisterRoutes binds pattern endpoints to the given router group.
 // The group should be mounted at /v1/api.
@@ -384,27 +380,25 @@ func (h *Handler) validatePatternFields(name, content string, description *strin
 		errs = append(errs, handlers.FieldError{Field: "entity_type", Code: "INVALID_FORMAT", Message: "entity_type must match ^[a-z][a-z0-9-]*$"})
 	}
 
-	// language: required, must be kebab-case, max 64 chars, and (when a vocabulary
-	// is configured) must be one of the allowed values.
+	// language: required, must be kebab-case, max 64 chars, and must be one of the allowed values.
 	if language == "" {
 		errs = append(errs, handlers.FieldError{Field: "language", Code: "REQUIRED", Message: "language is required"})
 	} else if utf8.RuneCountInString(language) > 64 {
 		errs = append(errs, handlers.FieldError{Field: "language", Code: "MAX_LENGTH", Message: "language must be 64 characters or fewer"})
 	} else if !kebabCaseRe.MatchString(language) {
 		errs = append(errs, handlers.FieldError{Field: "language", Code: "INVALID_FORMAT", Message: "language must match ^[a-z][a-z0-9-]*$"})
-	} else if len(h.allowedLanguages) > 0 && !containsString(h.allowedLanguages, language) {
+	} else if !slices.Contains(h.allowedLanguages, language) {
 		errs = append(errs, handlers.FieldError{Field: "language", Code: "INVALID_VALUE", Message: "language is not an allowed value"})
 	}
 
-	// domain: required, must be kebab-case, max 64 chars, and (when a vocabulary
-	// is configured) must be one of the allowed values.
+	// domain: required, must be kebab-case, max 64 chars, and must be one of the allowed values.
 	if domain == "" {
 		errs = append(errs, handlers.FieldError{Field: "domain", Code: "REQUIRED", Message: "domain is required"})
 	} else if utf8.RuneCountInString(domain) > 64 {
 		errs = append(errs, handlers.FieldError{Field: "domain", Code: "MAX_LENGTH", Message: "domain must be 64 characters or fewer"})
 	} else if !kebabCaseRe.MatchString(domain) {
 		errs = append(errs, handlers.FieldError{Field: "domain", Code: "INVALID_FORMAT", Message: "domain must match ^[a-z][a-z0-9-]*$"})
-	} else if len(h.allowedDomains) > 0 && !containsString(h.allowedDomains, domain) {
+	} else if !slices.Contains(h.allowedDomains, domain) {
 		errs = append(errs, handlers.FieldError{Field: "domain", Code: "INVALID_VALUE", Message: "domain is not an allowed value"})
 	}
 
@@ -906,7 +900,7 @@ func (h *Handler) Search(c *gin.Context) {
 
 	if utf8.RuneCountInString(query) > 1000 {
 		handlers.RespondValidationError(c, "Invalid query parameter", []handlers.FieldError{
-			{Field: "query", Code: "MAX_LENGTH", Message: "query must be 1000 characters or fewer"},
+			{Field: "q", Code: "MAX_LENGTH", Message: "query must be 1000 characters or fewer"},
 		})
 		return
 	}

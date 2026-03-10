@@ -93,9 +93,9 @@ const (
 	DefaultTracingOTLPInsecure = true
 )
 
-// Default values for vocabulary configuration
-var (
-	DefaultVocabularyLanguages = []string{
+// DefaultVocabularyLanguages returns a fresh slice of the default allowed language values.
+func DefaultVocabularyLanguages() []string {
+	return []string{
 		"agnostic",
 		"bash",
 		"c",
@@ -136,10 +136,14 @@ var (
 		"yaml",
 		"zig",
 	}
-	DefaultVocabularyDomains = []string{
+}
+
+// DefaultVocabularyDomains returns a fresh slice of the default allowed domain values.
+func DefaultVocabularyDomains() []string {
+	return []string{
 		"api-design", "backend", "frontend", "testing", "devops", "cli", "data-design", "documentation", "data-access", "security",
 	}
-)
+}
 
 // Configuration file paths
 const (

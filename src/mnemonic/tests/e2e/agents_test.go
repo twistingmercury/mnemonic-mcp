@@ -55,7 +55,6 @@ func TestListAgents_ReturnsOKWithPaginatedResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/agents: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 	AssertRequestIDHeader(t, resp)
@@ -130,7 +129,6 @@ func TestListAgents_PaginationWithLimitAndCursor(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to GET page %d: %v", pageCount, err)
 		}
-		defer resp.Body.Close()
 		AssertStatusCode(t, resp, http.StatusOK)
 
 		list := ParseJSON[AgentList](t, resp)
@@ -178,7 +176,6 @@ func TestListAgents_DefaultPaginationLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/agents: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 
@@ -240,7 +237,6 @@ func TestListAgents_EmptyResultReturnsEmptyArray(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/agents: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 
@@ -281,7 +277,6 @@ func TestCreateAgent_HappyPathReturns201(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/agents: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusCreated)
 	AssertRequestIDHeader(t, resp)
@@ -333,7 +328,6 @@ func TestCreateAgent_AllOptionalFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/agents: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusCreated)
 
@@ -374,7 +368,6 @@ func TestCreateAgent_MinimalRequiredFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/agents: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusCreated)
 
@@ -489,7 +482,6 @@ func TestCreateAgent_ValidationErrors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to POST /v1/api/agents: %v", err)
 			}
-			defer resp.Body.Close()
 
 			AssertStatusCode(t, resp, http.StatusBadRequest)
 
@@ -587,7 +579,6 @@ func TestGetAgent_ExistingReturns200(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/agents/%s: %v", agentName, err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 
@@ -627,7 +618,6 @@ func TestGetAgent_IncludesSystemPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/agents/%s: %v", agentName, err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusOK)
 
@@ -647,7 +637,6 @@ func TestGetAgent_NotFoundReturns404(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/agents/does-not-exist-xyz: %v", err)
 	}
-	defer resp.Body.Close()
 
 	AssertStatusCode(t, resp, http.StatusNotFound)
 
@@ -714,7 +703,6 @@ func TestUpdateAgent_HappyPathReturns204(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create agent: %v", err)
 	}
-	defer createResp.Body.Close()
 	AssertStatusCode(t, createResp, http.StatusCreated)
 	ReadBody(t, createResp)
 
@@ -730,7 +718,6 @@ func TestUpdateAgent_HappyPathReturns204(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to PUT /v1/api/agents/%s: %v", agentName, err)
 	}
-	defer updateResp.Body.Close()
 
 	AssertStatusCode(t, updateResp, http.StatusNoContent)
 	AssertRequestIDHeader(t, updateResp)
@@ -773,7 +760,6 @@ func TestUpdateAgent_FullReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to PUT /v1/api/agents/%s: %v", agentName, err)
 	}
-	defer updateResp.Body.Close()
 
 	AssertStatusCode(t, updateResp, http.StatusNoContent)
 	ReadBody(t, updateResp)
@@ -893,7 +879,6 @@ func TestUpdateAgent_ValidationErrors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to PUT /v1/api/agents/%s: %v", agentName, err)
 			}
-			defer resp.Body.Close()
 
 			AssertStatusCode(t, resp, http.StatusBadRequest)
 
@@ -950,7 +935,6 @@ func TestDeleteAgent_ExistingReturns204(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to DELETE /v1/api/agents/%s: %v", agentName, err)
 	}
-	defer deleteResp.Body.Close()
 
 	AssertStatusCode(t, deleteResp, http.StatusNoContent)
 
@@ -1056,7 +1040,6 @@ func TestDeleteAgent_CascadesPatternAssociations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	defer patternResp.Body.Close()
 	AssertStatusCode(t, patternResp, http.StatusAccepted)
 
 	pattern := ParseJSON[Pattern](t, patternResp)
@@ -1075,7 +1058,6 @@ func TestDeleteAgent_CascadesPatternAssociations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to associate agent with pattern: %v", err)
 	}
-	defer assocResp.Body.Close()
 	AssertStatusCode(t, assocResp, http.StatusNoContent)
 	ReadBody(t, assocResp)
 
@@ -1092,7 +1074,6 @@ func TestDeleteAgent_CascadesPatternAssociations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET pattern associations after agent deletion: %v", err)
 	}
-	defer getAssocResp.Body.Close()
 	AssertStatusCode(t, getAssocResp, http.StatusOK)
 
 	associations := ParseJSON[PatternAgentAssociations](t, getAssocResp)
