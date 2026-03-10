@@ -323,6 +323,10 @@ func SetDefaults(v *viper.Viper) {
 	v.SetDefault("logging.format", DefaultLoggingFormat)
 	v.SetDefault("logging.include_caller", DefaultLoggingIncludeCaller)
 
+	// Vocabulary defaults
+	v.SetDefault("vocabulary.languages", DefaultVocabularyLanguages)
+	v.SetDefault("vocabulary.domains", DefaultVocabularyDomains)
+
 	// Observability defaults
 	v.SetDefault("observability.metrics.enabled", DefaultMetricsEnabled)
 	v.SetDefault("observability.metrics.path", DefaultMetricsPath)

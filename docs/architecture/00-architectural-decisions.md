@@ -9,6 +9,8 @@
 - [ADR-002: MCP Protocol for Claude Code Integration](#adr-002-mcp-protocol-for-claude-code-integration) (ACTIVE)
 - [ADR-003: Entity Storage with JSONB Document Model](#adr-003-entity-storage-with-jsonb-document-model) (ACTIVE)
 - [ADR-004: Pattern Storage and Enrichment Pipeline](#adr-004-pattern-storage-and-enrichment-pipeline) (ACTIVE)
+- [ADR-005: Open Vocabulary for language and domain Fields](#adr-005-open-vocabulary-for-language-and-domain-fields) (ACTIVE)
+- [ADR-006: 204 No Content on Full-Replacement PUT](#adr-006-204-no-content-on-full-replacement-put) (ACTIVE)
 - [Decision Summary](#decision-summary)
 
 ## Decision Record Format
@@ -210,6 +212,90 @@ Patterns are the core knowledge artifacts in Mnemonic. Unlike entities (agents, 
 | ADR-002  | MCP protocol integration     | Native Claude Code integration, dual protocol architecture     | ACTIVE |
 | ADR-003  | JSONB document model         | Schema-agnostic entity storage, CRC-64 change detection        | ACTIVE |
 | ADR-004  | Pattern storage + enrichment | Relational columns for vectors, Postgres-backed async queue    | ACTIVE |
+| ADR-005  | Open vocabulary for language/domain | Kebab-case format only; vocabulary governed externally  | ACTIVE |
+| ADR-006  | 204 No Content on PUT        | Full-replacement PUT with no body; client issues GET if needed | ACTIVE |
+
+## <a id="adr-005"></a>ADR-005: Open Vocabulary for language and domain Fields
+
+**Date:** 2026-03-09
+**Status:** Accepted
+
+### Context
+
+Pattern records carry `language` and `domain` fields that classify content by programming language (e.g., `go`, `typescript`) and problem domain (e.g., `backend`, `data-engineering`). The original design enforced a closed enum at both the OpenAPI spec level and in the Go handler. This created friction: adding a new language required an API release and handler change.
+
+Two alternatives were considered:
+
+1. Keep the closed enum in the API; extend it via migration and handler change on each new value.
+2. Open the API to any structurally valid identifier; govern the approved vocabulary externally.
+
+The approved vocabulary is already managed in the `mnemonic-patterns` repository (`config/validate.yaml`), which is the authoritative source for all pattern content pushed to Mnemonic. That repo's validation tooling runs before patterns reach the Admin REST API.
+
+### Decision
+
+**Remove enum enforcement from the API. Validate format only (kebab-case, max 64 characters). Vocabulary governance belongs to `mnemonic-patterns/config/validate.yaml`.**
+
+The boundary is:
+
+- **API layer** (`patterns.go`): structural validation — `^[a-z][a-z0-9-]*$`, length limit. Rejects malformed strings; accepts any well-formed identifier.
+- **Sync tooling layer** (`mnemonic-patterns`): semantic validation — checks submitted values against the approved vocabulary before calling the Admin API.
+
+This design treats the Admin REST API as an internal write interface used primarily by the sync tooling. Direct REST callers are out of scope for vocabulary enforcement; they are expected to respect the vocabulary by convention.
+
+### Consequences
+
+**Positive:**
+
+- Adding a new approved language or domain requires only a change to `mnemonic-patterns/config/validate.yaml`, not an API release.
+- API is stable; format validation is unchanged across vocabulary expansions.
+- Handler logic is simpler (one regex, no enum list to maintain).
+
+**Negative:**
+
+- A direct REST caller that bypasses sync tooling can store out-of-vocabulary values without a 400 response. Discovery occurs at query time (filter returns no results) or at audit time.
+- The governance boundary is implicit. Team members must know to consult `mnemonic-patterns` for the approved vocabulary; the API spec does not surface it.
+- Single-character identifiers (e.g., `"a"`) pass format validation. This is harmless if sync tooling is the gatekeeper, but worth noting.
+
+## <a id="adr-006"></a>ADR-006: 204 No Content on Full-Replacement PUT
+
+**Date:** 2026-03-09
+**Status:** Accepted
+
+### Context
+
+All PUT handlers in Mnemonic perform full replacement: the client submits a complete representation, the server overwrites the record, and the client is responsible for maintaining its own local copy. The question is whether a successful PUT should return 200 with the persisted representation or 204 with no body.
+
+Returning 200 with a body is defensible when the server transforms the input — generating fields, normalising values, or applying side effects the client cannot predict. In Mnemonic, PUT handlers do not transform input beyond what the service layer stores verbatim. The only server-generated field that changes on update is `updated_at`, which the client can retrieve via a subsequent GET if needed.
+
+RFC 9110 section 9.3.4 permits 204 when the server has no representation to return.
+
+### Decision
+
+**All PUT handlers return 204 No Content with no body.**
+
+Affected endpoints:
+
+- `PUT /v1/api/patterns/:id`
+- `PUT /v1/api/agents/:name`
+- `PUT /v1/api/skills/:name`
+- `PUT /v1/api/skills/:name/scripts/:filename`
+- `PUT /v1/api/skills/:name/references/:filename`
+- `PUT /v1/api/skills/:name/assets/:filename`
+- `PUT /v1/api/patterns/:id/agents`
+
+Clients that need the updated representation after a PUT must issue a subsequent GET. This is consistent with the sync use case: the sync tooling already holds the canonical payload and does not need the server to echo it back.
+
+### Consequences
+
+**Positive:**
+
+- Correct per RFC 9110; avoids misleading clients that no server-side transformation occurred.
+- Reduces response payload size for batch sync operations.
+- Consistent across all PUT endpoints; no per-endpoint special cases.
+
+**Negative:**
+
+- Clients that need `updated_at` or any other server-written field after a PUT must issue a second request. This is an acceptable trade-off given the sync-tooling primary use case.
 
 ## Related Design Docs
 

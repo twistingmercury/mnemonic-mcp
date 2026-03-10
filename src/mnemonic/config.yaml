@@ -1,14 +1,38 @@
 vocabulary:
   languages:
     - agnostic
-    - go
-    - python
-    - dotnet
-    - shell
-    - typescript
-    - react
-    - sql
+    - c
+    - cpp
+    - csharp
+    - cql
     - cypher
+    - dart
+    - delphi
+    - elixir
+    - erlang
+    - go
+    - java
+    - javascript
+    - kotlin
+    - lua
+    - matlab
+    - mql
+    - objective-c
+    - perl
+    - php
+    - plsql
+    - powershell
+    - python
+    - r
+    - ruby
+    - rust
+    - scala
+    - shell
+    - sql
+    - swift
+    - tsql
+    - typescript
+    - visual-basic
   domains:
     - api-design
     - backend

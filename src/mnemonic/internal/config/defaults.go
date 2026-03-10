@@ -93,6 +93,54 @@ const (
 	DefaultTracingOTLPInsecure = true
 )
 
+// Default values for vocabulary configuration
+var (
+	DefaultVocabularyLanguages = []string{
+		"agnostic",
+		"bash",
+		"c",
+		"cpp",
+		"csharp",
+		"cql",
+		"cypher",
+		"dart",
+		"delphi",
+		"elixir",
+		"erlang",
+		"go",
+		"json",
+		"java",
+		"javascript",
+		"kotlin",
+		"lua",
+		"markdown",
+		"matlab",
+		"mql",
+		"objective-c",
+		"perl",
+		"php",
+		"plsql",
+		"powershell",
+		"python",
+		"r",
+		"ruby",
+		"rust",
+		"scala",
+		"shell",
+		"sql",
+		"swift",
+		"toml",
+		"tsql",
+		"typescript",
+		"visual-basic",
+		"yaml",
+		"zig",
+	}
+	DefaultVocabularyDomains = []string{
+		"api-design", "backend", "frontend", "testing", "devops", "cli", "data-design", "documentation", "data-access", "security",
+	}
+)
+
 // Configuration file paths
 const (
 	ProductionConfigPath  = "/etc/mnemonic/config.yaml"
