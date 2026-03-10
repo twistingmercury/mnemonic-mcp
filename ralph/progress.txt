@@ -152,3 +152,11 @@
 - Changed config.VocabularyConfig{} placeholder on line 102 of server.go to cfg.Vocabulary
 - cfg (*config.MnemonicConfig) is the ListenAndServe parameter, already in scope at the call site
 - go build ./... && go vet ./... && make analyze all exit 0
+
+[Cycle 11 — Fix unit tests: vocabulary validation] DONE
+- testVocab and newTestRouter already wired from Cycle 9; no constructor changes needed
+- Added TestPatternCreate_InvalidLanguageValue: sends "brainfuck" (valid kebab, not in vocab) → expects 400
+- Added TestPatternCreate_InvalidDomainValue: sends "not-a-valid-domain" (valid kebab, not in vocab) → expects 400
+- Added TestPatternUpdate_InvalidLanguageValue: PUT with "brainfuck" language → expects 400
+- Added TestPatternUpdate_InvalidDomainValue: PUT with "not-a-valid-domain" domain → expects 400
+- go test ./internal/handlers/patterns/... exits 0

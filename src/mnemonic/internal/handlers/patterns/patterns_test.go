@@ -292,6 +292,98 @@ func TestPatternCreate_InvalidLanguage(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestPatternCreate_InvalidLanguageValue(t *testing.T) {
+	t.Parallel()
+	psvc := new(mockPatternService)
+	ssvc := new(mockSearchService)
+	router := newTestRouter(psvc, ssvc)
+
+	body := `{
+		"name": "go-error-handling",
+		"content": "# Test Pattern\n\nContent here",
+		"entity_type": "go-pattern",
+		"language": "brainfuck",
+		"domain": "backend"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/patterns", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPatternCreate_InvalidDomainValue(t *testing.T) {
+	t.Parallel()
+	psvc := new(mockPatternService)
+	ssvc := new(mockSearchService)
+	router := newTestRouter(psvc, ssvc)
+
+	body := `{
+		"name": "go-error-handling",
+		"content": "# Test Pattern\n\nContent here",
+		"entity_type": "go-pattern",
+		"language": "go",
+		"domain": "not-a-valid-domain"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/patterns", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPatternUpdate_InvalidLanguageValue(t *testing.T) {
+	t.Parallel()
+	psvc := new(mockPatternService)
+	ssvc := new(mockSearchService)
+	router := newTestRouter(psvc, ssvc)
+
+	id := uuid.New()
+
+	body := `{
+		"name": "go-error-handling",
+		"content": "# Test Pattern\n\nContent here",
+		"entity_type": "go-pattern",
+		"language": "brainfuck",
+		"domain": "backend"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/v1/api/patterns/"+id.String(), bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPatternUpdate_InvalidDomainValue(t *testing.T) {
+	t.Parallel()
+	psvc := new(mockPatternService)
+	ssvc := new(mockSearchService)
+	router := newTestRouter(psvc, ssvc)
+
+	id := uuid.New()
+
+	body := `{
+		"name": "go-error-handling",
+		"content": "# Test Pattern\n\nContent here",
+		"entity_type": "go-pattern",
+		"language": "go",
+		"domain": "not-a-valid-domain"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/v1/api/patterns/"+id.String(), bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestPatternGet_Success(t *testing.T) {
 	t.Parallel()
 	psvc := new(mockPatternService)
