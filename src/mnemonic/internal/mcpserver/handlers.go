@@ -58,6 +58,8 @@ func handleSearchPatterns(deps ToolDependencies, logger zerolog.Logger) mcp.Tool
 			Threshold: threshold,
 			Tags:      input.Tags,
 			AgentName: input.Agent,
+			Language:  input.Language,
+			Domain:    input.Domain,
 		})
 		if err != nil {
 			return nil, nil, mapServiceError(err)

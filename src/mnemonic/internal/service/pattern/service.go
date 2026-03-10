@@ -170,57 +170,51 @@ func New(
 	}
 }
 
-// splitChunk is a parsed chunk from content.
-type splitChunk struct {
-	SectionTitle string
-	ChunkIndex   int
-	Content      string
+// chunk is a parsed chunk from content.
+type chunk struct {
+	Title   string
+	Content string
 }
 
-// splitIntoChunks splits markdown content at H2 (##) boundaries.
-// Content before the first H2 becomes an "Overview" chunk.
-// Content with no H2 headings becomes a single "Content" chunk.
-// Empty sections are dropped.
-func splitIntoChunks(content string) []splitChunk {
-	lines := strings.Split(content, "\n")
-	var chunks []splitChunk
+// splitIntoChunks parses markdown content and returns a chunk for each section
+// preceded by a "[//]: pattern" decorator line. The heading following the
+// decorator becomes the chunk title; all subsequent lines until the next
+// decorator (or EOF) form the body. Lines outside decorated sections are
+// discarded.
+func splitIntoChunks(content string) []chunk {
+	var chunks []chunk
 	var currentTitle string
 	var currentLines []string
-	index := 0
+	pendingPattern := false
 
-	flush := func(title string) {
-		body := strings.TrimSpace(strings.Join(currentLines, "\n"))
-		if body == "" {
+	flush := func() {
+		if currentTitle == "" {
 			return
 		}
-		chunks = append(chunks, splitChunk{
-			SectionTitle: title,
-			ChunkIndex:   index,
-			Content:      body,
-		})
-		index++
+		body := strings.TrimSpace(strings.Join(currentLines, "\n"))
+		if body != "" {
+			chunks = append(chunks, chunk{Title: currentTitle, Content: body})
+		}
+		currentTitle = ""
+		currentLines = nil
 	}
 
-	foundH2 := false
-	for _, line := range lines {
-		if strings.HasPrefix(line, "## ") {
-			if !foundH2 {
-				flush("Overview")
-				foundH2 = true
-			} else {
-				flush(currentTitle)
-			}
-			currentTitle = strings.TrimPrefix(line, "## ")
+	for line := range strings.SplitSeq(content, "\n") {
+		if line == "[//]: pattern" {
+			flush()
+			pendingPattern = true
+		} else if pendingPattern && strings.HasPrefix(line, "#") {
+			title := strings.TrimSpace(strings.TrimLeft(line, "#"))
+			currentTitle = title
 			currentLines = nil
-		} else {
+			pendingPattern = false
+		} else if currentTitle != "" {
 			currentLines = append(currentLines, line)
 		}
+		// else: outside any decorated section — discard line
 	}
-	if foundH2 {
-		flush(currentTitle)
-	} else {
-		flush("Content")
-	}
+	flush()
+
 	return chunks
 }
 
@@ -266,8 +260,8 @@ func (s *patternService) Create(ctx context.Context, input CreateInput) (*patter
 		for i, rc := range rawChunks {
 			chunks[i] = &chunkrepo.Chunk{
 				PatternID:    pattern.ID,
-				SectionTitle: rc.SectionTitle,
-				ChunkIndex:   rc.ChunkIndex,
+				SectionTitle: rc.Title,
+				ChunkIndex:   i,
 				Content:      rc.Content,
 			}
 		}
@@ -502,8 +496,8 @@ func (s *patternService) updateWithTransaction(
 	for i, rc := range rawChunks {
 		newChunks[i] = &chunkrepo.Chunk{
 			PatternID:    existing.ID,
-			SectionTitle: rc.SectionTitle,
-			ChunkIndex:   rc.ChunkIndex,
+			SectionTitle: rc.Title,
+			ChunkIndex:   i,
 			Content:      rc.Content,
 		}
 	}

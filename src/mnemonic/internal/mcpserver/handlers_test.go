@@ -59,12 +59,6 @@ func noopLogger() zerolog.Logger {
 	return zerolog.Nop()
 }
 
-// intPtr returns a pointer to the given int.
-func intPtr(v int) *int { return &v }
-
-// float64Ptr returns a pointer to the given float64.
-func float64Ptr(v float64) *float64 { return &v }
-
 // extractTextContent extracts the text string from a CallToolResult's Content.
 func extractTextContent(t *testing.T, result *mcp.CallToolResult) string {
 	t.Helper()
@@ -187,9 +181,10 @@ func TestHandleSearchPatterns_InvalidLimit(t *testing.T) {
 	deps := new(mockToolDeps)
 	handler := handleSearchPatterns(deps, noopLogger())
 
+	limit := 100
 	_, _, err := handler(context.Background(), nil, SearchPatternsInput{
 		Query: "anything",
-		Limit: intPtr(100),
+		Limit: &limit,
 	})
 
 	require.Error(t, err)
@@ -203,9 +198,10 @@ func TestHandleSearchPatterns_InvalidThreshold(t *testing.T) {
 	deps := new(mockToolDeps)
 	handler := handleSearchPatterns(deps, noopLogger())
 
+	threshold := 1.5
 	_, _, err := handler(context.Background(), nil, SearchPatternsInput{
 		Query:     "anything",
-		Threshold: float64Ptr(1.5),
+		Threshold: &threshold,
 	})
 
 	require.Error(t, err)
@@ -229,10 +225,12 @@ func TestHandleSearchPatterns_CustomLimitAndThreshold(t *testing.T) {
 		Threshold: 0.9,
 	}).Return(searchResult, nil)
 
+	limit := 5
+	threshold := 0.9
 	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
 		Query:     "go patterns",
-		Limit:     intPtr(5),
-		Threshold: float64Ptr(0.9),
+		Limit:     &limit,
+		Threshold: &threshold,
 	})
 
 	require.NoError(t, err)
@@ -267,15 +265,70 @@ func TestHandleSearchPatterns_WithTags(t *testing.T) {
 	deps.AssertExpectations(t)
 }
 
+func TestHandleSearchPatterns_WithLanguageFilter(t *testing.T) {
+	t.Parallel()
+
+	deps := new(mockToolDeps)
+	handler := handleSearchPatterns(deps, noopLogger())
+
+	searchResult := &searchsvc.SearchResult{
+		Query:   "error handling",
+		Matches: []*searchsvc.ChunkMatch{},
+	}
+	deps.On("SearchPatterns", mock.Anything, searchsvc.SearchOptions{
+		Query:     "error handling",
+		Limit:     10,
+		Threshold: 0.7,
+		Language:  "python",
+	}).Return(searchResult, nil)
+
+	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
+		Query:    "error handling",
+		Language: "python",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	deps.AssertExpectations(t)
+}
+
+func TestHandleSearchPatterns_WithDomainFilter(t *testing.T) {
+	t.Parallel()
+
+	deps := new(mockToolDeps)
+	handler := handleSearchPatterns(deps, noopLogger())
+
+	searchResult := &searchsvc.SearchResult{
+		Query:   "error handling",
+		Matches: []*searchsvc.ChunkMatch{},
+	}
+	deps.On("SearchPatterns", mock.Anything, searchsvc.SearchOptions{
+		Query:     "error handling",
+		Limit:     10,
+		Threshold: 0.7,
+		Domain:    "backend",
+	}).Return(searchResult, nil)
+
+	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
+		Query:  "error handling",
+		Domain: "backend",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	deps.AssertExpectations(t)
+}
+
 func TestHandleSearchPatterns_ZeroLimit(t *testing.T) {
 	t.Parallel()
 
 	deps := new(mockToolDeps)
 	handler := handleSearchPatterns(deps, noopLogger())
 
+	limit := 0
 	_, _, err := handler(context.Background(), nil, SearchPatternsInput{
 		Query: "anything",
-		Limit: intPtr(0),
+		Limit: &limit,
 	})
 
 	require.Error(t, err)
@@ -288,9 +341,10 @@ func TestHandleSearchPatterns_NegativeThreshold(t *testing.T) {
 	deps := new(mockToolDeps)
 	handler := handleSearchPatterns(deps, noopLogger())
 
+	threshold := -0.1
 	_, _, err := handler(context.Background(), nil, SearchPatternsInput{
 		Query:     "anything",
-		Threshold: float64Ptr(-0.1),
+		Threshold: &threshold,
 	})
 
 	require.Error(t, err)
@@ -404,9 +458,10 @@ func TestHandleFindRelatedPatterns_InvalidLimit(t *testing.T) {
 	deps := new(mockToolDeps)
 	handler := handleFindRelatedPatterns(deps, noopLogger())
 
+	limit := 25
 	_, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
 		PatternID: uuid.New().String(),
-		Limit:     intPtr(25),
+		Limit:     &limit,
 	})
 
 	require.Error(t, err)
@@ -430,9 +485,10 @@ func TestHandleFindRelatedPatterns_CustomLimit(t *testing.T) {
 		Return([]patternsvc.RelatedPatternResult{}, nil)
 	deps.On("GetPatternWithGraph", mock.Anything, patternID).Return(sourcePattern, nil, nil)
 
+	limit := 10
 	result, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
 		PatternID: patternID.String(),
-		Limit:     intPtr(10),
+		Limit:     &limit,
 	})
 
 	require.NoError(t, err)

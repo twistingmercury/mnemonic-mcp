@@ -935,7 +935,7 @@ func TestUpdate(t *testing.T) {
 
 		input := patternsvc.UpdateInput{
 			Name:    "go-error-handling-v2",
-			Content: "## Section One\nNew content.\n\n## Section Two\nMore new content.",
+			Content: "[//]: pattern\n## Section One\nNew content.\n\n[//]: pattern\n## Section Two\nMore new content.",
 			Tags:    []string{"golang", "errors"},
 		}
 
@@ -957,7 +957,7 @@ func TestUpdate(t *testing.T) {
 		// Chunk-aware path: delete stale chunks.
 		cr.On("DeleteByPatternID", mock.Anything, testPatternID).Return(nil)
 
-		// Create new chunks (content has 2 H2 sections → 2 chunks).
+		// Create new chunks (content has 2 PATTERN sections → 2 chunks).
 		cr.On("CreateBatch", mock.Anything, mock.MatchedBy(func(chunks []*chunkrepo.Chunk) bool {
 			return len(chunks) == 2
 		})).Return(nil)
@@ -1040,7 +1040,7 @@ func TestCreate_ChunkJobFailuresSummarisedInLog(t *testing.T) {
 
 	input := patternsvc.CreateInput{
 		Name:    "go-error-handling",
-		Content: "## Section One\nContent one.\n\n## Section Two\nContent two.",
+		Content: "[//]: pattern\n## Section One\nContent one.\n\n[//]: pattern\n## Section Two\nContent two.",
 	}
 
 	pr.On("Create", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
@@ -1086,7 +1086,7 @@ func TestUpdate_ChunkJobFailuresSummarisedInLog(t *testing.T) {
 
 	input := patternsvc.UpdateInput{
 		Name:    "go-error-handling-v2",
-		Content: "## Section One\nContent one.\n\n## Section Two\nContent two.",
+		Content: "[//]: pattern\n## Section One\nContent one.\n\n[//]: pattern\n## Section Two\nContent two.",
 	}
 
 	tb.On("Begin", mock.Anything).Return(tx, nil)
@@ -1509,8 +1509,8 @@ func TestCreate_ChunksContent(t *testing.T) {
 		input := patternsvc.CreateInput{
 			Name:        "chunked-pattern",
 			Description: &desc,
-			// Two H2 sections → 2 chunks.
-			Content:    "## Section One\nContent of section one.\n\n## Section Two\nContent of section two.",
+			// Two decorated sections → 2 chunks.
+			Content:    "[//]: pattern\n## Section One\nContent of section one.\n\n[//]: pattern\n## Section Two\nContent of section two.",
 			Tags:       []string{"test"},
 			EntityType: "go-pattern",
 			Language:   "go",
