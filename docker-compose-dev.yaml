@@ -72,6 +72,7 @@ services:
       MNEMONIC_DATABASE_NEO4J_PASSWORD: mnemonic_dev
       MNEMONIC_OPENAI_API_KEY: ${MNEMONIC_OPENAI_API_KEY}
       MNEMONIC_MCP_PORT: 8081
+      MNEMONIC_LOGGING_LEVEL: warn
     depends_on:
       migrate:
         condition: service_completed_successfully
