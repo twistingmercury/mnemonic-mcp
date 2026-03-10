@@ -166,7 +166,7 @@ Remove hardcoded enum constraints from `language` and `domain` on the pattern AP
   - Verify: `cd src/mnemonic && go build ./... && go vet ./... && go test ./internal/handlers/patterns/... && make analyze`
   - Done: All commands exit 0.
 
-- [ ] **Cycle 10 — Wire vocabulary through server startup**
+- [x] **Cycle 10 — Wire vocabulary through server startup**
   - Agent: `go software engineer`
   - Files:
     - `src/mnemonic/internal/server/server.go`

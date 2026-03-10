@@ -147,3 +147,8 @@
 - Updated server.go call site to pass config.VocabularyConfig{} placeholder (Cycle 10 wires real value)
 - Updated patterns_test.go: added testVocab with canonical lists; passes it to patterns.New in newTestRouter
 - go build ./... && go vet ./... && go test ./internal/handlers/patterns/... && make analyze all exit 0
+
+[Cycle 10 — Wire vocabulary through server startup] DONE
+- Changed config.VocabularyConfig{} placeholder on line 102 of server.go to cfg.Vocabulary
+- cfg (*config.MnemonicConfig) is the ListenAndServe parameter, already in scope at the call site
+- go build ./... && go vet ./... && make analyze all exit 0
