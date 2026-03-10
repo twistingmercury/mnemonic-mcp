@@ -318,10 +318,9 @@ func (h *Handler) Get(c *gin.Context) {
 // @Summary      Update agent
 // @Tags         Agents
 // @Accept       json
-// @Produce      json
 // @Param        name  path      string              true  "Agent name"
 // @Param        body  body      agentUpdateRequest  true  "Agent fields to update"
-// @Success      200   {object}  agentResponse
+// @Success      204   "No Content"
 // @Failure      400   {object}  handlers.ProblemDetail
 // @Failure      404   {object}  handlers.ProblemDetail
 // @Failure      409   {object}  handlers.ProblemDetail
@@ -358,24 +357,18 @@ func (h *Handler) Update(c *gin.Context) {
 		req.AllowedTools = []string{}
 	}
 
-	agent, err := h.svc.Update(c.Request.Context(), name, agentsvc.UpdateInput{
+	if _, err := h.svc.Update(c.Request.Context(), name, agentsvc.UpdateInput{
 		Description:  req.Description,
 		SystemPrompt: req.SystemPrompt,
 		Model:        req.Model,
 		AllowedTools: req.AllowedTools,
 		Version:      req.Version,
-	})
-	if err != nil {
+	}); err != nil {
 		handlers.RespondError(c, err)
 		return
 	}
 
-	resp, err := toAgentResponse(agent)
-	if err != nil {
-		handlers.RespondError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, resp)
+	c.Status(http.StatusNoContent)
 }
 
 // Delete handles DELETE /v1/api/agents/:name.

@@ -18,6 +18,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/twistingmercury/mnemonic/internal/config"
 	"github.com/twistingmercury/mnemonic/internal/handlers"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
 	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
@@ -27,22 +28,28 @@ import (
 // kebabCaseRe matches lowercase kebab-case identifiers (e.g., "go-pattern", "go-error-handling").
 var kebabCaseRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
-var allowedLanguages = []string{"go", "agnostic", "shell", "python", "typescript", "sql"}
-var allowedDomains = []string{"backend", "api-design", "testing", "frontend", "infrastructure", "data", "agnostic"}
-
 // Handler provides HTTP handlers for pattern CRUD and search operations.
 type Handler struct {
-	patternSvc patternsvc.Service
-	searchSvc  searchsvc.Service
+	patternSvc       patternsvc.Service
+	searchSvc        searchsvc.Service
+	allowedLanguages []string
+	allowedDomains   []string
 }
 
-// New creates a new pattern Handler backed by the given services.
-func New(patternSvc patternsvc.Service, searchSvc searchsvc.Service) *Handler {
+// New creates a new pattern Handler backed by the given services and vocabulary config.
+func New(patternSvc patternsvc.Service, searchSvc searchsvc.Service, vocab config.VocabularyConfig) *Handler {
+	langs := make([]string, len(vocab.Languages))
+	copy(langs, vocab.Languages)
+	doms := make([]string, len(vocab.Domains))
+	copy(doms, vocab.Domains)
 	return &Handler{
-		patternSvc: patternSvc,
-		searchSvc:  searchSvc,
+		patternSvc:       patternSvc,
+		searchSvc:        searchSvc,
+		allowedLanguages: langs,
+		allowedDomains:   doms,
 	}
 }
+
 
 // RegisterRoutes binds pattern endpoints to the given router group.
 // The group should be mounted at /v1/api.
@@ -330,7 +337,9 @@ func toAssociationInputs(reqs []associationRequest) []patternsvc.AssociationInpu
 
 // validatePatternFields checks field-level constraints for create/update and
 // returns a non-nil slice of FieldErrors when any constraint is violated.
-func validatePatternFields(name, content string, description *string, tags []string, entityType, language, domain string) []handlers.FieldError {
+// When allowedLanguages or allowedDomains are non-empty, the supplied values
+// must appear in the respective list.
+func (h *Handler) validatePatternFields(name, content string, description *string, tags []string, entityType, language, domain string) []handlers.FieldError {
 	var errs []handlers.FieldError
 
 	// name: must match ^[a-z][a-z0-9-]*$, length 1-128
@@ -371,18 +380,26 @@ func validatePatternFields(name, content string, description *string, tags []str
 		errs = append(errs, handlers.FieldError{Field: "entity_type", Code: "INVALID_FORMAT", Message: "entity_type must match ^[a-z][a-z0-9-]*$"})
 	}
 
-	// language: required, must be in allowedLanguages
+	// language: required, must be kebab-case, max 64 chars, and must be one of the allowed values.
 	if language == "" {
 		errs = append(errs, handlers.FieldError{Field: "language", Code: "REQUIRED", Message: "language is required"})
-	} else if !slices.Contains(allowedLanguages, language) {
-		errs = append(errs, handlers.FieldError{Field: "language", Code: "INVALID_VALUE", Message: "language must be one of: go, agnostic, shell, python, typescript, sql"})
+	} else if utf8.RuneCountInString(language) > 64 {
+		errs = append(errs, handlers.FieldError{Field: "language", Code: "MAX_LENGTH", Message: "language must be 64 characters or fewer"})
+	} else if !kebabCaseRe.MatchString(language) {
+		errs = append(errs, handlers.FieldError{Field: "language", Code: "INVALID_FORMAT", Message: "language must match ^[a-z][a-z0-9-]*$"})
+	} else if !slices.Contains(h.allowedLanguages, language) {
+		errs = append(errs, handlers.FieldError{Field: "language", Code: "INVALID_VALUE", Message: "language is not an allowed value"})
 	}
 
-	// domain: required, must be in allowedDomains
+	// domain: required, must be kebab-case, max 64 chars, and must be one of the allowed values.
 	if domain == "" {
 		errs = append(errs, handlers.FieldError{Field: "domain", Code: "REQUIRED", Message: "domain is required"})
-	} else if !slices.Contains(allowedDomains, domain) {
-		errs = append(errs, handlers.FieldError{Field: "domain", Code: "INVALID_VALUE", Message: "domain must be one of: backend, api-design, testing, frontend, infrastructure, data, agnostic"})
+	} else if utf8.RuneCountInString(domain) > 64 {
+		errs = append(errs, handlers.FieldError{Field: "domain", Code: "MAX_LENGTH", Message: "domain must be 64 characters or fewer"})
+	} else if !kebabCaseRe.MatchString(domain) {
+		errs = append(errs, handlers.FieldError{Field: "domain", Code: "INVALID_FORMAT", Message: "domain must match ^[a-z][a-z0-9-]*$"})
+	} else if !slices.Contains(h.allowedDomains, domain) {
+		errs = append(errs, handlers.FieldError{Field: "domain", Code: "INVALID_VALUE", Message: "domain is not an allowed value"})
 	}
 
 	return errs
@@ -426,7 +443,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	if fieldErrs := validatePatternFields(req.Name, req.Content, req.Description, req.Tags, req.EntityType, req.Language, req.Domain); len(fieldErrs) > 0 {
+	if fieldErrs := h.validatePatternFields(req.Name, req.Content, req.Description, req.Tags, req.EntityType, req.Language, req.Domain); len(fieldErrs) > 0 {
 		handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
 		return
 	}
@@ -643,10 +660,9 @@ func (h *Handler) Get(c *gin.Context) {
 // @Summary      Update pattern
 // @Tags         Patterns
 // @Accept       json
-// @Produce      json
 // @Param        id    path      string                true  "Pattern UUID"
 // @Param        body  body      patternUpdateRequest  true  "Pattern fields to update"
-// @Success      200   {object}  patternResponse
+// @Success      204   "No Content"
 // @Failure      400   {object}  handlers.ProblemDetail
 // @Failure      404   {object}  handlers.ProblemDetail
 // @Failure      409   {object}  handlers.ProblemDetail
@@ -667,7 +683,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	if fieldErrs := validatePatternFields(req.Name, req.Content, req.Description, req.Tags, req.EntityType, req.Language, req.Domain); len(fieldErrs) > 0 {
+	if fieldErrs := h.validatePatternFields(req.Name, req.Content, req.Description, req.Tags, req.EntityType, req.Language, req.Domain); len(fieldErrs) > 0 {
 		handlers.RespondValidationError(c, "The request body contains invalid fields", fieldErrs)
 		return
 	}
@@ -687,7 +703,7 @@ func (h *Handler) Update(c *gin.Context) {
 		req.RelatedPatterns = []string{}
 	}
 
-	pattern, err := h.patternSvc.Update(c.Request.Context(), id, patternsvc.UpdateInput{
+	if _, err := h.patternSvc.Update(c.Request.Context(), id, patternsvc.UpdateInput{
 		Name:              req.Name,
 		Description:       req.Description,
 		Content:           req.Content,
@@ -698,30 +714,12 @@ func (h *Handler) Update(c *gin.Context) {
 		Domain:            req.Domain,
 		Version:           req.Version,
 		RelatedPatterns:   req.RelatedPatterns,
-	})
-	if err != nil {
+	}); err != nil {
 		handlers.RespondError(c, err)
 		return
 	}
 
-	ctx := c.Request.Context()
-	pgAssocs, err := h.patternSvc.GetAgentAssociations(ctx, id)
-	if err != nil {
-		handlers.RespondError(c, err)
-		return
-	}
-
-	agentIDs := make([]uuid.UUID, len(pgAssocs))
-	for i, a := range pgAssocs {
-		agentIDs[i] = a.AgentID
-	}
-	names, err := h.patternSvc.ResolveAgentNames(ctx, agentIDs)
-	if err != nil {
-		handlers.RespondError(c, err)
-		return
-	}
-
-	c.JSON(http.StatusOK, toPatternResponse(pattern, nil, toAssociationResponses(pgAssocs, names)))
+	c.Status(http.StatusNoContent)
 }
 
 // Delete handles DELETE /v1/api/patterns/:id.
@@ -795,10 +793,9 @@ func (h *Handler) GetAgentAssociations(c *gin.Context) {
 // @Summary      Set pattern agent associations
 // @Tags         Patterns
 // @Accept       json
-// @Produce      json
 // @Param        id    path      string               true  "Pattern UUID"
 // @Param        body  body      associationsRequest  true  "Agent associations to set"
-// @Success      200   {object}  associationsResponse
+// @Success      204   "No Content"
 // @Failure      400   {object}  handlers.ProblemDetail
 // @Failure      404   {object}  handlers.ProblemDetail
 // @Failure      500   {object}  handlers.ProblemDetail
@@ -829,20 +826,7 @@ func (h *Handler) SetAgentAssociations(c *gin.Context) {
 		return
 	}
 
-	// Return the newly set associations.
-	assocs := make([]associationResponse, len(req.Associations))
-	for i, a := range req.Associations {
-		relevance := a.Relevance
-		if relevance == 0 {
-			relevance = 1.0
-		}
-		assocs[i] = associationResponse{
-			AgentName: a.AgentName,
-			Relevance: relevance,
-		}
-	}
-
-	c.JSON(http.StatusOK, associationsResponse{Associations: assocs})
+	c.Status(http.StatusNoContent)
 }
 
 // GetChunks handles GET /v1/api/patterns/:id/chunks.
@@ -916,7 +900,7 @@ func (h *Handler) Search(c *gin.Context) {
 
 	if utf8.RuneCountInString(query) > 1000 {
 		handlers.RespondValidationError(c, "Invalid query parameter", []handlers.FieldError{
-			{Field: "query", Code: "MAX_LENGTH", Message: "query must be 1000 characters or fewer"},
+			{Field: "q", Code: "MAX_LENGTH", Message: "query must be 1000 characters or fewer"},
 		})
 		return
 	}

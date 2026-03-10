@@ -37,7 +37,7 @@ type ProblemDetail struct {
 // @Description Field-level validation error returned inside a ProblemDetail
 type FieldError struct {
 	Field   string `json:"field"   example:"name"`
-	Code    string `json:"code"    example:"REQUIRED"`
+	Code    string `json:"code"    example:"REQUIRED" enums:"REQUIRED,MAX_LENGTH,MAX_ITEMS,TOO_LARGE,INVALID_FORMAT,INVALID_VALUE"`
 	Message string `json:"message" example:"name is required"`
 }
 

@@ -99,7 +99,7 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	// Build the Admin API router.
 	router := setupRouter(tel, requestMetrics)
 	operations.SetupHandlers(router, health.Descriptors())
-	RegisterAPIRoutes(router, svc)
+	RegisterAPIRoutes(router, svc, cfg.Vocabulary)
 
 	// Build the Admin API HTTP server.
 	adminServer := CreateHTTPServer(router, cfg)

@@ -323,7 +323,7 @@ func TestUpdate_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, http.StatusNoContent, w.Code)
 }
 
 func TestUpdate_NameMismatch(t *testing.T) {
@@ -533,6 +533,8 @@ func TestUpdate_CorruptDefinition(t *testing.T) {
 	svc := new(mockAgentService)
 	router := newTestRouter(svc)
 
+	// Update no longer reads the definition back, so a corrupt stored definition
+	// does not cause a 500 — the handler returns 204 No Content.
 	corrupt := makeCorruptAgent("corrupt-agent")
 	svc.On("Update", mock.Anything, "corrupt-agent", mock.Anything).Return(corrupt, nil)
 
@@ -548,11 +550,5 @@ func TestUpdate_CorruptDefinition(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusInternalServerError, w.Code)
-
-	var problem map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &problem))
-	assert.Equal(t, "https://mnemonic.example.com/problems/internal-error", problem["type"])
-	assert.Equal(t, "Internal Error", problem["title"])
-	assert.Equal(t, float64(http.StatusInternalServerError), problem["status"])
+	require.Equal(t, http.StatusNoContent, w.Code)
 }

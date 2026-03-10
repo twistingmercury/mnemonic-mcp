@@ -1,0 +1,166 @@
+
+[Cycle 1 — Add swaggo deps] DONE
+- `go build ./...` exits 0 (verify passed)
+- Note: go mod tidy removes the three swaggo pkgs as unused until actual imports are added in later cycles. They are available in the module cache and will be retained as direct deps once Cycles 5–10 add handler annotations and Cycle 10 wires the route.
+
+[Cycle 2 — Add `make docs-swagger` target] DONE
+- Added `docs-swagger` target to Makefile; runs `go install` for swag CLI then `swag init`
+- `make docs-swagger && test -f docs/swagger/swagger.json` exits 0 (verify passed)
+- Note: `swag init` emits a warning about no Go files in the module root dir but still generates docs/swagger/swagger.json, swagger.yaml, and docs.go correctly
+
+[Cycle 3 — Top-level annotations in cmd/main/main.go] DONE
+- Added @title, @version, @description, @host, @BasePath, @schemes annotations above func main()
+- `make docs-swagger && grep -q '"title"' ... && grep -q '"basePath"' ...` exits 0 (verify passed)
+- Note: generated docs.go imports github.com/swaggo/swag which go mod tidy had removed; re-ran go get for swaggo/swag, swaggo/gin-swagger, swaggo/files and go mod tidy — go build ./... now exits 0
+
+[Cycle 4 — Shared response type annotations in internal/handlers/respond.go] DONE
+- Added // @Description comments and example: struct tags to ProblemDetail, FieldError, Pagination
+- Added swagSharedTypes anchor function referencing Pagination and ProblemDetail to force definitions emission
+- `make docs-swagger && grep -q '"definitions"' docs/swagger/swagger.json` exits 0 (verify passed)
+- Post-cycle diagnostic fixes: changed //nolint:unused → //nolint:unusedfunc on swagSharedTypes (unusedfunc analyzer requires specific directive)
+- Note: github.com/swaggo/files listed as indirect in go.mod but flagged unused — will resolve in Cycle 10 when gin-swagger route is registered
+
+[Cycle 5 — Annotate internal/handlers/operations/operations.go] DONE
+- Added swag anchor types (versionResponse, healthResponse, healthDependency) and annotations to GetVersion
+- Added swagHealthAnchor stub for the external heartbeat.Handler GET /health route
+- `make docs-swagger && grep -q '"Operations"' docs/swagger/swagger.json` exits 0 (verify passed)
+- Post-cycle diagnostic fix: agent used //nolint:unused but linter is unusedfunc — changed all four to //nolint:unusedfunc
+- Note: github.com/swaggo/files go.mod warning remains; deferred to Cycle 10
+
+[Cycle 6 — Annotate internal/handlers/agents/agents.go] DONE
+- Added // @Description comments to agentCreateRequest, agentUpdateRequest, agentResponse, agentListResponse (required for --parseInternal to pick up unexported types)
+- Added @Summary, @Tags Agents, @Accept, @Produce, @Param, @Success, @Failure, @Router annotations to Create, List, Get, Update, Delete handlers
+- `make docs-swagger && grep -q '"Agents"' docs/swagger/swagger.json` exits 0 (verify passed)
+- Note: github.com/swaggo/files go.mod warning pre-existing; deferred to Cycle 10
+
+[Cycle 8 — Annotate internal/handlers/skills/skills.go] DONE
+- Added // @Description comments to skillCreateRequest, skillUpdateRequest, fileCounts, skillResponse, skillListResponse
+- Added @Summary, @Tags Skills, @Accept/@Produce, @Param, @Success, @Failure, @Router annotations to Create, List, Get, Update, Delete handlers
+- `make docs-swagger && grep -q '"Skills"' docs/swagger/swagger.json` exits 0 (verify passed)
+- `go build ./...` exits 0
+- Note: github.com/swaggo/files go.mod warning pre-existing; deferred to Cycle 10
+
+[Cycle 7 — Annotate internal/handlers/patterns/patterns.go] DONE
+- Added // @Description comments to all 12 unexported request/response types
+- Added @Summary, @Tags Patterns, @Accept/@Produce, @Param, @Success, @Failure, @Router annotations to all 9 handlers: Create, List, Search, Get, Update, Delete, GetAgentAssociations, SetAgentAssociations, GetChunks
+- `make docs-swagger && grep -q '"Patterns"' docs/swagger/swagger.json` exits 0 (verify passed)
+- `go build ./...` exits 0
+- Note: github.com/swaggo/files go.mod warning pre-existing; deferred to Cycle 10
+
+[Cycle 9 — Annotate internal/handlers/skillfiles/skillfiles.go] DONE
+- Added // @Description comments to fileCreateRequest, fileUpdateRequest, fileResponse, fileSummaryResponse, fileListResponse
+- Added 15 swag anchor stub functions (swagListScripts, swagCreateScript, swagGetScript, swagUpdateScript, swagDeleteScript + references + assets), all tagged SkillFiles, all marked //nolint:unusedfunc
+- `make docs-swagger && grep -q '"SkillFiles"' docs/swagger/swagger.json` exits 0 (verify passed)
+- `go build ./...` exits 0
+- Note: unusedfunc IDE diagnostics are expected — same pattern as prior cycles; github.com/swaggo/files go.mod warning pre-existing; deferred to Cycle 10
+
+[Cycle 10 — Register /swagger/*any route] DONE
+- Added swaggerFiles/ginSwagger imports and blank import of generated docs package to routes.go
+- Registered `router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))` before the v1 group
+- Added github.com/swaggo/gin-swagger v1.6.1 as direct dep; promoted swaggo/files from indirect to direct
+- `make docs-swagger && go build ./...` exits 0 (verify passed)
+- Note: IDE showed stale UnusedImport diagnostics for ginSwagger/swaggerFiles after the edit; `go build ./...` confirmed no actual compiler errors
+
+[Cycle 11 — Add swag gen step to build/Dockerfile] DONE
+- Added two RUN lines after `COPY . .` and before `RUN goimports -w .`:
+    RUN go install github.com/swaggo/swag/cmd/swag@latest
+    RUN swag init -g cmd/main/main.go -o docs/swagger --parseInternal
+- Fixed blocker: previous cycles used `//nolint:unusedfunc` which is not a valid golangci-lint linter name; the correct directive is `//nolint:unused`. Replaced in respond.go, operations/operations.go, skillfiles/skillfiles.go.
+- `docker build -f build/Dockerfile .` exits 0 (all 13 build steps + final image produced)
+
+[Cycle 12 — Add `docs/swagger/` to `.gitignore`] DONE
+- Created src/mnemonic/.gitignore with `docs/swagger/`
+- Added `src/mnemonic/docs/swagger/` to root .gitignore under # Go artifacts
+- `grep -q 'docs/swagger' src/mnemonic/.gitignore` exits 0 (verify passed)
+
+[Cycle 13 — Update src/mnemonic/README.md] DONE
+[Cycle 1 — Remove enum slices from handler] DONE
+- Deleted var allowedLanguages and var allowedDomains
+- Removed "slices" import
+- Replaced slices.Contains enum checks with kebabCaseRe.MatchString + len > 64 guard for both language and domain
+- go build ./... && go vet ./... && go test ./internal/handlers/patterns/... && make analyze all exit 0
+- Note: agent also fixed TestPatternCreate_InvalidLanguage in patterns_test.go (changed "brainfuck" → "INVALID_LANG" since brainfuck is valid kebab-case)
+- Added `## API Documentation` section between `## Building Locally` and `## CI/CD`
+- Section includes: `make docs-swagger` regen command, `/swagger/index.html` UI URL, contributor note about generated files not being committed
+- `grep -q 'docs-swagger' README.md && grep -q 'swagger/index.html' README.md` exits 0 (verify passed)
+
+[Cycle 2 — Fix unit tests: language/domain format] DONE
+- TestPatternCreate_InvalidLanguage already uses "INVALID_LANG" (set during Cycle 1) — not valid kebab-case, handler rejects with 400 as expected
+- No other tests assert 400 for kebab-valid language/domain values
+- `go test ./internal/handlers/patterns/...` exits 0 — no file changes needed
+
+[Cycle 3 — Fix E2E tests: language/domain format] DONE
+- In TestCreatePattern_ValidationErrors: changed "cobol" → "COBOL" and "not-a-valid-domain" → "Not A Domain"
+- In TestUpdatePattern_ValidationErrors: same two changes
+- `go build ./... && go vet ./...` in tests/e2e exits 0
+
+[Cycle 4 — Update OpenAPI spec: remove enums] DONE
+- Removed enum blocks from language and domain in all 10 locations:
+  - Pattern schema (language + domain)
+  - PatternCreate schema (language + domain)
+  - PatternUpdate schema (language + domain)
+  - GET /v1/api/patterns query params (language + domain)
+  - GET /v1/api/patterns/search query params (language + domain)
+- Each replaced with pattern: '^[a-z][a-z0-9-]*$' and maxLength: 64
+- Each description updated with "Allowed values defined in mnemonic-patterns/config/validate.yaml."
+- 12 enum: entries remain in file, all on non-language/domain fields (e.g. enrichment_status)
+
+[Cycle 5 — PUT handlers return 204] DONE
+- patterns.go Update: removed post-update GetAgentAssociations/ResolveAgentNames calls, changed c.JSON(200,...) → c.Status(204)
+- patterns.go SetAgentAssociations: removed assocs slice construction, changed c.JSON(200,...) → c.Status(204)
+- agents.go Update: removed toAgentResponse call, changed c.JSON(200,...) → c.Status(204)
+- skills.go Update: removed toSkillResponse call, changed c.JSON(200,...) → c.Status(204)
+- skillfiles.go updateFile: removed toFileResponse call, changed c.JSON(200,...) → c.Status(204)
+- All swaggo @Success annotations updated from 200 to 204 on PUT handlers
+- mnemonic-v1.yaml: all 7 PUT operations changed from 200 response with body to 204 No Content
+- Unit tests updated: patterns_test.go, agents_test.go, skills_test.go, skillfiles_test.go
+- go build ./... && go vet ./... && make analyze all exit 0
+
+[Cycle 6 — Fix unit tests: PUT returns 204] DONE
+- Verify ran: go test ./internal/handlers/... exits 0 (all 5 test packages pass)
+- No file changes needed — Cycle 5 already updated all unit test assertions from StatusOK to StatusNoContent and removed body assertions
+
+[Cycle 7 — Fix E2E tests: PUT returns 204] DONE
+- agents_test.go: renamed TestUpdateAgent_HappyPathReturns200 → TestUpdateAgent_HappyPathReturns204; fixed StatusOK → StatusNoContent + removed body assertions in TestUpdateAgent_HappyPathReturns204, TestUpdateAgent_FullReplacement, TestDeleteAgent_CascadesPatternAssociations
+- patterns_test.go: renamed TestUpdatePattern_ReturnsOKWithUpdatedPattern → TestUpdatePattern_ReturnsNoContent; fixed 4 pattern update tests and 2 SetPatternAgentAssociations tests and TestPatternEnrichment_ContentUpdateTriggersReenrichment
+- skillfiles_test.go: fixed TestUpdateSkillFile_Success
+- skills_test.go: fixed TestUpdateSkill_Success and TestUpdateSkill_FullReplacement
+- Docker image rebuilt (docker compose build mnemonic_api) since image predated cycle 5 handler changes
+- bash tests/run-e2e.sh exits 0, all tests pass (ok ...tests/e2e 40.133s)
+
+[Cycle 8 — Add VocabularyConfig to config package] DONE
+- Added VocabularyConfig struct with Languages/Domains []string fields
+- Added Vocabulary VocabularyConfig field to MnemonicConfig
+- Added validate() method on VocabularyConfig (fail fast: empty Languages or Domains returns ValidationError)
+- Called c.Vocabulary.validate() inside MnemonicConfig.Validate()
+- Created src/mnemonic/config.yaml with canonical language/domain lists
+- Updated config_test.go: added vocabulary to validConfig() helper and inline YAML fixtures; added applyTestVocabulary() viper helper; added TestVocabularyConfig_Validate covering 3 cases
+- go build ./... && go vet ./... && go test ./internal/config/... && make analyze all exit 0
+
+[Cycle 9 — Wire vocabulary into pattern handler] DONE
+- Added allowedLanguages/allowedDomains []string fields to Handler struct
+- Updated New() to accept config.VocabularyConfig as third param; stores vocab slices on handler
+- Converted validatePatternFields standalone function to method on *Handler
+- Fixed len() → utf8.RuneCountInString() bug for language and domain max-length checks
+- Added containsString() helper; added membership checks for language and domain (INVALID_VALUE when not in allowed list)
+- Updated routes.go: RegisterAPIRoutes accepts vocab config.VocabularyConfig as third param; passes it to patternhandler.New
+- Updated server.go call site to pass config.VocabularyConfig{} placeholder (Cycle 10 wires real value)
+- Updated patterns_test.go: added testVocab with canonical lists; passes it to patterns.New in newTestRouter
+- go build ./... && go vet ./... && go test ./internal/handlers/patterns/... && make analyze all exit 0
+
+[Cycle 10 — Wire vocabulary through server startup] DONE
+- Changed config.VocabularyConfig{} placeholder on line 102 of server.go to cfg.Vocabulary
+- cfg (*config.MnemonicConfig) is the ListenAndServe parameter, already in scope at the call site
+- go build ./... && go vet ./... && make analyze all exit 0
+
+[Cycle 11 — Fix unit tests: vocabulary validation] DONE
+- testVocab and newTestRouter already wired from Cycle 9; no constructor changes needed
+- Added TestPatternCreate_InvalidLanguageValue: sends "brainfuck" (valid kebab, not in vocab) → expects 400
+- Added TestPatternCreate_InvalidDomainValue: sends "not-a-valid-domain" (valid kebab, not in vocab) → expects 400
+- Added TestPatternUpdate_InvalidLanguageValue: PUT with "brainfuck" language → expects 400
+- Added TestPatternUpdate_InvalidDomainValue: PUT with "not-a-valid-domain" domain → expects 400
+- go test ./internal/handlers/patterns/... exits 0
+
+[Cycle 12 — Run E2E tests until all pass] DONE
+- Fixed agents_test.go line 1053: changed Domain: "agnostic" → Domain: "backend" (agnostic is a valid language but not a valid domain)
+- bash tests/run-e2e.sh exits 0, all 799 test cases pass (ok ...tests/e2e 41.615s)

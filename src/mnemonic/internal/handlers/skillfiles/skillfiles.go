@@ -359,21 +359,16 @@ func (h *Handler) updateFile(fileType string) gin.HandlerFunc {
 			encoding = "utf-8"
 		}
 
-		file, err := h.svc.Update(c.Request.Context(), skillName, fileType, filename, skillfilesvc.UpdateInput{
+		if _, err := h.svc.Update(c.Request.Context(), skillName, fileType, filename, skillfilesvc.UpdateInput{
 			ContentType: req.ContentType,
 			Content:     req.Content,
 			Encoding:    encoding,
-		})
-		if err != nil {
+		}); err != nil {
 			handlers.RespondError(c, err)
 			return
 		}
 
-		resp := toFileResponse(file)
-		resp.ContentType = req.ContentType
-		resp.Encoding = encoding
-
-		c.JSON(http.StatusOK, resp)
+		c.Status(http.StatusNoContent)
 	}
 }
 
@@ -390,4 +385,3 @@ func (h *Handler) deleteFile(fileType string) gin.HandlerFunc {
 		c.Status(http.StatusNoContent)
 	}
 }
-

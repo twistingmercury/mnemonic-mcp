@@ -5,6 +5,7 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	_ "github.com/twistingmercury/mnemonic/docs/swagger"
+	"github.com/twistingmercury/mnemonic/internal/config"
 	agenthandler "github.com/twistingmercury/mnemonic/internal/handlers/agents"
 	patternhandler "github.com/twistingmercury/mnemonic/internal/handlers/patterns"
 	skillfilehandler "github.com/twistingmercury/mnemonic/internal/handlers/skillfiles"
@@ -27,13 +28,13 @@ type Services struct {
 
 // RegisterAPIRoutes creates all domain handlers and registers their routes
 // on the /v1/api route group. Call this after setting up middleware.
-func RegisterAPIRoutes(router *gin.Engine, svc Services) {
+func RegisterAPIRoutes(router *gin.Engine, svc Services, vocab config.VocabularyConfig) {
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	v1 := router.Group("/v1/api")
 
 	agenthandler.New(svc.Agent).RegisterRoutes(v1)
-	patternhandler.New(svc.Pattern, svc.Search).RegisterRoutes(v1)
+	patternhandler.New(svc.Pattern, svc.Search, vocab).RegisterRoutes(v1)
 	skillhandler.New(svc.Skill).RegisterRoutes(v1)
 	skillfilehandler.New(svc.SkillFile).RegisterRoutes(v1)
 }

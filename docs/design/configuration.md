@@ -116,10 +116,10 @@ server:
     host: 0.0.0.0
     port: 8081
     read_timeout: 30s
-    write_timeout: 120s  # Longer for SSE streaming
+    write_timeout: 120s # Longer for SSE streaming
     idle_timeout: 120s
     shutdown_timeout: 5s
-    session_timeout: 30m  # MCP session timeout
+    session_timeout: 30m # MCP session timeout
 
     # TLS configuration (optional, typically handled by reverse proxy)
     tls:
@@ -197,8 +197,8 @@ enrichment:
   related_to_min_similarity: 0.3
 
   # Retention periods for completed/failed enrichment jobs
-  completed_retention: 168h   # 7 days
-  failed_retention: 720h      # 30 days
+  completed_retention: 168h # 7 days
+  failed_retention: 720h # 30 days
 
 # Logging
 logging:
@@ -291,70 +291,70 @@ The otelx package handles the complexity of OpenTelemetry SDK setup, allowing Mn
 
 [Table of Contents](#table-of-contents)
 
-| Setting                                   | Type     | Default                  | Environment Variable                               | Description                                                                      |
-| ----------------------------------------- | -------- | ------------------------ | -------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `server.admin.host`                       | string   | `0.0.0.0`                | `MNEMONIC_SERVER_ADMIN_HOST`                       | Admin API listen address                                                         |
-| `server.admin.port`                       | int      | `8080`                   | `MNEMONIC_SERVER_ADMIN_PORT`                       | Admin API listen port                                                            |
-| `server.admin.read_timeout`               | duration | `30s`                    | `MNEMONIC_SERVER_ADMIN_READ_TIMEOUT`               | Admin API read timeout                                                           |
-| `server.admin.write_timeout`              | duration | `30s`                    | `MNEMONIC_SERVER_ADMIN_WRITE_TIMEOUT`              | Admin API write timeout                                                          |
-| `server.admin.idle_timeout`               | duration | `120s`                   | `MNEMONIC_SERVER_ADMIN_IDLE_TIMEOUT`               | Admin API idle timeout                                                           |
-| `server.admin.shutdown_timeout`           | duration | `5s`                     | `MNEMONIC_SERVER_ADMIN_SHUTDOWN_TIMEOUT`           | Admin API graceful shutdown timeout                                              |
-| `server.admin.tls.enabled`                | bool     | `false`                  | `MNEMONIC_SERVER_ADMIN_TLS_ENABLED`                | Enable TLS for Admin API                                                         |
-| `server.admin.tls.cert_file`              | string   | `""`                     | `MNEMONIC_SERVER_ADMIN_TLS_CERT_FILE`              | Admin API TLS certificate path                                                   |
-| `server.admin.tls.key_file`               | string   | `""`                     | `MNEMONIC_SERVER_ADMIN_TLS_KEY_FILE`               | Admin API TLS key path                                                           |
-| `server.mcp.host`                         | string   | `0.0.0.0`                | `MNEMONIC_SERVER_MCP_HOST`                         | MCP endpoint listen address                                                      |
-| `server.mcp.port`                         | int      | `8081`                   | `MNEMONIC_SERVER_MCP_PORT`                         | MCP endpoint listen port                                                         |
-| `server.mcp.read_timeout`                 | duration | `30s`                    | `MNEMONIC_SERVER_MCP_READ_TIMEOUT`                 | MCP endpoint read timeout                                                        |
-| `server.mcp.write_timeout`                | duration | `120s`                   | `MNEMONIC_SERVER_MCP_WRITE_TIMEOUT`                | MCP endpoint write timeout (longer for SSE streaming)                            |
-| `server.mcp.idle_timeout`                 | duration | `120s`                   | `MNEMONIC_SERVER_MCP_IDLE_TIMEOUT`                 | MCP endpoint idle timeout                                                        |
-| `server.mcp.shutdown_timeout`             | duration | `5s`                     | `MNEMONIC_SERVER_MCP_SHUTDOWN_TIMEOUT`             | MCP endpoint graceful shutdown timeout                                           |
-| `server.mcp.session_timeout`              | duration | `30m`                    | `MNEMONIC_SERVER_MCP_SESSION_TIMEOUT`              | MCP session timeout                                                              |
-| `server.mcp.tls.enabled`                  | bool     | `false`                  | `MNEMONIC_SERVER_MCP_TLS_ENABLED`                  | Enable TLS for MCP endpoint                                                      |
-| `server.mcp.tls.cert_file`                | string   | `""`                     | `MNEMONIC_SERVER_MCP_TLS_CERT_FILE`                | MCP endpoint TLS certificate path                                                |
-| `server.mcp.tls.key_file`                 | string   | `""`                     | `MNEMONIC_SERVER_MCP_TLS_KEY_FILE`                 | MCP endpoint TLS key path                                                        |
-| `database.postgres.host`                  | string   | `localhost`              | `MNEMONIC_DATABASE_POSTGRES_HOST`                  | PostgreSQL host                                                                  |
-| `database.postgres.port`                  | int      | `5432`                   | `MNEMONIC_DATABASE_POSTGRES_PORT`                  | PostgreSQL port                                                                  |
-| `database.postgres.database`              | string   | `mnemonic`               | `MNEMONIC_DATABASE_POSTGRES_DATABASE`              | Database name                                                                    |
-| `database.postgres.username`              | string   | `mnemonic`               | `MNEMONIC_DATABASE_POSTGRES_USERNAME`              | Database username                                                                |
-| `database.postgres.password`              | string   | `""`                     | `MNEMONIC_DATABASE_POSTGRES_PASSWORD`              | Database password                                                                |
-| `database.postgres.ssl_mode`              | string   | `prefer`                 | `MNEMONIC_DATABASE_POSTGRES_SSL_MODE`              | SSL mode                                                                         |
-| `database.postgres.max_open_conns`        | int      | `25`                     | `MNEMONIC_DATABASE_POSTGRES_MAX_OPEN_CONNS`        | Max open connections                                                             |
-| `database.postgres.max_idle_conns`        | int      | `5`                      | `MNEMONIC_DATABASE_POSTGRES_MAX_IDLE_CONNS`        | Max idle connections                                                             |
-| `database.postgres.conn_max_lifetime`     | duration | `5m`                     | `MNEMONIC_DATABASE_POSTGRES_CONN_MAX_LIFETIME`     | Connection max lifetime                                                          |
-| `database.neo4j.uri`                      | string   | `bolt://localhost:7687`  | `MNEMONIC_DATABASE_NEO4J_URI`                      | Neo4j URI                                                                        |
-| `database.neo4j.username`                 | string   | `neo4j`                  | `MNEMONIC_DATABASE_NEO4J_USERNAME`                 | Neo4j username                                                                   |
-| `database.neo4j.password`                 | string   | `""`                     | `MNEMONIC_DATABASE_NEO4J_PASSWORD`                 | Neo4j password                                                                   |
-| `database.neo4j.database`                 | string   | `neo4j`                  | `MNEMONIC_DATABASE_NEO4J_DATABASE`                 | Neo4j database                                                                   |
-| `database.neo4j.max_connection_pool_size` | int      | `50`                     | `MNEMONIC_DATABASE_NEO4J_MAX_CONNECTION_POOL_SIZE` | Neo4j max connection pool size                                                   |
-| `database.neo4j.connection_acquisition_timeout` | duration | `60s`              | `MNEMONIC_DATABASE_NEO4J_CONNECTION_ACQUISITION_TIMEOUT` | Neo4j connection acquisition timeout                                       |
-| `openai.api_key`                          | string   | `""`                     | `MNEMONIC_OPENAI_API_KEY`                          | OpenAI API key                                                                   |
-| `openai.embedding_model`                  | string   | `text-embedding-3-small` | `MNEMONIC_OPENAI_EMBEDDING_MODEL`                  | Embedding model                                                                  |
-| `openai.embedding_dimensions`             | int      | `1536`                   | `MNEMONIC_OPENAI_EMBEDDING_DIMENSIONS`             | Embedding dimensions                                                             |
-| `openai.extraction_model`                 | string   | `gpt-4o-mini`            | `MNEMONIC_OPENAI_EXTRACTION_MODEL`                 | Entity extraction model                                                          |
-| `rate_limit.enabled`                      | bool     | `false`                  | `MNEMONIC_RATE_LIMIT_ENABLED`                      | Enable rate limiting (Post-MVP)                                                  |
-| `rate_limit.requests_per_second`          | int      | `100`                    | `MNEMONIC_RATE_LIMIT_REQUESTS_PER_SECOND`          | Global RPS limit (Post-MVP)                                                      |
-| `rate_limit.burst_size`                   | int      | `200`                    | `MNEMONIC_RATE_LIMIT_BURST_SIZE`                   | Burst size (Post-MVP)                                                            |
-| `rate_limit.per_user.requests_per_minute` | int      | `60`                     | `MNEMONIC_RATE_LIMIT_PER_USER_REQUESTS_PER_MINUTE` | Per-user RPM (Post-MVP)                                                          |
-| `rate_limit.per_user.burst_size`          | int      | `10`                     | `MNEMONIC_RATE_LIMIT_PER_USER_BURST_SIZE`          | Per-user burst size (Post-MVP)                                                   |
-| `enrichment.worker_count`                 | int      | `2`                      | `MNEMONIC_ENRICHMENT_WORKER_COUNT`                 | Concurrent workers                                                               |
-| `enrichment.poll_interval`                | duration | `5s`                     | `MNEMONIC_ENRICHMENT_POLL_INTERVAL`                | Job poll interval                                                                |
-| `enrichment.max_attempts`                 | int      | `3`                      | `MNEMONIC_ENRICHMENT_MAX_ATTEMPTS`                 | Max retry attempts                                                               |
-| `enrichment.retry_delay`                  | duration | `30s`                    | `MNEMONIC_ENRICHMENT_RETRY_DELAY`                  | Delay between retry attempts for failed enrichment jobs                                      |
-| `enrichment.job_timeout`                  | duration | `5m`                     | `MNEMONIC_ENRICHMENT_JOB_TIMEOUT`                  | Maximum time for a single enrichment job; stuck jobs are reclaimed after this duration        |
-| `enrichment.related_to_min_similarity`    | float    | `0.3`                    | `MNEMONIC_ENRICHMENT_RELATED_TO_MIN_SIMILARITY`    | Minimum concept-overlap similarity (0.0-1.0) for creating RELATED_TO edges between patterns |
-| `enrichment.completed_retention`          | duration | `168h`                   | `MNEMONIC_ENRICHMENT_COMPLETED_RETENTION`          | Retention period for completed enrichment jobs (default 7 days); older jobs are deleted       |
-| `enrichment.failed_retention`             | duration | `720h`                   | `MNEMONIC_ENRICHMENT_FAILED_RETENTION`             | Retention period for failed enrichment jobs (default 30 days); older jobs are deleted         |
-| `observability.log_db_statements`         | bool     | `false`                  | `MNEMONIC_OBSERVABILITY_LOG_DB_STATEMENTS`         | Log SQL/Cypher queries at DEBUG level                                                        |
-| `logging.level`                           | string   | `info`                   | `MNEMONIC_LOGGING_LEVEL`                           | Log level                                                                        |
-| `logging.format`                          | string   | `json`                   | `MNEMONIC_LOGGING_FORMAT`                          | Log format                                                                       |
-| `observability.metrics.enabled`           | bool     | `true`                   | `MNEMONIC_OBSERVABILITY_METRICS_ENABLED`           | Enable metrics                                                                   |
-| `observability.metrics.path`              | string   | `/metrics`               | `MNEMONIC_OBSERVABILITY_METRICS_PATH`              | Metrics endpoint path                                                            |
-| `observability.metrics.port`              | int      | `9090`                   | `MNEMONIC_OBSERVABILITY_METRICS_PORT`              | Metrics server port                                                              |
-| `observability.health.enabled`            | bool     | `true`                   | `MNEMONIC_OBSERVABILITY_HEALTH_ENABLED`            | Enable health check                                                              |
-| `observability.health.path`               | string   | `/health`                | `MNEMONIC_OBSERVABILITY_HEALTH_PATH`               | Health check endpoint path                                                       |
-| `observability.tracing.enabled`           | bool     | `false`                  | `MNEMONIC_OBSERVABILITY_TRACING_ENABLED`           | Enable distributed tracing                                                       |
-| `observability.tracing.endpoint`          | string   | `""`                     | `MNEMONIC_OBSERVABILITY_TRACING_ENDPOINT`          | OTLP collector endpoint                                                          |
-| `observability.tracing.otlp_insecure`     | bool     | `true`                   | `MNEMONIC_OBSERVABILITY_TRACING_OTLP_INSECURE`     | Use insecure OTLP connection (local development only; production should use TLS) |
+| Setting                                         | Type     | Default                  | Environment Variable                                     | Description                                                                                 |
+| ----------------------------------------------- | -------- | ------------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `server.admin.host`                             | string   | `0.0.0.0`                | `MNEMONIC_SERVER_ADMIN_HOST`                             | Admin API listen address                                                                    |
+| `server.admin.port`                             | int      | `8080`                   | `MNEMONIC_SERVER_ADMIN_PORT`                             | Admin API listen port                                                                       |
+| `server.admin.read_timeout`                     | duration | `30s`                    | `MNEMONIC_SERVER_ADMIN_READ_TIMEOUT`                     | Admin API read timeout                                                                      |
+| `server.admin.write_timeout`                    | duration | `30s`                    | `MNEMONIC_SERVER_ADMIN_WRITE_TIMEOUT`                    | Admin API write timeout                                                                     |
+| `server.admin.idle_timeout`                     | duration | `120s`                   | `MNEMONIC_SERVER_ADMIN_IDLE_TIMEOUT`                     | Admin API idle timeout                                                                      |
+| `server.admin.shutdown_timeout`                 | duration | `5s`                     | `MNEMONIC_SERVER_ADMIN_SHUTDOWN_TIMEOUT`                 | Admin API graceful shutdown timeout                                                         |
+| `server.admin.tls.enabled`                      | bool     | `false`                  | `MNEMONIC_SERVER_ADMIN_TLS_ENABLED`                      | Enable TLS for Admin API                                                                    |
+| `server.admin.tls.cert_file`                    | string   | `""`                     | `MNEMONIC_SERVER_ADMIN_TLS_CERT_FILE`                    | Admin API TLS certificate path                                                              |
+| `server.admin.tls.key_file`                     | string   | `""`                     | `MNEMONIC_SERVER_ADMIN_TLS_KEY_FILE`                     | Admin API TLS key path                                                                      |
+| `server.mcp.host`                               | string   | `0.0.0.0`                | `MNEMONIC_SERVER_MCP_HOST`                               | MCP endpoint listen address                                                                 |
+| `server.mcp.port`                               | int      | `8081`                   | `MNEMONIC_SERVER_MCP_PORT`                               | MCP endpoint listen port                                                                    |
+| `server.mcp.read_timeout`                       | duration | `30s`                    | `MNEMONIC_SERVER_MCP_READ_TIMEOUT`                       | MCP endpoint read timeout                                                                   |
+| `server.mcp.write_timeout`                      | duration | `120s`                   | `MNEMONIC_SERVER_MCP_WRITE_TIMEOUT`                      | MCP endpoint write timeout (longer for SSE streaming)                                       |
+| `server.mcp.idle_timeout`                       | duration | `120s`                   | `MNEMONIC_SERVER_MCP_IDLE_TIMEOUT`                       | MCP endpoint idle timeout                                                                   |
+| `server.mcp.shutdown_timeout`                   | duration | `5s`                     | `MNEMONIC_SERVER_MCP_SHUTDOWN_TIMEOUT`                   | MCP endpoint graceful shutdown timeout                                                      |
+| `server.mcp.session_timeout`                    | duration | `30m`                    | `MNEMONIC_SERVER_MCP_SESSION_TIMEOUT`                    | MCP session timeout                                                                         |
+| `server.mcp.tls.enabled`                        | bool     | `false`                  | `MNEMONIC_SERVER_MCP_TLS_ENABLED`                        | Enable TLS for MCP endpoint                                                                 |
+| `server.mcp.tls.cert_file`                      | string   | `""`                     | `MNEMONIC_SERVER_MCP_TLS_CERT_FILE`                      | MCP endpoint TLS certificate path                                                           |
+| `server.mcp.tls.key_file`                       | string   | `""`                     | `MNEMONIC_SERVER_MCP_TLS_KEY_FILE`                       | MCP endpoint TLS key path                                                                   |
+| `database.postgres.host`                        | string   | `localhost`              | `MNEMONIC_DATABASE_POSTGRES_HOST`                        | PostgreSQL host                                                                             |
+| `database.postgres.port`                        | int      | `5432`                   | `MNEMONIC_DATABASE_POSTGRES_PORT`                        | PostgreSQL port                                                                             |
+| `database.postgres.database`                    | string   | `mnemonic`               | `MNEMONIC_DATABASE_POSTGRES_DATABASE`                    | Database name                                                                               |
+| `database.postgres.username`                    | string   | `mnemonic`               | `MNEMONIC_DATABASE_POSTGRES_USERNAME`                    | Database username                                                                           |
+| `database.postgres.password`                    | string   | `""`                     | `MNEMONIC_DATABASE_POSTGRES_PASSWORD`                    | Database password                                                                           |
+| `database.postgres.ssl_mode`                    | string   | `prefer`                 | `MNEMONIC_DATABASE_POSTGRES_SSL_MODE`                    | SSL mode                                                                                    |
+| `database.postgres.max_open_conns`              | int      | `25`                     | `MNEMONIC_DATABASE_POSTGRES_MAX_OPEN_CONNS`              | Max open connections                                                                        |
+| `database.postgres.max_idle_conns`              | int      | `5`                      | `MNEMONIC_DATABASE_POSTGRES_MAX_IDLE_CONNS`              | Max idle connections                                                                        |
+| `database.postgres.conn_max_lifetime`           | duration | `5m`                     | `MNEMONIC_DATABASE_POSTGRES_CONN_MAX_LIFETIME`           | Connection max lifetime                                                                     |
+| `database.neo4j.uri`                            | string   | `bolt://localhost:7687`  | `MNEMONIC_DATABASE_NEO4J_URI`                            | Neo4j URI                                                                                   |
+| `database.neo4j.username`                       | string   | `neo4j`                  | `MNEMONIC_DATABASE_NEO4J_USERNAME`                       | Neo4j username                                                                              |
+| `database.neo4j.password`                       | string   | `""`                     | `MNEMONIC_DATABASE_NEO4J_PASSWORD`                       | Neo4j password                                                                              |
+| `database.neo4j.database`                       | string   | `neo4j`                  | `MNEMONIC_DATABASE_NEO4J_DATABASE`                       | Neo4j database                                                                              |
+| `database.neo4j.max_connection_pool_size`       | int      | `50`                     | `MNEMONIC_DATABASE_NEO4J_MAX_CONNECTION_POOL_SIZE`       | Neo4j max connection pool size                                                              |
+| `database.neo4j.connection_acquisition_timeout` | duration | `60s`                    | `MNEMONIC_DATABASE_NEO4J_CONNECTION_ACQUISITION_TIMEOUT` | Neo4j connection acquisition timeout                                                        |
+| `openai.api_key`                                | string   | `""`                     | `MNEMONIC_OPENAI_API_KEY`                                | OpenAI API key                                                                              |
+| `openai.embedding_model`                        | string   | `text-embedding-3-small` | `MNEMONIC_OPENAI_EMBEDDING_MODEL`                        | Embedding model                                                                             |
+| `openai.embedding_dimensions`                   | int      | `1536`                   | `MNEMONIC_OPENAI_EMBEDDING_DIMENSIONS`                   | Embedding dimensions                                                                        |
+| `openai.extraction_model`                       | string   | `gpt-4o-mini`            | `MNEMONIC_OPENAI_EXTRACTION_MODEL`                       | Entity extraction model                                                                     |
+| `rate_limit.enabled`                            | bool     | `false`                  | `MNEMONIC_RATE_LIMIT_ENABLED`                            | Enable rate limiting (Post-MVP)                                                             |
+| `rate_limit.requests_per_second`                | int      | `100`                    | `MNEMONIC_RATE_LIMIT_REQUESTS_PER_SECOND`                | Global RPS limit (Post-MVP)                                                                 |
+| `rate_limit.burst_size`                         | int      | `200`                    | `MNEMONIC_RATE_LIMIT_BURST_SIZE`                         | Burst size (Post-MVP)                                                                       |
+| `rate_limit.per_user.requests_per_minute`       | int      | `60`                     | `MNEMONIC_RATE_LIMIT_PER_USER_REQUESTS_PER_MINUTE`       | Per-user RPM (Post-MVP)                                                                     |
+| `rate_limit.per_user.burst_size`                | int      | `10`                     | `MNEMONIC_RATE_LIMIT_PER_USER_BURST_SIZE`                | Per-user burst size (Post-MVP)                                                              |
+| `enrichment.worker_count`                       | int      | `2`                      | `MNEMONIC_ENRICHMENT_WORKER_COUNT`                       | Concurrent workers                                                                          |
+| `enrichment.poll_interval`                      | duration | `5s`                     | `MNEMONIC_ENRICHMENT_POLL_INTERVAL`                      | Job poll interval                                                                           |
+| `enrichment.max_attempts`                       | int      | `3`                      | `MNEMONIC_ENRICHMENT_MAX_ATTEMPTS`                       | Max retry attempts                                                                          |
+| `enrichment.retry_delay`                        | duration | `30s`                    | `MNEMONIC_ENRICHMENT_RETRY_DELAY`                        | Delay between retry attempts for failed enrichment jobs                                     |
+| `enrichment.job_timeout`                        | duration | `5m`                     | `MNEMONIC_ENRICHMENT_JOB_TIMEOUT`                        | Maximum time for a single enrichment job; stuck jobs are reclaimed after this duration      |
+| `enrichment.related_to_min_similarity`          | float    | `0.3`                    | `MNEMONIC_ENRICHMENT_RELATED_TO_MIN_SIMILARITY`          | Minimum concept-overlap similarity (0.0-1.0) for creating RELATED_TO edges between patterns |
+| `enrichment.completed_retention`                | duration | `168h`                   | `MNEMONIC_ENRICHMENT_COMPLETED_RETENTION`                | Retention period for completed enrichment jobs (default 7 days); older jobs are deleted     |
+| `enrichment.failed_retention`                   | duration | `720h`                   | `MNEMONIC_ENRICHMENT_FAILED_RETENTION`                   | Retention period for failed enrichment jobs (default 30 days); older jobs are deleted       |
+| `observability.log_db_statements`               | bool     | `false`                  | `MNEMONIC_OBSERVABILITY_LOG_DB_STATEMENTS`               | Log SQL/Cypher queries at DEBUG level                                                       |
+| `logging.level`                                 | string   | `info`                   | `MNEMONIC_LOGGING_LEVEL`                                 | Log level                                                                                   |
+| `logging.format`                                | string   | `json`                   | `MNEMONIC_LOGGING_FORMAT`                                | Log format                                                                                  |
+| `observability.metrics.enabled`                 | bool     | `true`                   | `MNEMONIC_OBSERVABILITY_METRICS_ENABLED`                 | Enable metrics                                                                              |
+| `observability.metrics.path`                    | string   | `/metrics`               | `MNEMONIC_OBSERVABILITY_METRICS_PATH`                    | Metrics endpoint path                                                                       |
+| `observability.metrics.port`                    | int      | `9090`                   | `MNEMONIC_OBSERVABILITY_METRICS_PORT`                    | Metrics server port                                                                         |
+| `observability.health.enabled`                  | bool     | `true`                   | `MNEMONIC_OBSERVABILITY_HEALTH_ENABLED`                  | Enable health check                                                                         |
+| `observability.health.path`                     | string   | `/health`                | `MNEMONIC_OBSERVABILITY_HEALTH_PATH`                     | Health check endpoint path                                                                  |
+| `observability.tracing.enabled`                 | bool     | `false`                  | `MNEMONIC_OBSERVABILITY_TRACING_ENABLED`                 | Enable distributed tracing                                                                  |
+| `observability.tracing.endpoint`                | string   | `""`                     | `MNEMONIC_OBSERVABILITY_TRACING_ENDPOINT`                | OTLP collector endpoint                                                                     |
+| `observability.tracing.otlp_insecure`           | bool     | `true`                   | `MNEMONIC_OBSERVABILITY_TRACING_OTLP_INSECURE`           | Use insecure OTLP connection (local development only; production should use TLS)            |
 
 > **Pending Implementation:** The following configuration fields are designed but not yet implemented in code: `enrichment.related_to_min_similarity`, `enrichment.completed_retention`, `enrichment.failed_retention`, and `observability.log_db_statements`. The Go struct definitions and Viper defaults include these fields, but the application code does not yet read or act on them. They will be wired during implementation of the enrichment worker and database instrumentation.
 
@@ -608,14 +608,14 @@ Mnemonic validates configuration on startup:
 
 **Validation checks**:
 
-| Check                           | Description                     |
-| ------------------------------- | ------------------------------- |
-| Required fields present         | Essential fields must exist     |
-| Port in valid range             | 1-65535                         |
-| Duration format valid           | Timeouts must be parseable      |
-| File paths exist (if specified) | TLS cert/key files must exist   |
-| Database connection works       | Connection test at startup      |
-| API key format valid            | Basic format validation         |
+| Check                           | Description                   |
+| ------------------------------- | ----------------------------- |
+| Required fields present         | Essential fields must exist   |
+| Port in valid range             | 1-65535                       |
+| Duration format valid           | Timeouts must be parseable    |
+| File paths exist (if specified) | TLS cert/key files must exist |
+| Database connection works       | Connection test at startup    |
+| API key format valid            | Basic format validation       |
 
 **Error behavior**:
 
@@ -660,11 +660,11 @@ See [Pattern Processing - PGVector Configuration](pattern-processing.md#pgvector
 
 **Common embedding model dimensions**:
 
-| Model                     | Dimensions |
-| ------------------------- | ---------- |
-| `text-embedding-ada-002`  | 1536       |
-| `text-embedding-3-small`  | 1536       |
-| `text-embedding-3-large`  | 3072       |
+| Model                    | Dimensions |
+| ------------------------ | ---------- |
+| `text-embedding-ada-002` | 1536       |
+| `text-embedding-3-small` | 1536       |
+| `text-embedding-3-large` | 3072       |
 
 ## Configuration Model
 

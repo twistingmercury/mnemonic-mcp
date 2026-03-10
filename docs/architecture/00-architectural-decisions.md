@@ -9,6 +9,9 @@
 - [ADR-002: MCP Protocol for Claude Code Integration](#adr-002-mcp-protocol-for-claude-code-integration) (ACTIVE)
 - [ADR-003: Entity Storage with JSONB Document Model](#adr-003-entity-storage-with-jsonb-document-model) (ACTIVE)
 - [ADR-004: Pattern Storage and Enrichment Pipeline](#adr-004-pattern-storage-and-enrichment-pipeline) (ACTIVE)
+- [ADR-005: Open Vocabulary for language and domain Fields](#adr-005-open-vocabulary-for-language-and-domain-fields) (SUPERSEDED by ADR-007)
+- [ADR-006: 204 No Content on Full-Replacement PUT](#adr-006-204-no-content-on-full-replacement-put) (ACTIVE)
+- [ADR-007: Config-Driven Vocabulary Enforcement at the Handler Layer](#adr-007-config-driven-vocabulary-enforcement-at-the-handler-layer) (ACTIVE)
 - [Decision Summary](#decision-summary)
 
 ## Decision Record Format
@@ -210,6 +213,132 @@ Patterns are the core knowledge artifacts in Mnemonic. Unlike entities (agents, 
 | ADR-002  | MCP protocol integration     | Native Claude Code integration, dual protocol architecture     | ACTIVE |
 | ADR-003  | JSONB document model         | Schema-agnostic entity storage, CRC-64 change detection        | ACTIVE |
 | ADR-004  | Pattern storage + enrichment | Relational columns for vectors, Postgres-backed async queue    | ACTIVE |
+| ADR-005  | Open vocabulary for language/domain | Kebab-case format only; vocabulary governed externally  | SUPERSEDED |
+| ADR-006  | 204 No Content on PUT        | Full-replacement PUT with no body; client issues GET if needed | ACTIVE |
+| ADR-007  | Config-driven vocabulary enforcement | Allow-lists in config; handler enforces; empty list = open | ACTIVE |
+
+## <a id="adr-005"></a>ADR-005: Open Vocabulary for language and domain Fields
+
+**Date:** 2026-03-09
+**Status:** Superseded by [ADR-007](#adr-007)
+
+### Context
+
+Pattern records carry `language` and `domain` fields that classify content by programming language (e.g., `go`, `typescript`) and problem domain (e.g., `backend`, `data-engineering`). The original design enforced a closed enum at both the OpenAPI spec level and in the Go handler. This created friction: adding a new language required an API release and handler change.
+
+Two alternatives were considered:
+
+1. Keep the closed enum in the API; extend it via migration and handler change on each new value.
+2. Open the API to any structurally valid identifier; govern the approved vocabulary externally.
+
+The approved vocabulary is already managed in the `mnemonic-patterns` repository (`config/validate.yaml`), which is the authoritative source for all pattern content pushed to Mnemonic. That repo's validation tooling runs before patterns reach the Admin REST API.
+
+### Decision
+
+**Remove enum enforcement from the API. Validate format only (kebab-case, max 64 characters). Vocabulary governance belongs to `mnemonic-patterns/config/validate.yaml`.**
+
+The boundary is:
+
+- **API layer** (`patterns.go`): structural validation — `^[a-z][a-z0-9-]*$`, length limit. Rejects malformed strings; accepts any well-formed identifier.
+- **Sync tooling layer** (`mnemonic-patterns`): semantic validation — checks submitted values against the approved vocabulary before calling the Admin API.
+
+This design treats the Admin REST API as an internal write interface used primarily by the sync tooling. Direct REST callers are out of scope for vocabulary enforcement; they are expected to respect the vocabulary by convention.
+
+### Consequences
+
+**Positive:**
+
+- Adding a new approved language or domain requires only a change to `mnemonic-patterns/config/validate.yaml`, not an API release.
+- API is stable; format validation is unchanged across vocabulary expansions.
+- Handler logic is simpler (one regex, no enum list to maintain).
+
+**Negative:**
+
+- A direct REST caller that bypasses sync tooling can store out-of-vocabulary values without a 400 response. Discovery occurs at query time (filter returns no results) or at audit time.
+- The governance boundary is implicit. Team members must know to consult `mnemonic-patterns` for the approved vocabulary; the API spec does not surface it.
+- Single-character identifiers (e.g., `"a"`) pass format validation. This is harmless if sync tooling is the gatekeeper, but worth noting.
+
+## <a id="adr-006"></a>ADR-006: 204 No Content on Full-Replacement PUT
+
+**Date:** 2026-03-09
+**Status:** Accepted
+
+### Context
+
+All PUT handlers in Mnemonic perform full replacement: the client submits a complete representation, the server overwrites the record, and the client is responsible for maintaining its own local copy. The question is whether a successful PUT should return 200 with the persisted representation or 204 with no body.
+
+Returning 200 with a body is defensible when the server transforms the input — generating fields, normalising values, or applying side effects the client cannot predict. In Mnemonic, PUT handlers do not transform input beyond what the service layer stores verbatim. The only server-generated field that changes on update is `updated_at`, which the client can retrieve via a subsequent GET if needed.
+
+RFC 9110 section 9.3.4 permits 204 when the server has no representation to return.
+
+### Decision
+
+**All PUT handlers return 204 No Content with no body.**
+
+Affected endpoints:
+
+- `PUT /v1/api/patterns/:id`
+- `PUT /v1/api/agents/:name`
+- `PUT /v1/api/skills/:name`
+- `PUT /v1/api/skills/:name/scripts/:filename`
+- `PUT /v1/api/skills/:name/references/:filename`
+- `PUT /v1/api/skills/:name/assets/:filename`
+- `PUT /v1/api/patterns/:id/agents`
+
+Clients that need the updated representation after a PUT must issue a subsequent GET. This is consistent with the sync use case: the sync tooling already holds the canonical payload and does not need the server to echo it back.
+
+### Consequences
+
+**Positive:**
+
+- Correct per RFC 9110; avoids misleading clients that no server-side transformation occurred.
+- Reduces response payload size for batch sync operations.
+- Consistent across all PUT endpoints; no per-endpoint special cases.
+
+**Negative:**
+
+- Clients that need `updated_at` or any other server-written field after a PUT must issue a second request. This is an acceptable trade-off given the sync-tooling primary use case.
+
+## <a id="adr-007"></a>ADR-007: Config-Driven Vocabulary Enforcement at the Handler Layer
+
+**Date:** 2026-03-10
+**Status:** Accepted
+**Supersedes:** [ADR-005](#adr-005)
+
+### Context
+
+ADR-005 moved vocabulary governance out of the API layer and into the `mnemonic-patterns` sync tooling. Under that model, the Admin REST API validated only format (kebab-case, max 64 chars) and accepted any well-formed identifier.
+
+In practice, the sync tooling is not the only write path. Direct REST callers — operators loading patterns via curl, custom scripts, or alternative tooling — bypass the `mnemonic-patterns` validation layer entirely. Out-of-vocabulary values written this way are silent: they produce a 202 response, persist in Postgres, and are discovered only when filter queries return unexpected results.
+
+Additionally, operators want to constrain deployments to their team's supported language and domain set without forking the sync tooling. A config-file mechanism is the natural operator affordance for this.
+
+### Decision
+
+**Enforce vocabulary allow-lists at the handler layer, loaded from `VocabularyConfig` in the server config.**
+
+- `VocabularyConfig{Languages []string, Domains []string}` is defined in the `config` package, loaded by Viper from `config.yaml` or environment variables (`MNEMONIC_VOCABULARY_LANGUAGES`, `MNEMONIC_VOCABULARY_DOMAINS`).
+- At startup, `VocabularyConfig.validate()` rejects empty lists. The server will not start without a non-empty vocabulary.
+- `Handler` receives the vocabulary at construction time via `New(patternSvc, searchSvc, vocab)`. No global state.
+- `validatePatternFields` checks `language` and `domain` against `allowedLanguages` and `allowedDomains` after format validation. A non-matching value returns `INVALID_VALUE` (400).
+- If `allowedLanguages` or `allowedDomains` is empty at runtime (not possible via normal config loading, but possible programmatically in tests), the check is skipped — any well-formed value passes.
+- Defaults ship with 38 languages and 10 domains in `defaults.go`.
+
+### Consequences
+
+**Positive:**
+
+- Out-of-vocabulary values are rejected at the API boundary regardless of write path. No silent persistence of invalid data.
+- Vocabulary is operator-configurable without a code change or redeploy (env var override).
+- Adding or removing values requires only a config change and server restart, not an API release.
+- The `INVALID_VALUE` error code gives callers an actionable signal distinct from `INVALID_FORMAT`.
+
+**Negative:**
+
+- Vocabulary is static for the lifetime of the server process. Operators must restart to activate changes.
+- `config.yaml` and `defaults.go` must be kept in sync; divergence creates a confusing operator experience (see review finding F-03 in `review-cycles-7-12-vocabulary.md`).
+- The startup non-empty validation and the runtime `len > 0` bypass are in tension: open vocabulary is not a reachable mode via normal config loading. This should be resolved by either removing the bypass or removing the startup check (see F-04 in the review).
+- Vocabulary is only enforced on pattern `language` and `domain`. Other resource types do not have configurable vocabulary, creating an asymmetry that must be extended if other types gain these fields.
 
 ## Related Design Docs
 

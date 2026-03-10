@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/twistingmercury/mnemonic/internal/config"
 	"github.com/twistingmercury/mnemonic/internal/handlers/patterns"
 	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
@@ -136,9 +137,15 @@ func (m *mockSearchService) SearchPatterns(ctx context.Context, opts searchsvc.S
 
 // --- Helpers ---
 
+// testVocab contains the canonical vocabulary used across tests.
+var testVocab = config.VocabularyConfig{
+	Languages: []string{"agnostic", "go", "python", "csharp", "shell", "typescript", "javascript", "sql", "cypher"},
+	Domains:   []string{"api-design", "backend", "frontend", "testing", "devops", "cli", "data-design", "documentation"},
+}
+
 func newTestRouter(psvc patternsvc.Service, ssvc searchsvc.Service) *gin.Engine {
 	router := gin.New()
-	h := patterns.New(psvc, ssvc)
+	h := patterns.New(psvc, ssvc, testVocab)
 	v1 := router.Group("/v1/api")
 	h.RegisterRoutes(v1)
 	return router
@@ -273,6 +280,28 @@ func TestPatternCreate_InvalidLanguage(t *testing.T) {
 		"name": "go-error-handling",
 		"content": "# Test Pattern\n\nContent here",
 		"entity_type": "go-pattern",
+		"language": "INVALID_LANG",
+		"domain": "backend"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/patterns", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPatternCreate_InvalidLanguageValue(t *testing.T) {
+	t.Parallel()
+	psvc := new(mockPatternService)
+	ssvc := new(mockSearchService)
+	router := newTestRouter(psvc, ssvc)
+
+	body := `{
+		"name": "go-error-handling",
+		"content": "# Test Pattern\n\nContent here",
+		"entity_type": "go-pattern",
 		"language": "brainfuck",
 		"domain": "backend"
 	}`
@@ -283,6 +312,108 @@ func TestPatternCreate_InvalidLanguage(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	errs := resp["errors"].([]any)
+	require.NotEmpty(t, errs)
+	first := errs[0].(map[string]any)
+	assert.Equal(t, "language", first["field"])
+	assert.Equal(t, "INVALID_VALUE", first["code"])
+}
+
+func TestPatternCreate_InvalidDomainValue(t *testing.T) {
+	t.Parallel()
+	psvc := new(mockPatternService)
+	ssvc := new(mockSearchService)
+	router := newTestRouter(psvc, ssvc)
+
+	body := `{
+		"name": "go-error-handling",
+		"content": "# Test Pattern\n\nContent here",
+		"entity_type": "go-pattern",
+		"language": "go",
+		"domain": "not-a-valid-domain"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/api/patterns", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	errs := resp["errors"].([]any)
+	require.NotEmpty(t, errs)
+	first := errs[0].(map[string]any)
+	assert.Equal(t, "domain", first["field"])
+	assert.Equal(t, "INVALID_VALUE", first["code"])
+}
+
+func TestPatternUpdate_InvalidLanguageValue(t *testing.T) {
+	t.Parallel()
+	psvc := new(mockPatternService)
+	ssvc := new(mockSearchService)
+	router := newTestRouter(psvc, ssvc)
+
+	id := uuid.New()
+
+	body := `{
+		"name": "go-error-handling",
+		"content": "# Test Pattern\n\nContent here",
+		"entity_type": "go-pattern",
+		"language": "brainfuck",
+		"domain": "backend"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/v1/api/patterns/"+id.String(), bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	errs := resp["errors"].([]any)
+	require.NotEmpty(t, errs)
+	first := errs[0].(map[string]any)
+	assert.Equal(t, "language", first["field"])
+	assert.Equal(t, "INVALID_VALUE", first["code"])
+}
+
+func TestPatternUpdate_InvalidDomainValue(t *testing.T) {
+	t.Parallel()
+	psvc := new(mockPatternService)
+	ssvc := new(mockSearchService)
+	router := newTestRouter(psvc, ssvc)
+
+	id := uuid.New()
+
+	body := `{
+		"name": "go-error-handling",
+		"content": "# Test Pattern\n\nContent here",
+		"entity_type": "go-pattern",
+		"language": "go",
+		"domain": "not-a-valid-domain"
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/v1/api/patterns/"+id.String(), bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	errs := resp["errors"].([]any)
+	require.NotEmpty(t, errs)
+	first := errs[0].(map[string]any)
+	assert.Equal(t, "domain", first["field"])
+	assert.Equal(t, "INVALID_VALUE", first["code"])
 }
 
 func TestPatternGet_Success(t *testing.T) {
@@ -453,8 +584,6 @@ func TestPatternUpdate_Success(t *testing.T) {
 
 	pattern := makePattern("go-error-handling")
 	psvc.On("Update", mock.Anything, pattern.ID, mock.Anything).Return(pattern, nil)
-	psvc.On("GetAgentAssociations", mock.Anything, pattern.ID).Return([]patternrepo.AgentAssociation{}, nil)
-	psvc.On("ResolveAgentNames", mock.Anything, []uuid.UUID{}).Return(map[uuid.UUID]string{}, nil)
 
 	body := `{
 		"name": "go-error-handling",
@@ -469,14 +598,8 @@ func TestPatternUpdate_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusOK, w.Code)
-
-	var resp map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, "go-error-handling", resp["name"])
-	assert.Equal(t, "go-pattern", resp["entity_type"])
-	assert.Equal(t, "go", resp["language"])
-	assert.Equal(t, "backend", resp["domain"])
+	require.Equal(t, http.StatusNoContent, w.Code)
+	assert.Empty(t, w.Body.Bytes())
 
 	psvc.AssertExpectations(t)
 }
@@ -534,12 +657,8 @@ func TestSetAgentAssociations_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusOK, w.Code)
-
-	var resp map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assocs := resp["associations"].([]any)
-	assert.Len(t, assocs, 1)
+	require.Equal(t, http.StatusNoContent, w.Code)
+	assert.Empty(t, w.Body.Bytes())
 }
 
 func TestGetAgentAssociations_Success(t *testing.T) {
