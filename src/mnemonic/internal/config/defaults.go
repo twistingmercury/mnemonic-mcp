@@ -123,6 +123,7 @@ func DefaultVocabularyLanguages() []string {
 		"powershell",
 		"python",
 		"r",
+		"react",
 		"ruby",
 		"rust",
 		"scala",
@@ -141,7 +142,7 @@ func DefaultVocabularyLanguages() []string {
 // DefaultVocabularyDomains returns a fresh slice of the default allowed domain values.
 func DefaultVocabularyDomains() []string {
 	return []string{
-		"api-design", "backend", "frontend", "testing", "devops", "cli", "data-design", "documentation", "data-access", "security",
+		"api-design", "backend", "frontend", "testing", "devops", "cli", "data-design", "documentation", "data-access", "security", "shell-scripting", "configuration", "observability", "source-management",
 	}
 }
 
