@@ -1050,7 +1050,7 @@ func TestDeleteAgent_CascadesPatternAssociations(t *testing.T) {
 		Content:    "Pattern content for cascade deletion test.",
 		EntityType: "pattern-type",
 		Language:   "agnostic",
-		Domain:     "agnostic",
+		Domain:     "backend",
 	}
 	patternResp, err := client.Post("/v1/api/patterns", patternPayload)
 	if err != nil {

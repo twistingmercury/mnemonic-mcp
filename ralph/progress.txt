@@ -160,3 +160,7 @@
 - Added TestPatternUpdate_InvalidLanguageValue: PUT with "brainfuck" language → expects 400
 - Added TestPatternUpdate_InvalidDomainValue: PUT with "not-a-valid-domain" domain → expects 400
 - go test ./internal/handlers/patterns/... exits 0
+
+[Cycle 12 — Run E2E tests until all pass] DONE
+- Fixed agents_test.go line 1053: changed Domain: "agnostic" → Domain: "backend" (agnostic is a valid language but not a valid domain)
+- bash tests/run-e2e.sh exits 0, all 799 test cases pass (ok ...tests/e2e 41.615s)
