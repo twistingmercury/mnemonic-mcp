@@ -30,7 +30,7 @@ run_psql() {
 # psql_file: execute a SQL file, suppress output on success
 psql_file() {
     local file="$1"
-    psql -f "$file" >/dev/null 2>&1
+    psql -f "$file" >/dev/null
 }
 
 # repo_root: locate repository root relative to this test file
@@ -105,15 +105,7 @@ mig_dir() {
 
 # --- Schema spot-checks ---
 
-@test "up: pattern_chunks.embedding column exists with a vector type" {
-    # NOTE: Migration 000010 attempts to upgrade embedding from vector(1536) to
-    # vector(3072) for text-embedding-3-large, but the pgvector HNSW index
-    # implementation caps at 2000 dimensions and will error:
-    #   "column cannot have more than 2000 dimensions for hnsw index"
-    # This causes 000010 to be marked dirty by golang-migrate and never complete.
-    # The test therefore verifies only that an embedding column exists with *some*
-    # vector type. Fix 000010 (e.g. use flat/ivfflat index or upgrade pgvector)
-    # before asserting the dimension is 3072.
+@test "up: pattern_chunks.embedding is vector(2000) (000010)" {
     local col_type
     col_type=$(run_psql "
         SELECT format_type(a.atttypid, a.atttypmod)
@@ -124,8 +116,7 @@ mig_dir() {
           AND c.relname  = 'pattern_chunks'
           AND a.attname  = 'embedding';
     ")
-    # Must be a vector column of some dimension
-    printf '%s' "$col_type" | grep -q '^vector('
+    [ "$col_type" = "vector(2000)" ]
 }
 
 @test "up: enrichment_jobs has pattern_id column (000005)" {
@@ -221,19 +212,14 @@ mig_dir() {
 # ---------------------------------------------------------------------------
 
 @test "down 000010: embedding column is vector(1536), HNSW index still exists" {
-    # NOTE: Migration 000010 is a no-op in practice because it runs inside a
-    # transaction; the `create index ... using hnsw` on vector(3072) fails
-    # (pgvector HNSW caps at 2000 dimensions) and the entire transaction rolls
-    # back. The column therefore remains at vector(1536) from migration 000009.
-    # The down migration drops and recreates the HNSW index at vector(1536),
-    # which is within the allowed limit and succeeds.
+    # Running the down migration reverts embedding from vector(2000) to vector(1536).
     local migration
     migration="$(mig_dir)/000010_update_embedding_dimensions.down.sql"
     [ -f "$migration" ]
 
     psql_file "$migration"
 
-    # Column must be vector(1536) (000010 effectively did nothing)
+    # Column must have reverted to vector(1536)
     local col_type
     col_type=$(run_psql "
         SELECT format_type(a.atttypid, a.atttypmod)

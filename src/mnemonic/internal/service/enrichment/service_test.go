@@ -453,10 +453,18 @@ func testChunk() *chunkrepo.Chunk {
 }
 
 func testEnrichedEmbedText() string {
-	chunk := testChunk()
-	pattern := testPattern()
-	tags := strings.Join(pattern.Tags, ", ")
-	return fmt.Sprintf("%s | %s | %s\n\n%s", pattern.Name, tags, chunk.SectionTitle, chunk.Content)
+	return enrichedEmbedText(testPattern(), testChunk())
+}
+
+// enrichedEmbedText mirrors the production logic in processChunkJob: when the
+// pattern has tags they are included as a pipe-separated segment; when the
+// slice is empty the segment is omitted entirely.
+func enrichedEmbedText(pattern *patternrepo.Pattern, chunk *chunkrepo.Chunk) string {
+	if len(pattern.Tags) > 0 {
+		tags := strings.Join(pattern.Tags, ", ")
+		return fmt.Sprintf("%s | %s | %s\n\n%s", pattern.Name, tags, chunk.SectionTitle, chunk.Content)
+	}
+	return fmt.Sprintf("%s | %s\n\n%s", pattern.Name, chunk.SectionTitle, chunk.Content)
 }
 
 func testEmbedding() []float32 {
@@ -1024,7 +1032,7 @@ func TestProcessJob_ChunkJob_Step2_LoadPatternFails(t *testing.T) {
 	assertExpectations(t, deps)
 }
 
-func TestProcessJob_ChunkJob_Step2_EmbeddingFails(t *testing.T) {
+func TestProcessJob_ChunkJob_Step3_EmbeddingFails(t *testing.T) {
 	t.Parallel()
 
 	svc, deps := newTestService(t)
@@ -1045,7 +1053,7 @@ func TestProcessJob_ChunkJob_Step2_EmbeddingFails(t *testing.T) {
 	assertExpectations(t, deps)
 }
 
-func TestProcessJob_ChunkJob_Step3_UpdateEmbeddingFails(t *testing.T) {
+func TestProcessJob_ChunkJob_Step4_UpdateEmbeddingFails(t *testing.T) {
 	t.Parallel()
 
 	svc, deps := newTestService(t)
@@ -1067,7 +1075,7 @@ func TestProcessJob_ChunkJob_Step3_UpdateEmbeddingFails(t *testing.T) {
 	assertExpectations(t, deps)
 }
 
-func TestProcessJob_ChunkJob_Step4_UpdateChunkStatusFails(t *testing.T) {
+func TestProcessJob_ChunkJob_Step5_UpdateChunkStatusFails(t *testing.T) {
 	t.Parallel()
 
 	svc, deps := newTestService(t)
@@ -1142,6 +1150,37 @@ func TestProcessJob_ChunkJob_GraphPipelineFails(t *testing.T) {
 	err := svc.ProcessJob(context.Background(), testChunkJob())
 
 	require.NoError(t, err, "pipeline failure should return nil when failJob records it successfully")
+	assertExpectations(t, deps)
+}
+
+func TestProcessJob_ChunkJob_HappyPath_NoTags(t *testing.T) {
+	t.Parallel()
+
+	// patternNoTags has an empty Tags slice to exercise the tag-omission branch
+	// in processChunkJob. The enriched embed text should be "name | section\n\ncontent"
+	// with no blank pipe-segment between name and section title.
+	patternNoTags := testPattern()
+	patternNoTags.Tags = nil
+
+	svc, deps := newTestService(t)
+	chunk := testChunk()
+
+	expectedEmbedText := enrichedEmbedText(patternNoTags, chunk)
+	// Sanity: confirm no blank segment appears in the formatted string.
+	assert.NotContains(t, expectedEmbedText, " |  | ", "embed text must not contain blank tag segment")
+
+	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
+	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(patternNoTags, nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, expectedEmbedText).Return(testEmbedding(), nil)
+	deps.chunkRepo.On("UpdateEmbedding", mock.Anything, testChunkID, testEmbedding()).Return(nil)
+	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "enriched", (*string)(nil)).Return(nil)
+	deps.chunkRepo.On("AnyFailedForPattern", mock.Anything, testPatternID).Return(false, nil)
+	deps.chunkRepo.On("AllEnrichedForPattern", mock.Anything, testPatternID).Return(false, nil)
+	deps.jobRepo.On("MarkCompleted", mock.Anything, testJobID).Return(nil)
+
+	err := svc.ProcessJob(context.Background(), testChunkJob())
+
+	require.NoError(t, err)
 	assertExpectations(t, deps)
 }
 
