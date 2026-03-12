@@ -44,8 +44,8 @@ const (
 
 // Default values for OpenAI configuration
 const (
-	DefaultOpenAIEmbeddingModel       = "text-embedding-3-small"
-	DefaultOpenAIEmbeddingDimensions  = 1536
+	DefaultOpenAIEmbeddingModel       = "text-embedding-3-large"
+	DefaultOpenAIEmbeddingDimensions  = 2000
 	DefaultOpenAIExtractionModel      = "gpt-4o-mini"
 	DefaultOpenAIMaxRequestsPerMinute = 500
 	DefaultOpenAIRetryAttempts        = 3

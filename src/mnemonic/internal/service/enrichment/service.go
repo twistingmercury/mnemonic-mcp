@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
@@ -138,8 +139,18 @@ func (s *enrichmentService) processChunkJob(ctx context.Context, job *enrichment
 		return s.failJob(ctx, job, fmt.Errorf("load chunk: %w", err))
 	}
 
-	// Step 3: Generate embedding for chunk content.
-	embedding, err := s.embeddingSvc.Embed(ctx, chunk.Content)
+	// Step 2: Load parent pattern to build enriched embed text.
+	pattern, err := s.patternRepo.Get(ctx, chunk.PatternID)
+	if err != nil {
+		return s.failChunkJob(ctx, job, chunk.ID, chunk.PatternID, fmt.Errorf("load pattern for chunk: %w", err))
+	}
+
+	// Step 3: Generate embedding for enriched chunk text.
+	// Prepend pattern name, tags, and section title so the embedding captures
+	// semantic context beyond the raw code/prose of the section body.
+	tags := strings.Join(pattern.Tags, ", ")
+	embedText := fmt.Sprintf("%s | %s | %s\n\n%s", pattern.Name, tags, chunk.SectionTitle, chunk.Content)
+	embedding, err := s.embeddingSvc.Embed(ctx, embedText)
 	if err != nil {
 		return s.failChunkJob(ctx, job, chunk.ID, chunk.PatternID, fmt.Errorf("embed chunk: %w", err))
 	}

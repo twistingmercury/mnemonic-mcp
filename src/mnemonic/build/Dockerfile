@@ -27,7 +27,7 @@ RUN goimports -w .
 RUN golangci-lint run
 RUN govulncheck ./cmd/... ./internal/...
 RUN gosec -quiet -exclude-dir=tests ./...
-RUN go test -v ./internal/... -coverprofile=coverage.out
+RUN go test -v ./cmd/... ./internal/... -coverprofile=coverage.out
 
 ARG LD_FLAGS="-s -w \
     -X 'github.com/twistingmercury/mnemonic/internal/version.version=${BUILD_VER}' \
