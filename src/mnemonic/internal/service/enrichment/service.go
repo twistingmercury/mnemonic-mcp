@@ -229,7 +229,7 @@ func (s *enrichmentService) processChunkJob(ctx context.Context, job *enrichment
 		// runGraphPipeline returns errPipelineFailed when a step fails and
 		// the failure was recorded, or a real error when recording failed.
 		// In either failure case we must not call MarkCompleted.
-		if pipeErr := s.runGraphPipeline(ctx, job, chunk.PatternID); pipeErr != nil {
+		if pipeErr := s.runGraphPipeline(ctx, job, pattern); pipeErr != nil {
 			if errors.Is(pipeErr, errPipelineFailed) {
 				// Failure was recorded successfully; return nil to the worker.
 				return nil
@@ -251,25 +251,21 @@ func (s *enrichmentService) processChunkJob(ctx context.Context, job *enrichment
 	return nil
 }
 
-// runGraphPipeline loads a pattern, extracts concepts, and syncs the Neo4j
-// graph for the given patternID.
+// runGraphPipeline extracts concepts from a pattern and syncs the Neo4j graph.
+// The caller is responsible for loading the pattern and passing it in; this
+// avoids a redundant Postgres round-trip when the pattern was already fetched
+// earlier in the pipeline.
 //
 // On a pipeline step failure it calls failJob to record the failure and wraps
 // the result in errPipelineFailed (or returns the unrecoverable error directly).
 // Callers must check errors.Is(err, errPipelineFailed) to distinguish a
 // successfully-recorded failure from an unrecoverable recording error.
-func (s *enrichmentService) runGraphPipeline(ctx context.Context, job *enrichmentjob.Job, patternID uuid.UUID) error {
+func (s *enrichmentService) runGraphPipeline(ctx context.Context, job *enrichmentjob.Job, pattern *patternrepo.Pattern) error {
 	recordFail := func(cause error) error {
 		if err := s.failJob(ctx, job, cause); err != nil {
 			return err // unrecoverable
 		}
 		return errPipelineFailed // recorded successfully
-	}
-
-	// Load pattern.
-	pattern, err := s.patternRepo.Get(ctx, patternID)
-	if err != nil {
-		return recordFail(fmt.Errorf("load pattern: %w", err))
 	}
 
 	// Extract concepts via OpenAI.
@@ -327,10 +323,19 @@ func (s *enrichmentService) processPatternJob(ctx context.Context, job *enrichme
 		return s.failJob(ctx, job, fmt.Errorf("load pattern: job has no pattern_id"))
 	}
 
+	// Step 1: Load pattern from Postgres.
+	pattern, err := s.patternRepo.Get(ctx, *job.PatternID)
+	if err != nil {
+		if failErr := s.failJob(ctx, job, fmt.Errorf("load pattern: %w", err)); failErr != nil {
+			return failErr
+		}
+		return nil
+	}
+
 	// Steps 2-3: Per-chunk embedding pipeline replaces pattern-level embedding (Task 6).
 
 	// Steps 4-8: Extract concepts and sync graph.
-	if err := s.runGraphPipeline(ctx, job, *job.PatternID); err != nil {
+	if err := s.runGraphPipeline(ctx, job, pattern); err != nil {
 		if errors.Is(err, errPipelineFailed) {
 			// Failure recorded successfully; return nil to the worker.
 			return nil

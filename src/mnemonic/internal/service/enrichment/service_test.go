@@ -459,6 +459,8 @@ func testEnrichedEmbedText() string {
 // enrichedEmbedText mirrors the production logic in processChunkJob: when the
 // pattern has tags they are included as a pipe-separated segment; when the
 // slice is empty the segment is omitted entirely.
+// NOTE: the format strings here are coupled to the ones in processChunkJob.
+// If the production format changes, update this helper too.
 func enrichedEmbedText(pattern *patternrepo.Pattern, chunk *chunkrepo.Chunk) string {
 	if len(pattern.Tags) > 0 {
 		tags := strings.Join(pattern.Tags, ", ")
@@ -930,11 +932,12 @@ func TestProcessJob_AgentNotFoundSkippedDuringAssociationSync(t *testing.T) {
 // setupChunkGraphMocks wires the graph pipeline mocks for a chunk job that
 // triggers concept extraction (all chunks enriched path). The pattern has no
 // agent associations (empty slice) to keep the setup minimal.
+// Note: patternRepo.Get is NOT mocked here because the caller (processChunkJob)
+// already loaded the pattern and passes it directly to runGraphPipeline.
 func setupChunkGraphMocks(deps *testDeps) {
 	pattern := testPattern()
 	concepts := testConcepts()
 
-	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(pattern, nil)
 	deps.extractionSvc.On("Extract", mock.Anything, pattern.Content).Return(concepts, nil)
 	deps.graphRepo.On("SyncPattern", mock.Anything, mock.MatchedBy(func(p *graphrepo.Pattern) bool {
 		return p.ID == testPatternID
@@ -1138,8 +1141,7 @@ func TestProcessJob_ChunkJob_GraphPipelineFails(t *testing.T) {
 	deps.chunkRepo.On("AnyFailedForPattern", mock.Anything, testPatternID).Return(false, nil)
 	deps.chunkRepo.On("AllEnrichedForPattern", mock.Anything, testPatternID).Return(true, nil)
 
-	// Graph pipeline: pattern loads successfully, but extraction fails.
-	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(testPattern(), nil)
+	// Graph pipeline: pattern was already loaded by processChunkJob, extraction fails.
 	deps.extractionSvc.On("Extract", mock.Anything, testPattern().Content).Return(nil, errors.New("openai down"))
 
 	// runGraphPipeline calls failJob (not failChunkJob) on pipeline failure.

@@ -5,18 +5,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJ_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-IMAGE_NAME="${IMAGE_NAME:-ghcr.io/twistingmercury/mnemonic}"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
-
 BUILD_VER="${BUILD_VER:-$(git -C "${PROJ_ROOT}" describe --tags --abbrev=0 2>/dev/null || echo 'dev')}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 BUILD_COMMIT="${BUILD_COMMIT:-$(git -C "${PROJ_ROOT}" rev-parse --short HEAD 2>/dev/null || echo 'unknown')}"
+
+IMAGE_NAME="${IMAGE_NAME:-ghcr.io/twistingmercury/mnemonic}"
+IMAGE_TAG="${IMAGE_TAG:-$BUILD_VER}"
 
 E2E_COMPOSE_FILE="${PROJ_ROOT}/tests/docker-compose.yaml"
 
 
 build_api(){
-    printf "\n=== starting image build ===\n"
+    printf "\n=== starting image build, version %s ===\n" "${BUILD_VER}"
 
     docker build --rm --no-cache \
         --file "${SCRIPT_DIR}/Dockerfile" \
