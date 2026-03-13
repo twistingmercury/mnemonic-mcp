@@ -17,7 +17,7 @@ import (
 var ErrEmbeddingFailed = errors.New("embedding generation failed")
 
 // EmbeddingService generates vector embeddings from text.
-// MVP implementation calls OpenAI text-embedding-3-small.
+// MVP implementation calls OpenAI text-embedding-3-large.
 type EmbeddingService interface {
 	// Embed generates a vector embedding for the given text.
 	// Returns a float32 slice of length matching the configured dimensions.

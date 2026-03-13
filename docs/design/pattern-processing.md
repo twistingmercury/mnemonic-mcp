@@ -186,6 +186,40 @@ for i, chunk := range chunks {
 }
 ```
 
+##### Enriched Text Format for Embeddings
+
+When generating embeddings during enrichment, each chunk is prefixed with metadata before being sent to the embedding model. This enrichment happens at embedding time only and does not modify the stored chunk content.
+
+**Format:**
+
+```
+{pattern.Name} | {tags joined by ", "} | {chunk.SectionTitle}
+
+{chunk.Content}
+```
+
+**Example:**
+
+```
+Go Error Handling | go, patterns, error-handling | Recovery Strategies
+
+When an operation fails, consider whether retry logic is appropriate...
+```
+
+This enriched format is sent to the embedding model to generate the vector. The query text submitted by users, by contrast, is embedded as-is without metadata enrichment. This asymmetry (rich document vectors, plain query vectors) is intentional and standard practice in information retrieval: document vectors benefit from contextual metadata, while user queries remain simple and natural.
+
+**Operational Constraint — Format Changes Require Re-enrichment:**
+
+If this enriched text format ever changes, ALL existing chunk embeddings in the database become semantically stale relative to new ones. A format change requires a complete re-enrichment pass over all pattern chunks to regenerate their vectors. This is a breaking change at the data level and should be approached as a major version upgrade for the enrichment pipeline.
+
+Examples that would require re-enrichment:
+- Adding new metadata fields to the prefix (e.g., domain, language)
+- Changing the delimiter or separator format
+- Removing existing fields from the prefix
+- Modifying the order of prefix fields
+
+Plan accordingly if enrichment format changes are needed.
+
 #### Step 3: Extract Entities
 
 Use an LLM to extract structured information from the pattern content:

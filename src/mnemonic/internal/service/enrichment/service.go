@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
@@ -92,6 +93,24 @@ func New(
 	chunkRepo chunkrepo.Repository,
 	logger zerolog.Logger,
 ) (Service, error) {
+	if jobRepo == nil {
+		return nil, fmt.Errorf("enrichment.New: jobRepo is required")
+	}
+	if patternRepo == nil {
+		return nil, fmt.Errorf("enrichment.New: patternRepo is required")
+	}
+	if agentRepo == nil {
+		return nil, fmt.Errorf("enrichment.New: agentRepo is required")
+	}
+	if graphRepo == nil {
+		return nil, fmt.Errorf("enrichment.New: graphRepo is required")
+	}
+	if embeddingSvc == nil {
+		return nil, fmt.Errorf("enrichment.New: embeddingSvc is required")
+	}
+	if extractionSvc == nil {
+		return nil, fmt.Errorf("enrichment.New: extractionSvc is required")
+	}
 	if chunkRepo == nil {
 		return nil, fmt.Errorf("enrichment.New: chunkRepo is required")
 	}
@@ -124,13 +143,13 @@ func (s *enrichmentService) ProcessJob(ctx context.Context, job *enrichmentjob.J
 }
 
 // processChunkJob runs the chunk-based enrichment pipeline:
-//  1. Load chunk from Postgres
-//  2. Generate embedding for chunk content
-//  3. Store embedding on the chunk row
-//  4. Mark chunk as enriched
-//  5. Check aggregate status: any-failed → mark pattern failed;
-//     all-enriched → run concept extraction + graph sync + mark pattern enriched
-//  6. Mark job completed
+//  1. Load chunk from repository
+//  2. Load parent pattern from repository
+//  3. Build enriched embedding text (name | tags | section_title + content)
+//  4. Generate embedding via OpenAI
+//  5. Update chunk embedding in repository
+//  6. Update chunk enrichment status
+//  7. Update enrichment job status
 func (s *enrichmentService) processChunkJob(ctx context.Context, job *enrichmentjob.Job) error {
 	// Step 1: Load chunk from Postgres.
 	chunk, err := s.chunkRepo.Get(ctx, *job.ChunkID)
@@ -138,8 +157,23 @@ func (s *enrichmentService) processChunkJob(ctx context.Context, job *enrichment
 		return s.failJob(ctx, job, fmt.Errorf("load chunk: %w", err))
 	}
 
-	// Step 3: Generate embedding for chunk content.
-	embedding, err := s.embeddingSvc.Embed(ctx, chunk.Content)
+	// Step 2: Load parent pattern to build enriched embed text.
+	pattern, err := s.patternRepo.Get(ctx, chunk.PatternID)
+	if err != nil {
+		return s.failChunkJob(ctx, job, chunk.ID, chunk.PatternID, fmt.Errorf("load pattern for chunk: %w", err))
+	}
+
+	// Step 3: Generate embedding for enriched chunk text.
+	// Prepend pattern name, tags (when present), and section title so the embedding
+	// captures semantic context beyond the raw code/prose of the section body.
+	var embedText string
+	if len(pattern.Tags) > 0 {
+		tags := strings.Join(pattern.Tags, ", ")
+		embedText = fmt.Sprintf("%s | %s | %s\n\n%s", pattern.Name, tags, chunk.SectionTitle, chunk.Content)
+	} else {
+		embedText = fmt.Sprintf("%s | %s\n\n%s", pattern.Name, chunk.SectionTitle, chunk.Content)
+	}
+	embedding, err := s.embeddingSvc.Embed(ctx, embedText)
 	if err != nil {
 		return s.failChunkJob(ctx, job, chunk.ID, chunk.PatternID, fmt.Errorf("embed chunk: %w", err))
 	}

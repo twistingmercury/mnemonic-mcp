@@ -3,6 +3,8 @@ package enrichment_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -443,10 +445,26 @@ func testPattern() *patternrepo.Pattern {
 
 func testChunk() *chunkrepo.Chunk {
 	return &chunkrepo.Chunk{
-		ID:        testChunkID,
-		PatternID: testPatternID,
-		Content:   "Test chunk content for embedding.",
+		ID:           testChunkID,
+		PatternID:    testPatternID,
+		SectionTitle: "Test Section",
+		Content:      "Test chunk content for embedding.",
 	}
+}
+
+func testEnrichedEmbedText() string {
+	return enrichedEmbedText(testPattern(), testChunk())
+}
+
+// enrichedEmbedText mirrors the production logic in processChunkJob: when the
+// pattern has tags they are included as a pipe-separated segment; when the
+// slice is empty the segment is omitted entirely.
+func enrichedEmbedText(pattern *patternrepo.Pattern, chunk *chunkrepo.Chunk) string {
+	if len(pattern.Tags) > 0 {
+		tags := strings.Join(pattern.Tags, ", ")
+		return fmt.Sprintf("%s | %s | %s\n\n%s", pattern.Name, tags, chunk.SectionTitle, chunk.Content)
+	}
+	return fmt.Sprintf("%s | %s\n\n%s", pattern.Name, chunk.SectionTitle, chunk.Content)
 }
 
 func testEmbedding() []float32 {
@@ -938,7 +956,8 @@ func TestProcessJob_ChunkJob_HappyPath_AllEnriched(t *testing.T) {
 	chunk := testChunk()
 
 	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, chunk.Content).Return(testEmbedding(), nil)
+	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(testPattern(), nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, testEnrichedEmbedText()).Return(testEmbedding(), nil)
 	deps.chunkRepo.On("UpdateEmbedding", mock.Anything, testChunkID, testEmbedding()).Return(nil)
 	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "enriched", (*string)(nil)).Return(nil)
 	deps.chunkRepo.On("AnyFailedForPattern", mock.Anything, testPatternID).Return(false, nil)
@@ -962,7 +981,8 @@ func TestProcessJob_ChunkJob_HappyPath_NotAllEnriched(t *testing.T) {
 	chunk := testChunk()
 
 	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, chunk.Content).Return(testEmbedding(), nil)
+	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(testPattern(), nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, testEnrichedEmbedText()).Return(testEmbedding(), nil)
 	deps.chunkRepo.On("UpdateEmbedding", mock.Anything, testChunkID, testEmbedding()).Return(nil)
 	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "enriched", (*string)(nil)).Return(nil)
 	deps.chunkRepo.On("AnyFailedForPattern", mock.Anything, testPatternID).Return(false, nil)
@@ -992,14 +1012,14 @@ func TestProcessJob_ChunkJob_Step1_LoadChunkFails(t *testing.T) {
 	assertExpectations(t, deps)
 }
 
-func TestProcessJob_ChunkJob_Step2_EmbeddingFails(t *testing.T) {
+func TestProcessJob_ChunkJob_Step2_LoadPatternFails(t *testing.T) {
 	t.Parallel()
 
 	svc, deps := newTestService(t)
 	chunk := testChunk()
 
 	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, chunk.Content).Return(nil, errors.New("openai unavailable"))
+	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(nil, errors.New("db error"))
 
 	// failChunkJob: update chunk status, update pattern status, mark job failed.
 	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "failed", mock.AnythingOfType("*string")).Return(nil)
@@ -1012,14 +1032,36 @@ func TestProcessJob_ChunkJob_Step2_EmbeddingFails(t *testing.T) {
 	assertExpectations(t, deps)
 }
 
-func TestProcessJob_ChunkJob_Step3_UpdateEmbeddingFails(t *testing.T) {
+func TestProcessJob_ChunkJob_Step3_EmbeddingFails(t *testing.T) {
 	t.Parallel()
 
 	svc, deps := newTestService(t)
 	chunk := testChunk()
 
 	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, chunk.Content).Return(testEmbedding(), nil)
+	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(testPattern(), nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, testEnrichedEmbedText()).Return(nil, errors.New("openai unavailable"))
+
+	// failChunkJob: update chunk status, update pattern status, mark job failed.
+	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "failed", mock.AnythingOfType("*string")).Return(nil)
+	deps.patternRepo.On("UpdateEnrichmentStatus", mock.Anything, testPatternID, "failed", mock.AnythingOfType("*string")).Return(nil)
+	deps.jobRepo.On("MarkFailed", mock.Anything, testJobID, mock.Anything, 30*time.Second).Return(nil)
+
+	err := svc.ProcessJob(context.Background(), testChunkJob())
+
+	require.NoError(t, err, "pipeline failure should return nil when failChunkJob succeeds")
+	assertExpectations(t, deps)
+}
+
+func TestProcessJob_ChunkJob_Step4_UpdateEmbeddingFails(t *testing.T) {
+	t.Parallel()
+
+	svc, deps := newTestService(t)
+	chunk := testChunk()
+
+	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
+	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(testPattern(), nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, testEnrichedEmbedText()).Return(testEmbedding(), nil)
 	deps.chunkRepo.On("UpdateEmbedding", mock.Anything, testChunkID, testEmbedding()).Return(errors.New("db error"))
 
 	// failChunkJob.
@@ -1033,14 +1075,15 @@ func TestProcessJob_ChunkJob_Step3_UpdateEmbeddingFails(t *testing.T) {
 	assertExpectations(t, deps)
 }
 
-func TestProcessJob_ChunkJob_Step4_UpdateChunkStatusFails(t *testing.T) {
+func TestProcessJob_ChunkJob_Step5_UpdateChunkStatusFails(t *testing.T) {
 	t.Parallel()
 
 	svc, deps := newTestService(t)
 	chunk := testChunk()
 
 	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, chunk.Content).Return(testEmbedding(), nil)
+	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(testPattern(), nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, testEnrichedEmbedText()).Return(testEmbedding(), nil)
 	deps.chunkRepo.On("UpdateEmbedding", mock.Anything, testChunkID, testEmbedding()).Return(nil)
 	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "enriched", (*string)(nil)).Return(errors.New("db error"))
 
@@ -1062,7 +1105,8 @@ func TestProcessJob_ChunkJob_AnyFailed_PatternMarkedFailed(t *testing.T) {
 	chunk := testChunk()
 
 	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, chunk.Content).Return(testEmbedding(), nil)
+	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(testPattern(), nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, testEnrichedEmbedText()).Return(testEmbedding(), nil)
 	deps.chunkRepo.On("UpdateEmbedding", mock.Anything, testChunkID, testEmbedding()).Return(nil)
 	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "enriched", (*string)(nil)).Return(nil)
 	deps.chunkRepo.On("AnyFailedForPattern", mock.Anything, testPatternID).Return(true, nil)
@@ -1085,7 +1129,8 @@ func TestProcessJob_ChunkJob_GraphPipelineFails(t *testing.T) {
 
 	// Steps 1-4: chunk load, embed, store embedding, mark chunk enriched — all succeed.
 	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
-	deps.embeddingSvc.On("Embed", mock.Anything, chunk.Content).Return(testEmbedding(), nil)
+	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(testPattern(), nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, testEnrichedEmbedText()).Return(testEmbedding(), nil)
 	deps.chunkRepo.On("UpdateEmbedding", mock.Anything, testChunkID, testEmbedding()).Return(nil)
 	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "enriched", (*string)(nil)).Return(nil)
 
@@ -1105,6 +1150,37 @@ func TestProcessJob_ChunkJob_GraphPipelineFails(t *testing.T) {
 	err := svc.ProcessJob(context.Background(), testChunkJob())
 
 	require.NoError(t, err, "pipeline failure should return nil when failJob records it successfully")
+	assertExpectations(t, deps)
+}
+
+func TestProcessJob_ChunkJob_HappyPath_NoTags(t *testing.T) {
+	t.Parallel()
+
+	// patternNoTags has an empty Tags slice to exercise the tag-omission branch
+	// in processChunkJob. The enriched embed text should be "name | section\n\ncontent"
+	// with no blank pipe-segment between name and section title.
+	patternNoTags := testPattern()
+	patternNoTags.Tags = nil
+
+	svc, deps := newTestService(t)
+	chunk := testChunk()
+
+	expectedEmbedText := enrichedEmbedText(patternNoTags, chunk)
+	// Sanity: confirm no blank segment appears in the formatted string.
+	assert.NotContains(t, expectedEmbedText, " |  | ", "embed text must not contain blank tag segment")
+
+	deps.chunkRepo.On("Get", mock.Anything, testChunkID).Return(chunk, nil)
+	deps.patternRepo.On("Get", mock.Anything, testPatternID).Return(patternNoTags, nil)
+	deps.embeddingSvc.On("Embed", mock.Anything, expectedEmbedText).Return(testEmbedding(), nil)
+	deps.chunkRepo.On("UpdateEmbedding", mock.Anything, testChunkID, testEmbedding()).Return(nil)
+	deps.chunkRepo.On("UpdateEnrichmentStatus", mock.Anything, testChunkID, "enriched", (*string)(nil)).Return(nil)
+	deps.chunkRepo.On("AnyFailedForPattern", mock.Anything, testPatternID).Return(false, nil)
+	deps.chunkRepo.On("AllEnrichedForPattern", mock.Anything, testPatternID).Return(false, nil)
+	deps.jobRepo.On("MarkCompleted", mock.Anything, testJobID).Return(nil)
+
+	err := svc.ProcessJob(context.Background(), testChunkJob())
+
+	require.NoError(t, err)
 	assertExpectations(t, deps)
 }
 
