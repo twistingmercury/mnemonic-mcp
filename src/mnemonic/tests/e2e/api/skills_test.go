@@ -1,4 +1,4 @@
-package e2e
+package api_test
 
 import (
 	"bytes"
@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/twistingmercury/mnemonic/tests/e2e/helpers"
 )
 
 // =============================================================================
@@ -45,11 +47,11 @@ import (
 //   - Default page size is 100
 //   - X-Request-ID header is present in response
 func TestListSkills_Success(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// Create a skill so we know at least one exists.
-	name := GenerateUniqueName("skill")
-	createPayload := SkillCreate{
+	name := helpers.GenerateUniqueName("skill")
+	createPayload := helpers.SkillCreate{
 		Name:        name,
 		Description: "Test skill for list success",
 		Content:     "# Test Skill\nThis is the content.",
@@ -59,18 +61,18 @@ func TestListSkills_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/skills: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusCreated)
-	ReadBody(t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusCreated)
+	helpers.ReadBody(t, createResp)
 
 	resp, err := client.Get("/v1/api/skills")
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/skills: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
-	AssertRequestIDHeader(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertRequestIDHeader(t, resp)
 
-	list := ParseJSON[SkillList](t, resp)
+	list := helpers.ParseJSON[helpers.SkillList](t, resp)
 
 	if list.Data == nil {
 		t.Fatal("expected data array to be non-nil")
@@ -103,12 +105,12 @@ func TestListSkills_Success(t *testing.T) {
 //   - next_cursor is null when no more pages
 //   - has_more indicates if more pages exist
 func TestListSkills_Pagination(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// Create 3 skills to guarantee we have at least enough for a small page.
 	for i := 0; i < 3; i++ {
-		payload := SkillCreate{
-			Name:        GenerateUniqueName("skill"),
+		payload := helpers.SkillCreate{
+			Name:        helpers.GenerateUniqueName("skill"),
 			Description: fmt.Sprintf("Pagination test skill %d", i),
 			Content:     "# Skill Content\nContent body.",
 			Version:     "1.0.0",
@@ -117,8 +119,8 @@ func TestListSkills_Pagination(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create skill: %v", err)
 		}
-		AssertStatusCode(t, resp, http.StatusCreated)
-		ReadBody(t, resp)
+		helpers.AssertStatusCode(t, resp, http.StatusCreated)
+		helpers.ReadBody(t, resp)
 	}
 
 	// Request first page with limit=1.
@@ -126,9 +128,9 @@ func TestListSkills_Pagination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/skills?limit=1: %v", err)
 	}
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	page1 := ParseJSON[SkillList](t, resp)
+	page1 := helpers.ParseJSON[helpers.SkillList](t, resp)
 
 	if len(page1.Data) > 1 {
 		t.Fatalf("expected at most 1 result with limit=1, got %d", len(page1.Data))
@@ -148,9 +150,9 @@ func TestListSkills_Pagination(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to GET next page: %v", err)
 		}
-		AssertStatusCode(t, resp2, http.StatusOK)
+		helpers.AssertStatusCode(t, resp2, http.StatusOK)
 
-		page2 := ParseJSON[SkillList](t, resp2)
+		page2 := helpers.ParseJSON[helpers.SkillList](t, resp2)
 
 		if len(page2.Data) == 0 {
 			t.Fatal("expected at least one result on second page")
@@ -174,8 +176,8 @@ func TestListSkills_Pagination(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to GET page: %v", err)
 		}
-		AssertStatusCode(t, nextResp, http.StatusOK)
-		nextPage := ParseJSON[SkillList](t, nextResp)
+		helpers.AssertStatusCode(t, nextResp, http.StatusOK)
+		nextPage := helpers.ParseJSON[helpers.SkillList](t, nextResp)
 		hasMore = nextPage.Pagination.HasMore
 		cursor = nextPage.Pagination.NextCursor
 		if !hasMore && cursor != "" {
@@ -192,31 +194,31 @@ func TestListSkills_Pagination(t *testing.T) {
 //   - limit=1 returns at most 1 result
 //   - limit=200 is accepted
 func TestListSkills_PaginationLimitBounds(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// limit=0 should return 400.
 	resp0, err := client.Get("/v1/api/skills?limit=0")
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/skills?limit=0: %v", err)
 	}
-	AssertStatusCode(t, resp0, http.StatusBadRequest)
-	ReadBody(t, resp0)
+	helpers.AssertStatusCode(t, resp0, http.StatusBadRequest)
+	helpers.ReadBody(t, resp0)
 
 	// limit=201 should return 400.
 	resp201, err := client.Get("/v1/api/skills?limit=201")
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/skills?limit=201: %v", err)
 	}
-	AssertStatusCode(t, resp201, http.StatusBadRequest)
-	ReadBody(t, resp201)
+	helpers.AssertStatusCode(t, resp201, http.StatusBadRequest)
+	helpers.ReadBody(t, resp201)
 
 	// limit=1 is accepted and returns at most 1 result.
 	resp1, err := client.Get("/v1/api/skills?limit=1")
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/skills?limit=1: %v", err)
 	}
-	AssertStatusCode(t, resp1, http.StatusOK)
-	list1 := ParseJSON[SkillList](t, resp1)
+	helpers.AssertStatusCode(t, resp1, http.StatusOK)
+	list1 := helpers.ParseJSON[helpers.SkillList](t, resp1)
 	if len(list1.Data) > 1 {
 		t.Fatalf("expected at most 1 result with limit=1, got %d", len(list1.Data))
 	}
@@ -226,8 +228,8 @@ func TestListSkills_PaginationLimitBounds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/skills?limit=200: %v", err)
 	}
-	AssertStatusCode(t, resp200, http.StatusOK)
-	ReadBody(t, resp200)
+	helpers.AssertStatusCode(t, resp200, http.StatusOK)
+	helpers.ReadBody(t, resp200)
 }
 
 // TestListSkills_InvalidCursor verifies invalid cursor handling.
@@ -236,15 +238,15 @@ func TestListSkills_PaginationLimitBounds(t *testing.T) {
 //   - Non-base64 cursor returns 400 Bad Request
 //   - Expired cursor returns 400 Bad Request
 func TestListSkills_InvalidCursor(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// Non-base64 cursor (contains characters illegal in base64).
 	resp, err := client.Get("/v1/api/skills?cursor=!!!invalid!!!")
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/skills?cursor=!!!invalid!!!: %v", err)
 	}
-	AssertStatusCode(t, resp, http.StatusBadRequest)
-	ReadBody(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
+	helpers.ReadBody(t, resp)
 
 	// A structurally invalid base64 value (valid base64 chars but nonsense payload).
 	resp2, err := client.Get("/v1/api/skills?cursor=dGhpcyBpcyBub3QgYSB2YWxpZCBjdXJzb3I=")
@@ -253,10 +255,10 @@ func TestListSkills_InvalidCursor(t *testing.T) {
 	}
 	// Either 400 (invalid cursor format) is acceptable.
 	if resp2.StatusCode != http.StatusBadRequest && resp2.StatusCode != http.StatusOK {
-		body := ReadBody(t, resp2)
+		body := helpers.ReadBody(t, resp2)
 		t.Fatalf("expected 400 or 200 for invalid cursor, got %d: %s", resp2.StatusCode, string(body))
 	}
-	ReadBody(t, resp2)
+	helpers.ReadBody(t, resp2)
 }
 
 // TestListSkills_FilterByTags verifies filtering by comma-separated tags.
@@ -265,11 +267,11 @@ func TestListSkills_InvalidCursor(t *testing.T) {
 //   - GET /v1/api/skills?tags=go,testing returns matching skills
 //   - Skills must have ALL specified tags (AND logic)
 func TestListSkills_FilterByTags(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// Create a skill with both tags.
-	bothTagsName := GenerateUniqueName("skill")
-	both := SkillCreate{
+	bothTagsName := helpers.GenerateUniqueName("skill")
+	both := helpers.SkillCreate{
 		Name:        bothTagsName,
 		Description: "Skill with both tags",
 		Content:     "# Both Tags\nContent.",
@@ -280,12 +282,12 @@ func TestListSkills_FilterByTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create both-tag skill: %v", err)
 	}
-	AssertStatusCode(t, r1, http.StatusCreated)
-	ReadBody(t, r1)
+	helpers.AssertStatusCode(t, r1, http.StatusCreated)
+	helpers.ReadBody(t, r1)
 
 	// Create a skill with only one of the tags.
-	oneTagName := GenerateUniqueName("skill")
-	one := SkillCreate{
+	oneTagName := helpers.GenerateUniqueName("skill")
+	one := helpers.SkillCreate{
 		Name:        oneTagName,
 		Description: "Skill with one tag",
 		Content:     "# One Tag\nContent.",
@@ -296,12 +298,12 @@ func TestListSkills_FilterByTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create one-tag skill: %v", err)
 	}
-	AssertStatusCode(t, r2, http.StatusCreated)
-	ReadBody(t, r2)
+	helpers.AssertStatusCode(t, r2, http.StatusCreated)
+	helpers.ReadBody(t, r2)
 
 	// Create a skill with no matching tags.
-	noTagName := GenerateUniqueName("skill")
-	noTag := SkillCreate{
+	noTagName := helpers.GenerateUniqueName("skill")
+	noTag := helpers.SkillCreate{
 		Name:        noTagName,
 		Description: "Skill with no matching tags",
 		Content:     "# No Tags\nContent.",
@@ -312,17 +314,17 @@ func TestListSkills_FilterByTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create no-tag skill: %v", err)
 	}
-	AssertStatusCode(t, r3, http.StatusCreated)
-	ReadBody(t, r3)
+	helpers.AssertStatusCode(t, r3, http.StatusCreated)
+	helpers.ReadBody(t, r3)
 
 	// Filter by both tags (AND logic).
 	resp, err := client.Get("/v1/api/skills?tags=go,testing")
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/skills?tags=go,testing: %v", err)
 	}
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	list := ParseJSON[SkillList](t, resp)
+	list := helpers.ParseJSON[helpers.SkillList](t, resp)
 
 	// Skill with both tags must appear.
 	foundBoth := false
@@ -351,19 +353,19 @@ func TestListSkills_FilterByTags(t *testing.T) {
 //   - data is empty array
 //   - has_more is false
 func TestListSkills_EmptyResult(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// Use a unique tag that no real skill will have to approximate an empty
 	// result without requiring a clean database state.
-	uniqueTag := GenerateUniqueName("emptytag")
+	uniqueTag := helpers.GenerateUniqueName("emptytag")
 	resp, err := client.Get("/v1/api/skills?tags=" + uniqueTag)
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/skills?tags=%s: %v", uniqueTag, err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	list := ParseJSON[SkillList](t, resp)
+	list := helpers.ParseJSON[helpers.SkillList](t, resp)
 
 	if list.Data == nil {
 		t.Fatal("expected data to be a non-nil array (even if empty)")
@@ -389,10 +391,10 @@ func TestListSkills_EmptyResult(t *testing.T) {
 //   - Response body contains the created Skill with timestamps
 //   - X-Request-ID header is present
 func TestCreateSkill_Success(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	name := GenerateUniqueName("skill")
-	payload := SkillCreate{
+	name := helpers.GenerateUniqueName("skill")
+	payload := helpers.SkillCreate{
 		Name:        name,
 		Description: "A skill for testing create success",
 		Content:     "# My Skill\nThis is the skill content.",
@@ -404,8 +406,8 @@ func TestCreateSkill_Success(t *testing.T) {
 		t.Fatalf("failed to POST /v1/api/skills: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusCreated)
-	AssertRequestIDHeader(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusCreated)
+	helpers.AssertRequestIDHeader(t, resp)
 
 	location := resp.Header.Get("Location")
 	if location == "" {
@@ -416,7 +418,7 @@ func TestCreateSkill_Success(t *testing.T) {
 		t.Errorf("expected Location to end with %q, got %q", expectedLocation, location)
 	}
 
-	skill := ParseJSON[Skill](t, resp)
+	skill := helpers.ParseJSON[helpers.Skill](t, resp)
 
 	if skill.Name != name {
 		t.Errorf("expected name %q, got %q", name, skill.Name)
@@ -439,10 +441,10 @@ func TestCreateSkill_Success(t *testing.T) {
 //   - All optional fields (description, tags, license, compatibility,
 //     metadata, allowed_tools, version) are persisted and returned
 func TestCreateSkill_AllFields(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	name := GenerateUniqueName("skill")
-	payload := SkillCreate{
+	name := helpers.GenerateUniqueName("skill")
+	payload := helpers.SkillCreate{
 		Name:          name,
 		Description:   "Full-featured test skill",
 		Content:       "# Full Skill\nAll fields populated.",
@@ -462,9 +464,9 @@ func TestCreateSkill_AllFields(t *testing.T) {
 		t.Fatalf("failed to POST /v1/api/skills: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusCreated)
+	helpers.AssertStatusCode(t, resp, http.StatusCreated)
 
-	skill := ParseJSON[Skill](t, resp)
+	skill := helpers.ParseJSON[helpers.Skill](t, resp)
 
 	if skill.Name != name {
 		t.Errorf("expected name %q, got %q", name, skill.Name)
@@ -499,11 +501,11 @@ func TestCreateSkill_AllFields(t *testing.T) {
 //   - Only name and content are required
 //   - Optional fields are absent or default in response
 func TestCreateSkill_MinimalFields(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	name := GenerateUniqueName("skill")
+	name := helpers.GenerateUniqueName("skill")
 	// Per OpenAPI spec, SkillCreate requires: name, description, content, version.
-	payload := SkillCreate{
+	payload := helpers.SkillCreate{
 		Name:        name,
 		Description: "Minimal required description",
 		Content:     "# Minimal Skill\nJust the content.",
@@ -515,9 +517,9 @@ func TestCreateSkill_MinimalFields(t *testing.T) {
 		t.Fatalf("failed to POST /v1/api/skills: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusCreated)
+	helpers.AssertStatusCode(t, resp, http.StatusCreated)
 
-	skill := ParseJSON[Skill](t, resp)
+	skill := helpers.ParseJSON[helpers.Skill](t, resp)
 
 	if skill.Name != name {
 		t.Errorf("expected name %q, got %q", name, skill.Name)
@@ -540,10 +542,10 @@ func TestCreateSkill_MinimalFields(t *testing.T) {
 //   - Returns 409 Conflict
 //   - Response is RFC 7807 Problem Details format
 func TestCreateSkill_DuplicateName(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	name := GenerateUniqueName("skill")
-	payload := SkillCreate{
+	name := helpers.GenerateUniqueName("skill")
+	payload := helpers.SkillCreate{
 		Name:        name,
 		Description: "Duplicate name test",
 		Content:     "# Skill Content\nBody.",
@@ -555,17 +557,17 @@ func TestCreateSkill_DuplicateName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed first POST /v1/api/skills: %v", err)
 	}
-	AssertStatusCode(t, r1, http.StatusCreated)
-	ReadBody(t, r1)
+	helpers.AssertStatusCode(t, r1, http.StatusCreated)
+	helpers.ReadBody(t, r1)
 
 	// Create again with the same name — should conflict.
 	r2, err := client.Post("/v1/api/skills", payload)
 	if err != nil {
 		t.Fatalf("failed second POST /v1/api/skills: %v", err)
 	}
-	AssertStatusCode(t, r2, http.StatusConflict)
+	helpers.AssertStatusCode(t, r2, http.StatusConflict)
 
-	errResp := ParseJSON[ErrorResponse](t, r2)
+	errResp := helpers.ParseJSON[helpers.ErrorResponse](t, r2)
 
 	if errResp.Status != http.StatusConflict {
 		t.Errorf("expected error status 409, got %d", errResp.Status)
@@ -592,7 +594,7 @@ func TestCreateSkill_DuplicateName(t *testing.T) {
 //   - More than 50 allowed_tools returns 400
 //   - Version exceeding 50 chars returns 400
 func TestCreateSkill_ValidationErrors(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// Build a 21-element tags slice.
 	tooManyTags := make([]string, 21)
@@ -608,12 +610,12 @@ func TestCreateSkill_ValidationErrors(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		payload     SkillCreate
+		payload     helpers.SkillCreate
 		expectField string
 	}{
 		{
 			name: "missing name",
-			payload: SkillCreate{
+			payload: helpers.SkillCreate{
 				Description: "desc",
 				Content:     "content",
 				Version:     "1.0.0",
@@ -622,8 +624,8 @@ func TestCreateSkill_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "missing content",
-			payload: SkillCreate{
-				Name:        GenerateUniqueName("skill"),
+			payload: helpers.SkillCreate{
+				Name:        helpers.GenerateUniqueName("skill"),
 				Description: "desc",
 				Version:     "1.0.0",
 			},
@@ -631,7 +633,7 @@ func TestCreateSkill_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "name too long",
-			payload: SkillCreate{
+			payload: helpers.SkillCreate{
 				Name:        stringOfLen("a", 65),
 				Description: "desc",
 				Content:     "content",
@@ -641,7 +643,7 @@ func TestCreateSkill_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "name uppercase",
-			payload: SkillCreate{
+			payload: helpers.SkillCreate{
 				Name:        "MySkill",
 				Description: "desc",
 				Content:     "content",
@@ -651,7 +653,7 @@ func TestCreateSkill_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "name starts with number",
-			payload: SkillCreate{
+			payload: helpers.SkillCreate{
 				Name:        "1-skill",
 				Description: "desc",
 				Content:     "content",
@@ -661,7 +663,7 @@ func TestCreateSkill_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "name with underscore",
-			payload: SkillCreate{
+			payload: helpers.SkillCreate{
 				Name:        "my_skill",
 				Description: "desc",
 				Content:     "content",
@@ -671,8 +673,8 @@ func TestCreateSkill_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "content too large",
-			payload: SkillCreate{
-				Name:        GenerateUniqueName("skill"),
+			payload: helpers.SkillCreate{
+				Name:        helpers.GenerateUniqueName("skill"),
 				Description: "desc",
 				Content:     stringOfLen("x", 524289),
 				Version:     "1.0.0",
@@ -681,8 +683,8 @@ func TestCreateSkill_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "description too long",
-			payload: SkillCreate{
-				Name:        GenerateUniqueName("skill"),
+			payload: helpers.SkillCreate{
+				Name:        helpers.GenerateUniqueName("skill"),
 				Description: stringOfLen("d", 1025),
 				Content:     "content",
 				Version:     "1.0.0",
@@ -691,8 +693,8 @@ func TestCreateSkill_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "too many tags",
-			payload: SkillCreate{
-				Name:        GenerateUniqueName("skill"),
+			payload: helpers.SkillCreate{
+				Name:        helpers.GenerateUniqueName("skill"),
 				Description: "desc",
 				Content:     "content",
 				Version:     "1.0.0",
@@ -702,8 +704,8 @@ func TestCreateSkill_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "license too long",
-			payload: SkillCreate{
-				Name:        GenerateUniqueName("skill"),
+			payload: helpers.SkillCreate{
+				Name:        helpers.GenerateUniqueName("skill"),
 				Description: "desc",
 				Content:     "content",
 				Version:     "1.0.0",
@@ -713,8 +715,8 @@ func TestCreateSkill_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "compatibility too long",
-			payload: SkillCreate{
-				Name:          GenerateUniqueName("skill"),
+			payload: helpers.SkillCreate{
+				Name:          helpers.GenerateUniqueName("skill"),
 				Description:   "desc",
 				Content:       "content",
 				Version:       "1.0.0",
@@ -724,8 +726,8 @@ func TestCreateSkill_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "too many allowed_tools",
-			payload: SkillCreate{
-				Name:         GenerateUniqueName("skill"),
+			payload: helpers.SkillCreate{
+				Name:         helpers.GenerateUniqueName("skill"),
 				Description:  "desc",
 				Content:      "content",
 				Version:      "1.0.0",
@@ -735,8 +737,8 @@ func TestCreateSkill_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "version too long",
-			payload: SkillCreate{
-				Name:        GenerateUniqueName("skill"),
+			payload: helpers.SkillCreate{
+				Name:        helpers.GenerateUniqueName("skill"),
 				Description: "desc",
 				Content:     "content",
 				Version:     stringOfLen("v", 51),
@@ -751,9 +753,9 @@ func TestCreateSkill_ValidationErrors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to POST /v1/api/skills: %v", err)
 			}
-			AssertStatusCode(t, resp, http.StatusBadRequest)
+			helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 
-			errResp := ParseJSON[ErrorResponse](t, resp)
+			errResp := helpers.ParseJSON[helpers.ErrorResponse](t, resp)
 
 			if errResp.Status != http.StatusBadRequest {
 				t.Errorf("expected error status 400, got %d", errResp.Status)
@@ -781,7 +783,7 @@ func TestCreateSkill_ValidationErrors(t *testing.T) {
 //   - Returns 400 Bad Request
 //   - Response is RFC 7807 Problem Details format
 func TestCreateSkill_InvalidJSON(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	req, err := http.NewRequest(http.MethodPost, client.BaseURL+"/v1/api/skills", bytes.NewBufferString(`{not valid json`))
 	if err != nil {
@@ -792,9 +794,9 @@ func TestCreateSkill_InvalidJSON(t *testing.T) {
 		t.Fatalf("failed to POST /v1/api/skills with invalid JSON: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusBadRequest)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 
-	errResp := ParseJSON[ErrorResponse](t, resp)
+	errResp := helpers.ParseJSON[helpers.ErrorResponse](t, resp)
 	if errResp.Status != http.StatusBadRequest {
 		t.Errorf("expected error status 400, got %d", errResp.Status)
 	}
@@ -808,7 +810,7 @@ func TestCreateSkill_InvalidJSON(t *testing.T) {
 // Expected behavior:
 //   - Returns 400 Bad Request
 func TestCreateSkill_EmptyBody(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	req, err := http.NewRequest(http.MethodPost, client.BaseURL+"/v1/api/skills", bytes.NewBufferString(""))
 	if err != nil {
@@ -819,8 +821,8 @@ func TestCreateSkill_EmptyBody(t *testing.T) {
 		t.Fatalf("failed to POST /v1/api/skills with empty body: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusBadRequest)
-	ReadBody(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
+	helpers.ReadBody(t, resp)
 }
 
 // TestCreateSkill_NameFormat validates the name pattern ^[a-z]([a-z0-9](-[a-z0-9])*)*$.
@@ -829,7 +831,7 @@ func TestCreateSkill_EmptyBody(t *testing.T) {
 //   - Valid names: "my-skill", "a", "abc-123", "skill-v2-beta"
 //   - Invalid names: "My-Skill", "123-abc", "-leading-hyphen", "trailing-", "a--b"
 func TestCreateSkill_NameFormat(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	validContent := "# Skill\nContent."
 	validDesc := "Test description"
@@ -837,11 +839,11 @@ func TestCreateSkill_NameFormat(t *testing.T) {
 
 	validNames := []struct {
 		name    string
-		payload SkillCreate
+		payload helpers.SkillCreate
 	}{
 		{
 			name: "single letter",
-			payload: SkillCreate{
+			payload: helpers.SkillCreate{
 				Name:        "a",
 				Description: validDesc,
 				Content:     validContent,
@@ -850,8 +852,8 @@ func TestCreateSkill_NameFormat(t *testing.T) {
 		},
 		{
 			name: "hyphenated",
-			payload: SkillCreate{
-				Name:        GenerateUniqueName("my-skill"),
+			payload: helpers.SkillCreate{
+				Name:        helpers.GenerateUniqueName("my-skill"),
 				Description: validDesc,
 				Content:     validContent,
 				Version:     validVersion,
@@ -859,8 +861,8 @@ func TestCreateSkill_NameFormat(t *testing.T) {
 		},
 		{
 			name: "alphanumeric with hyphen",
-			payload: SkillCreate{
-				Name:        GenerateUniqueName("abc-123"),
+			payload: helpers.SkillCreate{
+				Name:        helpers.GenerateUniqueName("abc-123"),
 				Description: validDesc,
 				Content:     validContent,
 				Version:     validVersion,
@@ -868,8 +870,8 @@ func TestCreateSkill_NameFormat(t *testing.T) {
 		},
 		{
 			name: "multiple segments",
-			payload: SkillCreate{
-				Name:        GenerateUniqueName("skill-v2-beta"),
+			payload: helpers.SkillCreate{
+				Name:        helpers.GenerateUniqueName("skill-v2-beta"),
 				Description: validDesc,
 				Content:     validContent,
 				Version:     validVersion,
@@ -885,10 +887,10 @@ func TestCreateSkill_NameFormat(t *testing.T) {
 			}
 			// 201 = created successfully; 409 = name collision (still a valid name format).
 			if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
-				body := ReadBody(t, resp)
+				body := helpers.ReadBody(t, resp)
 				t.Errorf("expected 201 or 409 for valid name %q, got %d: %s", tt.payload.Name, resp.StatusCode, string(body))
 			} else {
-				ReadBody(t, resp)
+				helpers.ReadBody(t, resp)
 			}
 		})
 	}
@@ -906,7 +908,7 @@ func TestCreateSkill_NameFormat(t *testing.T) {
 
 	for _, tt := range invalidNames {
 		t.Run("invalid/"+tt.name, func(t *testing.T) {
-			payload := SkillCreate{
+			payload := helpers.SkillCreate{
 				Name:        tt.skillName,
 				Description: validDesc,
 				Content:     validContent,
@@ -916,8 +918,8 @@ func TestCreateSkill_NameFormat(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to POST: %v", err)
 			}
-			AssertStatusCode(t, resp, http.StatusBadRequest)
-			ReadBody(t, resp)
+			helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
+			helpers.ReadBody(t, resp)
 		})
 	}
 }
@@ -934,10 +936,10 @@ func TestCreateSkill_NameFormat(t *testing.T) {
 //   - Response body contains the full Skill including content
 //   - X-Request-ID header is present
 func TestGetSkill_Success(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	name := GenerateUniqueName("skill")
-	payload := SkillCreate{
+	name := helpers.GenerateUniqueName("skill")
+	payload := helpers.SkillCreate{
 		Name:        name,
 		Description: "Get skill test",
 		Content:     "# Get Skill\nFull content here.",
@@ -948,18 +950,18 @@ func TestGetSkill_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/skills: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusCreated)
-	ReadBody(t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusCreated)
+	helpers.ReadBody(t, createResp)
 
 	resp, err := client.Get("/v1/api/skills/" + name)
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/skills/%s: %v", name, err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
-	AssertRequestIDHeader(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertRequestIDHeader(t, resp)
 
-	skill := ParseJSON[Skill](t, resp)
+	skill := helpers.ParseJSON[helpers.Skill](t, resp)
 
 	if skill.Name != name {
 		t.Errorf("expected name %q, got %q", name, skill.Name)
@@ -978,16 +980,16 @@ func TestGetSkill_Success(t *testing.T) {
 //   - Returns 404 Not Found
 //   - Response is RFC 7807 Problem Details format
 func TestGetSkill_NotFound(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/skills/nonexistent-skill-that-does-not-exist")
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/skills/nonexistent-skill-that-does-not-exist: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusNotFound)
+	helpers.AssertStatusCode(t, resp, http.StatusNotFound)
 
-	errResp := ParseJSON[ErrorResponse](t, resp)
+	errResp := helpers.ParseJSON[helpers.ErrorResponse](t, resp)
 	if errResp.Status != http.StatusNotFound {
 		t.Errorf("expected error status 404, got %d", errResp.Status)
 	}
@@ -1002,7 +1004,7 @@ func TestGetSkill_NotFound(t *testing.T) {
 //   - Uppercase name returns 400 or 404
 //   - Name starting with number returns 400 or 404
 func TestGetSkill_InvalidNameFormat(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	tests := []struct {
 		name      string
@@ -1019,10 +1021,10 @@ func TestGetSkill_InvalidNameFormat(t *testing.T) {
 				t.Fatalf("failed to GET /v1/api/skills/%s: %v", tt.skillName, err)
 			}
 			if resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusNotFound {
-				body := ReadBody(t, resp)
+				body := helpers.ReadBody(t, resp)
 				t.Errorf("expected 400 or 404 for invalid name %q, got %d: %s", tt.skillName, resp.StatusCode, string(body))
 			} else {
-				ReadBody(t, resp)
+				helpers.ReadBody(t, resp)
 			}
 		})
 	}
@@ -1038,10 +1040,10 @@ func TestGetSkill_InvalidNameFormat(t *testing.T) {
 // Expected behavior:
 //   - Returns 204 No Content
 func TestUpdateSkill_Success(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	name := GenerateUniqueName("skill")
-	createPayload := SkillCreate{
+	name := helpers.GenerateUniqueName("skill")
+	createPayload := helpers.SkillCreate{
 		Name:        name,
 		Description: "Original description",
 		Content:     "# Original Content\nOriginal body.",
@@ -1052,10 +1054,10 @@ func TestUpdateSkill_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/skills: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusCreated)
-	ReadBody(t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusCreated)
+	helpers.ReadBody(t, createResp)
 
-	updatePayload := SkillUpdate{
+	updatePayload := helpers.SkillUpdate{
 		Name:        name,
 		Description: "Updated description",
 		Content:     "# Updated Content\nNew body.",
@@ -1067,9 +1069,9 @@ func TestUpdateSkill_Success(t *testing.T) {
 		t.Fatalf("failed to PUT /v1/api/skills/%s: %v", name, err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusNoContent)
-	AssertRequestIDHeader(t, resp)
-	ReadBody(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusNoContent)
+	helpers.AssertRequestIDHeader(t, resp)
+	helpers.ReadBody(t, resp)
 }
 
 // TestUpdateSkill_FullReplacement verifies PUT is full replacement, not PATCH.
@@ -1078,10 +1080,10 @@ func TestUpdateSkill_Success(t *testing.T) {
 //   - Omitted optional fields are cleared (not preserved from previous state)
 //   - Only name and content are retained if only they are provided
 func TestUpdateSkill_FullReplacement(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	name := GenerateUniqueName("skill")
-	createPayload := SkillCreate{
+	name := helpers.GenerateUniqueName("skill")
+	createPayload := helpers.SkillCreate{
 		Name:          name,
 		Description:   "Has optional fields",
 		Content:       "# Content\nBody.",
@@ -1096,11 +1098,11 @@ func TestUpdateSkill_FullReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/skills: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusCreated)
-	ReadBody(t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusCreated)
+	helpers.ReadBody(t, createResp)
 
 	// PUT with only required fields — optional fields should be cleared.
-	updatePayload := SkillUpdate{
+	updatePayload := helpers.SkillUpdate{
 		Name:        name,
 		Description: "Replacement description",
 		Content:     "# Replacement\nNew body.",
@@ -1111,8 +1113,8 @@ func TestUpdateSkill_FullReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to PUT /v1/api/skills/%s: %v", name, err)
 	}
-	AssertStatusCode(t, resp, http.StatusNoContent)
-	ReadBody(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusNoContent)
+	helpers.ReadBody(t, resp)
 }
 
 // TestUpdateSkill_NotFound verifies 404 when updating a non-existent skill.
@@ -1121,9 +1123,9 @@ func TestUpdateSkill_FullReplacement(t *testing.T) {
 //   - Returns 404 Not Found
 //   - Response is RFC 7807 Problem Details format
 func TestUpdateSkill_NotFound(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	payload := SkillUpdate{
+	payload := helpers.SkillUpdate{
 		Name:        "does-not-exist-skill",
 		Description: "Will not be created",
 		Content:     "# Not found\nContent.",
@@ -1135,9 +1137,9 @@ func TestUpdateSkill_NotFound(t *testing.T) {
 		t.Fatalf("failed to PUT /v1/api/skills/does-not-exist-skill: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusNotFound)
+	helpers.AssertStatusCode(t, resp, http.StatusNotFound)
 
-	errResp := ParseJSON[ErrorResponse](t, resp)
+	errResp := helpers.ParseJSON[helpers.ErrorResponse](t, resp)
 	if errResp.Status != http.StatusNotFound {
 		t.Errorf("expected error status 404, got %d", errResp.Status)
 	}
@@ -1149,11 +1151,11 @@ func TestUpdateSkill_NotFound(t *testing.T) {
 //   - Same validation rules as create (name pattern, content size, etc.)
 //   - Name in body must match path parameter (or be omitted)
 func TestUpdateSkill_ValidationErrors(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// First create a skill to update against.
-	name := GenerateUniqueName("skill")
-	createPayload := SkillCreate{
+	name := helpers.GenerateUniqueName("skill")
+	createPayload := helpers.SkillCreate{
 		Name:        name,
 		Description: "Validation test skill",
 		Content:     "# Content\nBody.",
@@ -1163,17 +1165,17 @@ func TestUpdateSkill_ValidationErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/skills: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusCreated)
-	ReadBody(t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusCreated)
+	helpers.ReadBody(t, createResp)
 
 	tests := []struct {
 		name        string
-		payload     SkillUpdate
+		payload     helpers.SkillUpdate
 		expectField string
 	}{
 		{
 			name: "missing content",
-			payload: SkillUpdate{
+			payload: helpers.SkillUpdate{
 				Name:        name,
 				Description: "desc",
 				Version:     "1.0.0",
@@ -1182,7 +1184,7 @@ func TestUpdateSkill_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "content too large",
-			payload: SkillUpdate{
+			payload: helpers.SkillUpdate{
 				Name:        name,
 				Description: "desc",
 				Content:     stringOfLen("x", 524289),
@@ -1192,7 +1194,7 @@ func TestUpdateSkill_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "description too long",
-			payload: SkillUpdate{
+			payload: helpers.SkillUpdate{
 				Name:        name,
 				Description: stringOfLen("d", 1025),
 				Content:     "content",
@@ -1208,9 +1210,9 @@ func TestUpdateSkill_ValidationErrors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to PUT /v1/api/skills/%s: %v", name, err)
 			}
-			AssertStatusCode(t, resp, http.StatusBadRequest)
+			helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 
-			errResp := ParseJSON[ErrorResponse](t, resp)
+			errResp := helpers.ParseJSON[helpers.ErrorResponse](t, resp)
 			if errResp.Status != http.StatusBadRequest {
 				t.Errorf("expected error status 400, got %d", errResp.Status)
 			}
@@ -1236,11 +1238,11 @@ func TestUpdateSkill_ValidationErrors(t *testing.T) {
 // Expected behavior:
 //   - Returns 400 Bad Request
 func TestUpdateSkill_NameMismatch(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// Create a skill to update.
-	name := GenerateUniqueName("skill")
-	createPayload := SkillCreate{
+	name := helpers.GenerateUniqueName("skill")
+	createPayload := helpers.SkillCreate{
 		Name:        name,
 		Description: "Mismatch test skill",
 		Content:     "# Content\nBody.",
@@ -1250,11 +1252,11 @@ func TestUpdateSkill_NameMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/skills: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusCreated)
-	ReadBody(t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusCreated)
+	helpers.ReadBody(t, createResp)
 
 	// PUT with a different name in the body.
-	payload := SkillUpdate{
+	payload := helpers.SkillUpdate{
 		Name:        "a-different-name",
 		Description: "Mismatch body",
 		Content:     "# Content\nBody.",
@@ -1266,8 +1268,8 @@ func TestUpdateSkill_NameMismatch(t *testing.T) {
 		t.Fatalf("failed to PUT /v1/api/skills/%s: %v", name, err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusBadRequest)
-	ReadBody(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
+	helpers.ReadBody(t, resp)
 }
 
 // -----------------------------------------------------------------------------
@@ -1282,10 +1284,10 @@ func TestUpdateSkill_NameMismatch(t *testing.T) {
 //   - Skill is no longer retrievable via GET
 //   - Associated files (scripts, references, assets) are cascade-deleted
 func TestDeleteSkill_Success(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	name := GenerateUniqueName("skill")
-	createPayload := SkillCreate{
+	name := helpers.GenerateUniqueName("skill")
+	createPayload := helpers.SkillCreate{
 		Name:        name,
 		Description: "Delete success test skill",
 		Content:     "# Content\nBody.",
@@ -1296,23 +1298,23 @@ func TestDeleteSkill_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/skills: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusCreated)
-	ReadBody(t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusCreated)
+	helpers.ReadBody(t, createResp)
 
 	deleteResp, err := client.Delete("/v1/api/skills/" + name)
 	if err != nil {
 		t.Fatalf("failed to DELETE /v1/api/skills/%s: %v", name, err)
 	}
-	AssertStatusCode(t, deleteResp, http.StatusNoContent)
-	ReadBody(t, deleteResp)
+	helpers.AssertStatusCode(t, deleteResp, http.StatusNoContent)
+	helpers.ReadBody(t, deleteResp)
 
 	// Verify skill is no longer accessible.
 	getResp, err := client.Get("/v1/api/skills/" + name)
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/skills/%s after delete: %v", name, err)
 	}
-	AssertStatusCode(t, getResp, http.StatusNotFound)
-	ReadBody(t, getResp)
+	helpers.AssertStatusCode(t, getResp, http.StatusNotFound)
+	helpers.ReadBody(t, getResp)
 }
 
 // TestDeleteSkill_NotFound verifies 404 when deleting a non-existent skill.
@@ -1321,16 +1323,16 @@ func TestDeleteSkill_Success(t *testing.T) {
 //   - Returns 404 Not Found
 //   - Response is RFC 7807 Problem Details format
 func TestDeleteSkill_NotFound(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Delete("/v1/api/skills/nonexistent-skill-xyz-999")
 	if err != nil {
 		t.Fatalf("failed to DELETE /v1/api/skills/nonexistent-skill-xyz-999: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusNotFound)
+	helpers.AssertStatusCode(t, resp, http.StatusNotFound)
 
-	errResp := ParseJSON[ErrorResponse](t, resp)
+	errResp := helpers.ParseJSON[helpers.ErrorResponse](t, resp)
 	if errResp.Status != http.StatusNotFound {
 		t.Errorf("expected error status 404, got %d", errResp.Status)
 	}
@@ -1345,10 +1347,10 @@ func TestDeleteSkill_NotFound(t *testing.T) {
 //   - First DELETE returns 204
 //   - Second DELETE of same name returns 404
 func TestDeleteSkill_Idempotent(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	name := GenerateUniqueName("skill")
-	createPayload := SkillCreate{
+	name := helpers.GenerateUniqueName("skill")
+	createPayload := helpers.SkillCreate{
 		Name:        name,
 		Description: "Idempotent delete test skill",
 		Content:     "# Content\nBody.",
@@ -1359,24 +1361,24 @@ func TestDeleteSkill_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/skills: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusCreated)
-	ReadBody(t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusCreated)
+	helpers.ReadBody(t, createResp)
 
 	// First DELETE — should return 204.
 	del1, err := client.Delete("/v1/api/skills/" + name)
 	if err != nil {
 		t.Fatalf("failed first DELETE /v1/api/skills/%s: %v", name, err)
 	}
-	AssertStatusCode(t, del1, http.StatusNoContent)
-	ReadBody(t, del1)
+	helpers.AssertStatusCode(t, del1, http.StatusNoContent)
+	helpers.ReadBody(t, del1)
 
 	// Second DELETE — should return 404.
 	del2, err := client.Delete("/v1/api/skills/" + name)
 	if err != nil {
 		t.Fatalf("failed second DELETE /v1/api/skills/%s: %v", name, err)
 	}
-	AssertStatusCode(t, del2, http.StatusNotFound)
-	ReadBody(t, del2)
+	helpers.AssertStatusCode(t, del2, http.StatusNotFound)
+	helpers.ReadBody(t, del2)
 }
 
 // TestDeleteSkill_CascadesFiles verifies associated files are deleted when skill is deleted.
@@ -1386,10 +1388,10 @@ func TestDeleteSkill_Idempotent(t *testing.T) {
 //   - DELETE the skill returns 204
 //   - GET /v1/api/skills/{name}/scripts returns 404 (skill not found)
 func TestDeleteSkill_CascadesFiles(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	name := GenerateUniqueName("skill")
-	createPayload := SkillCreate{
+	name := helpers.GenerateUniqueName("skill")
+	createPayload := helpers.SkillCreate{
 		Name:        name,
 		Description: "Cascade delete test skill",
 		Content:     "# Content\nBody.",
@@ -1400,11 +1402,11 @@ func TestDeleteSkill_CascadesFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST /v1/api/skills: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusCreated)
-	ReadBody(t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusCreated)
+	helpers.ReadBody(t, createResp)
 
 	// Upload a script file to the skill.
-	scriptPayload := SkillFileCreate{
+	scriptPayload := helpers.SkillFileCreate{
 		Filename:    "test-script.sh",
 		ContentType: "text/x-shellscript",
 		Content:     "#!/bin/sh\necho hello",
@@ -1414,30 +1416,30 @@ func TestDeleteSkill_CascadesFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST script to skill: %v", err)
 	}
-	AssertStatusCode(t, scriptResp, http.StatusCreated)
-	ReadBody(t, scriptResp)
+	helpers.AssertStatusCode(t, scriptResp, http.StatusCreated)
+	helpers.ReadBody(t, scriptResp)
 
 	// Verify the script is accessible.
 	listResp, err := client.Get("/v1/api/skills/" + name + "/scripts")
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/skills/%s/scripts: %v", name, err)
 	}
-	AssertStatusCode(t, listResp, http.StatusOK)
-	ReadBody(t, listResp)
+	helpers.AssertStatusCode(t, listResp, http.StatusOK)
+	helpers.ReadBody(t, listResp)
 
 	// Delete the skill.
 	deleteResp, err := client.Delete("/v1/api/skills/" + name)
 	if err != nil {
 		t.Fatalf("failed to DELETE /v1/api/skills/%s: %v", name, err)
 	}
-	AssertStatusCode(t, deleteResp, http.StatusNoContent)
-	ReadBody(t, deleteResp)
+	helpers.AssertStatusCode(t, deleteResp, http.StatusNoContent)
+	helpers.ReadBody(t, deleteResp)
 
 	// After deletion, the scripts endpoint should return 404 (skill not found).
 	scriptsAfterDelete, err := client.Get("/v1/api/skills/" + name + "/scripts")
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/skills/%s/scripts after delete: %v", name, err)
 	}
-	AssertStatusCode(t, scriptsAfterDelete, http.StatusNotFound)
-	ReadBody(t, scriptsAfterDelete)
+	helpers.AssertStatusCode(t, scriptsAfterDelete, http.StatusNotFound)
+	helpers.ReadBody(t, scriptsAfterDelete)
 }

@@ -1,4 +1,4 @@
-package e2e
+package api_test
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/twistingmercury/mnemonic/tests/e2e/helpers"
 )
 
 // =============================================================================
@@ -43,16 +44,16 @@ import (
 // -----------------------------------------------------------------------------
 
 func TestListPatterns_ReturnsOKWithPaginatedSummaries(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns")
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	list := ParseJSON[PatternList](t, resp)
+	list := helpers.ParseJSON[helpers.PatternList](t, resp)
 
 	// Data field must be present (may be empty slice)
 	if list.Data == nil {
@@ -66,16 +67,16 @@ func TestListPatterns_ReturnsOKWithPaginatedSummaries(t *testing.T) {
 }
 
 func TestListPatterns_DefaultPaginationValues(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns")
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	list := ParseJSON[PatternList](t, resp)
+	list := helpers.ParseJSON[helpers.PatternList](t, resp)
 
 	// Default limit per spec is 20
 	if list.Pagination.Limit != 20 {
@@ -84,16 +85,16 @@ func TestListPatterns_DefaultPaginationValues(t *testing.T) {
 }
 
 func TestListPatterns_CustomLimit(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns?limit=5")
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns?limit=5: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	list := ParseJSON[PatternList](t, resp)
+	list := helpers.ParseJSON[helpers.PatternList](t, resp)
 
 	if list.Pagination.Limit != 5 {
 		t.Fatalf("expected limit 5, got %d", list.Pagination.Limit)
@@ -105,12 +106,12 @@ func TestListPatterns_CustomLimit(t *testing.T) {
 }
 
 func TestListPatterns_CursorPaginationWalksAllPages(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// Create 3 patterns to ensure at least 2 pages with limit=2
 	for i := 0; i < 3; i++ {
-		body := PatternCreate{
-			Name:       GenerateUniqueName("pattern"),
+		body := helpers.PatternCreate{
+			Name:       helpers.GenerateUniqueName("pattern"),
 			Content:    "cursor pagination test content",
 			EntityType: "go-pattern",
 			Language:   "go",
@@ -139,7 +140,7 @@ func TestListPatterns_CursorPaginationWalksAllPages(t *testing.T) {
 			t.Fatalf("failed to GET %s: %v", path, err)
 		}
 
-		list := ParseJSON[PatternList](t, resp)
+		list := helpers.ParseJSON[helpers.PatternList](t, resp)
 
 		for _, p := range list.Data {
 			if seen[p.ID] {
@@ -166,11 +167,11 @@ func TestListPatterns_CursorPaginationWalksAllPages(t *testing.T) {
 }
 
 func TestListPatterns_SummaryExcludesContentField(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// Create a pattern with content
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "this content should not appear in list summaries",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -180,8 +181,8 @@ func TestListPatterns_SummaryExcludesContentField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	// List patterns and find our created pattern
 	resp, err := client.Get("/v1/api/patterns")
@@ -189,8 +190,8 @@ func TestListPatterns_SummaryExcludesContentField(t *testing.T) {
 		t.Fatalf("failed to GET /v1/api/patterns: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
-	list := ParseJSON[PatternList](t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
+	list := helpers.ParseJSON[helpers.PatternList](t, resp)
 
 	for _, p := range list.Data {
 		if p.ID == created.ID {
@@ -202,11 +203,11 @@ func TestListPatterns_SummaryExcludesContentField(t *testing.T) {
 
 	// Pattern may be on a later page — that is acceptable; just verify the type structure.
 	// PatternSummary does not have a Content field by definition.
-	_ = PatternSummary{}
+	_ = helpers.PatternSummary{}
 }
 
 func TestListPatterns_ResponseIncludesRequestIDHeader(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns")
 	if err != nil {
@@ -214,18 +215,18 @@ func TestListPatterns_ResponseIncludesRequestIDHeader(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusOK)
-	AssertRequestIDHeader(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertRequestIDHeader(t, resp)
 }
 
 func TestListPatterns_FilterByTags(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	uniqueTag := "tag-" + uuid.New().String()[:8]
 
 	// Create a pattern with a unique tag
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "filter by tag content",
 		Tags:       []string{uniqueTag},
 		EntityType: "go-pattern",
@@ -236,8 +237,8 @@ func TestListPatterns_FilterByTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	// Filter by the unique tag
 	resp, err := client.Get("/v1/api/patterns?tags=" + uniqueTag)
@@ -245,8 +246,8 @@ func TestListPatterns_FilterByTags(t *testing.T) {
 		t.Fatalf("failed to GET /v1/api/patterns?tags=...: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
-	list := ParseJSON[PatternList](t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
+	list := helpers.ParseJSON[helpers.PatternList](t, resp)
 
 	found := false
 	for _, p := range list.Data {
@@ -276,15 +277,15 @@ func TestListPatterns_FilterByTags(t *testing.T) {
 }
 
 func TestListPatterns_FilterByMultipleTagsUsesANDLogic(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	tagA := "tag-a-" + uuid.New().String()[:8]
 	tagB := "tag-b-" + uuid.New().String()[:8]
 	tagC := "tag-c-" + uuid.New().String()[:8]
 
 	// Pattern with both tags
-	bothBody := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	bothBody := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "has both tags",
 		Tags:       []string{tagA, tagB},
 		EntityType: "go-pattern",
@@ -295,12 +296,12 @@ func TestListPatterns_FilterByMultipleTagsUsesANDLogic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern with both tags: %v", err)
 	}
-	AssertStatusCode(t, bothResp, http.StatusAccepted)
-	both := ParseJSON[Pattern](t, bothResp)
+	helpers.AssertStatusCode(t, bothResp, http.StatusAccepted)
+	both := helpers.ParseJSON[helpers.Pattern](t, bothResp)
 
 	// Pattern with only tagA
-	onlyABody := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	onlyABody := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "has only tag a",
 		Tags:       []string{tagA, tagC},
 		EntityType: "go-pattern",
@@ -311,8 +312,8 @@ func TestListPatterns_FilterByMultipleTagsUsesANDLogic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern with only tag A: %v", err)
 	}
-	AssertStatusCode(t, onlyAResp, http.StatusAccepted)
-	onlyA := ParseJSON[Pattern](t, onlyAResp)
+	helpers.AssertStatusCode(t, onlyAResp, http.StatusAccepted)
+	onlyA := helpers.ParseJSON[helpers.Pattern](t, onlyAResp)
 
 	// Filter by both tags — AND logic means only "both" pattern should appear
 	resp, err := client.Get(fmt.Sprintf("/v1/api/patterns?tags=%s,%s", tagA, tagB))
@@ -320,8 +321,8 @@ func TestListPatterns_FilterByMultipleTagsUsesANDLogic(t *testing.T) {
 		t.Fatalf("failed to GET /v1/api/patterns?tags=...: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
-	list := ParseJSON[PatternList](t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
+	list := helpers.ParseJSON[helpers.PatternList](t, resp)
 
 	foundBoth := false
 	foundOnlyA := false
@@ -343,12 +344,12 @@ func TestListPatterns_FilterByMultipleTagsUsesANDLogic(t *testing.T) {
 }
 
 func TestListPatterns_FullTextSearchByNameAndDescription(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	uniqueWord := "xyzzy" + uuid.New().String()[:8]
 
-	body := PatternCreate{
-		Name:        GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:        helpers.GenerateUniqueName("pattern"),
 		Description: fmt.Sprintf("description contains %s unique word", uniqueWord),
 		Content:     "content for full text search test",
 		EntityType:  "go-pattern",
@@ -359,16 +360,16 @@ func TestListPatterns_FullTextSearchByNameAndDescription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	resp, err := client.Get("/v1/api/patterns?search=" + uniqueWord)
 	if err != nil {
 		t.Fatalf("failed to GET /v1/api/patterns?search=...: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
-	list := ParseJSON[PatternList](t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
+	list := helpers.ParseJSON[helpers.PatternList](t, resp)
 
 	found := false
 	for _, p := range list.Data {
@@ -384,14 +385,14 @@ func TestListPatterns_FullTextSearchByNameAndDescription(t *testing.T) {
 }
 
 func TestListPatterns_CombinedTagAndSearchFilters(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	uniqueTag := "tag-combined-" + uuid.New().String()[:8]
 	uniqueWord := "combined" + uuid.New().String()[:8]
 
 	// Pattern matching both tag and search
-	matchBody := PatternCreate{
-		Name:        GenerateUniqueName("pattern"),
+	matchBody := helpers.PatternCreate{
+		Name:        helpers.GenerateUniqueName("pattern"),
 		Description: fmt.Sprintf("description with %s keyword", uniqueWord),
 		Content:     "content for combined filter test",
 		Tags:        []string{uniqueTag},
@@ -403,12 +404,12 @@ func TestListPatterns_CombinedTagAndSearchFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create matching pattern: %v", err)
 	}
-	AssertStatusCode(t, matchResp, http.StatusAccepted)
-	match := ParseJSON[Pattern](t, matchResp)
+	helpers.AssertStatusCode(t, matchResp, http.StatusAccepted)
+	match := helpers.ParseJSON[helpers.Pattern](t, matchResp)
 
 	// Pattern with tag but not search term
-	tagOnlyBody := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	tagOnlyBody := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "content with tag only",
 		Tags:       []string{uniqueTag},
 		EntityType: "go-pattern",
@@ -419,8 +420,8 @@ func TestListPatterns_CombinedTagAndSearchFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create tag-only pattern: %v", err)
 	}
-	AssertStatusCode(t, tagOnlyResp, http.StatusAccepted)
-	tagOnly := ParseJSON[Pattern](t, tagOnlyResp)
+	helpers.AssertStatusCode(t, tagOnlyResp, http.StatusAccepted)
+	tagOnly := helpers.ParseJSON[helpers.Pattern](t, tagOnlyResp)
 
 	path := fmt.Sprintf("/v1/api/patterns?tags=%s&search=%s", uniqueTag, uniqueWord)
 	resp, err := client.Get(path)
@@ -428,8 +429,8 @@ func TestListPatterns_CombinedTagAndSearchFilters(t *testing.T) {
 		t.Fatalf("failed to GET %s: %v", path, err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
-	list := ParseJSON[PatternList](t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
+	list := helpers.ParseJSON[helpers.PatternList](t, resp)
 
 	foundMatch := false
 	foundTagOnly := false
@@ -452,7 +453,7 @@ func TestListPatterns_CombinedTagAndSearchFilters(t *testing.T) {
 
 func TestListPatterns_InvalidLimitReturns400(t *testing.T) {
 	t.Run("limit below minimum", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
 		resp, err := client.Get("/v1/api/patterns?limit=0")
 		if err != nil {
@@ -460,10 +461,10 @@ func TestListPatterns_InvalidLimitReturns400(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		AssertStatusCode(t, resp, http.StatusBadRequest)
+		helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 	})
 	t.Run("limit above maximum", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
 		resp, err := client.Get("/v1/api/patterns?limit=101")
 		if err != nil {
@@ -471,10 +472,10 @@ func TestListPatterns_InvalidLimitReturns400(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		AssertStatusCode(t, resp, http.StatusBadRequest)
+		helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 	})
 	t.Run("limit non-numeric", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
 		resp, err := client.Get("/v1/api/patterns?limit=abc")
 		if err != nil {
@@ -482,12 +483,12 @@ func TestListPatterns_InvalidLimitReturns400(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		AssertStatusCode(t, resp, http.StatusBadRequest)
+		helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 	})
 }
 
 func TestListPatterns_InvalidCursorReturns400(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns?cursor=!!!invalid-cursor!!!")
 	if err != nil {
@@ -495,7 +496,7 @@ func TestListPatterns_InvalidCursorReturns400(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusBadRequest)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 // -----------------------------------------------------------------------------
@@ -503,10 +504,10 @@ func TestListPatterns_InvalidCursorReturns400(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestCreatePattern_ReturnsAcceptedWithPendingEnrichment(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "# Test Pattern\n\nThis is test content.",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -518,9 +519,9 @@ func TestCreatePattern_ReturnsAcceptedWithPendingEnrichment(t *testing.T) {
 		t.Fatalf("failed to POST /v1/api/patterns: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusAccepted)
+	helpers.AssertStatusCode(t, resp, http.StatusAccepted)
 
-	pattern := ParseJSON[Pattern](t, resp)
+	pattern := helpers.ParseJSON[helpers.Pattern](t, resp)
 
 	if pattern.EnrichmentStatus != "pending" {
 		t.Fatalf("expected enrichment_status 'pending', got %q", pattern.EnrichmentStatus)
@@ -528,10 +529,10 @@ func TestCreatePattern_ReturnsAcceptedWithPendingEnrichment(t *testing.T) {
 }
 
 func TestCreatePattern_ResponseIncludesLocationHeader(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "content for location header test",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -544,7 +545,7 @@ func TestCreatePattern_ResponseIncludesLocationHeader(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusAccepted)
+	helpers.AssertStatusCode(t, resp, http.StatusAccepted)
 
 	location := resp.Header.Get("Location")
 	if location == "" {
@@ -557,10 +558,10 @@ func TestCreatePattern_ResponseIncludesLocationHeader(t *testing.T) {
 }
 
 func TestCreatePattern_ServerGeneratesUUID(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "content for UUID test",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -572,9 +573,9 @@ func TestCreatePattern_ServerGeneratesUUID(t *testing.T) {
 		t.Fatalf("failed to POST /v1/api/patterns: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusAccepted)
+	helpers.AssertStatusCode(t, resp, http.StatusAccepted)
 
-	pattern := ParseJSON[Pattern](t, resp)
+	pattern := helpers.ParseJSON[helpers.Pattern](t, resp)
 
 	if pattern.ID == "" {
 		t.Fatal("expected server-generated UUID id to be present")
@@ -587,10 +588,10 @@ func TestCreatePattern_ServerGeneratesUUID(t *testing.T) {
 }
 
 func TestCreatePattern_MinimalFieldsOnlyNameAndContent(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "minimal content",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -602,9 +603,9 @@ func TestCreatePattern_MinimalFieldsOnlyNameAndContent(t *testing.T) {
 		t.Fatalf("failed to POST /v1/api/patterns: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusAccepted)
+	helpers.AssertStatusCode(t, resp, http.StatusAccepted)
 
-	pattern := ParseJSON[Pattern](t, resp)
+	pattern := helpers.ParseJSON[helpers.Pattern](t, resp)
 
 	if pattern.ID == "" {
 		t.Fatal("expected id to be set")
@@ -618,11 +619,11 @@ func TestCreatePattern_MinimalFieldsOnlyNameAndContent(t *testing.T) {
 }
 
 func TestCreatePattern_AllFieldsIncludingDescriptionTagsAssociations(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// Create an agent first so we have a valid agent_id
-	agentName := GenerateUniqueName("agent")
-	agentBody := AgentCreate{
+	agentName := helpers.GenerateUniqueName("agent")
+	agentBody := helpers.AgentCreate{
 		Name:         agentName,
 		SystemPrompt: "You are a test agent",
 		Model:        "sonnet",
@@ -638,12 +639,12 @@ func TestCreatePattern_AllFieldsIncludingDescriptionTagsAssociations(t *testing.
 		t.Fatalf("expected 201 creating agent, got %d", agentResp.StatusCode)
 	}
 
-	body := PatternCreate{
-		Name:        GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:        helpers.GenerateUniqueName("pattern"),
 		Description: "test description",
 		Content:     "# Full Pattern\n\nAll fields populated.",
 		Tags:        []string{"go", "testing"},
-		AgentAssociations: []AgentAssociation{
+		AgentAssociations: []helpers.AgentAssociation{
 			{AgentName: agentName, Relevance: 0.9},
 		},
 		EntityType: "go-pattern",
@@ -656,9 +657,9 @@ func TestCreatePattern_AllFieldsIncludingDescriptionTagsAssociations(t *testing.
 		t.Fatalf("failed to POST /v1/api/patterns: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusAccepted)
+	helpers.AssertStatusCode(t, resp, http.StatusAccepted)
 
-	pattern := ParseJSON[Pattern](t, resp)
+	pattern := helpers.ParseJSON[helpers.Pattern](t, resp)
 
 	if pattern.ID == "" {
 		t.Fatal("expected id to be set")
@@ -678,10 +679,10 @@ func TestCreatePattern_AllFieldsIncludingDescriptionTagsAssociations(t *testing.
 }
 
 func TestCreatePattern_DuplicateNameReturns409(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	name := GenerateUniqueName("pattern")
-	body := PatternCreate{
+	name := helpers.GenerateUniqueName("pattern")
+	body := helpers.PatternCreate{
 		Name:       name,
 		Content:    "original content",
 		EntityType: "go-pattern",
@@ -694,10 +695,10 @@ func TestCreatePattern_DuplicateNameReturns409(t *testing.T) {
 		t.Fatalf("failed to POST /v1/api/patterns: %v", err)
 	}
 	resp1.Body.Close()
-	AssertStatusCode(t, resp1, http.StatusAccepted)
+	helpers.AssertStatusCode(t, resp1, http.StatusAccepted)
 
 	// Second create with same name should conflict
-	body2 := PatternCreate{
+	body2 := helpers.PatternCreate{
 		Name:       name,
 		Content:    "duplicate name content",
 		EntityType: "go-pattern",
@@ -710,7 +711,7 @@ func TestCreatePattern_DuplicateNameReturns409(t *testing.T) {
 	}
 	defer resp2.Body.Close()
 
-	AssertStatusCode(t, resp2, http.StatusConflict)
+	helpers.AssertStatusCode(t, resp2, http.StatusConflict)
 }
 
 func TestCreatePattern_ValidationErrors(t *testing.T) {
@@ -721,47 +722,47 @@ func TestCreatePattern_ValidationErrors(t *testing.T) {
 	}{
 		{
 			name:        "missing name",
-			body:        PatternCreate{Content: "some content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        helpers.PatternCreate{Content: "some content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "missing content",
-			body:        PatternCreate{Name: "valid-name", EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        helpers.PatternCreate{Name: "valid-name", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "content",
 		},
 		{
 			name:        "name too long",
-			body:        PatternCreate{Name: strings.Repeat("a", 129), Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        helpers.PatternCreate{Name: strings.Repeat("a", 129), Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "name invalid format uppercase",
-			body:        PatternCreate{Name: "Invalid-Name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        helpers.PatternCreate{Name: "Invalid-Name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "name invalid format starts with number",
-			body:        PatternCreate{Name: "1-bad-name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        helpers.PatternCreate{Name: "1-bad-name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "name invalid format underscores",
-			body:        PatternCreate{Name: "bad_name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        helpers.PatternCreate{Name: "bad_name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "content exceeds max size",
-			body:        PatternCreate{Name: "valid-name", Content: strings.Repeat("x", 100_001), EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        helpers.PatternCreate{Name: "valid-name", Content: strings.Repeat("x", 100_001), EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "content",
 		},
 		{
 			name:        "description too long",
-			body:        PatternCreate{Name: "valid-name", Content: "content", Description: strings.Repeat("d", 501), EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        helpers.PatternCreate{Name: "valid-name", Content: "content", Description: strings.Repeat("d", 501), EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "description",
 		},
 		{
 			name: "too many tags",
-			body: PatternCreate{
+			body: helpers.PatternCreate{
 				Name:       "valid-name",
 				Content:    "content",
 				Tags:       makeTags(21),
@@ -773,43 +774,43 @@ func TestCreatePattern_ValidationErrors(t *testing.T) {
 		},
 		{
 			name:        "missing entity_type",
-			body:        PatternCreate{Name: "valid-name", Content: "content", Language: "go", Domain: "backend"},
+			body:        helpers.PatternCreate{Name: "valid-name", Content: "content", Language: "go", Domain: "backend"},
 			expectField: "entity_type",
 		},
 		{
 			name:        "missing language",
-			body:        PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Domain: "backend"},
+			body:        helpers.PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Domain: "backend"},
 			expectField: "language",
 		},
 		{
 			name:        "missing domain",
-			body:        PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go"},
+			body:        helpers.PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go"},
 			expectField: "domain",
 		},
 		{
 			name:        "invalid language value",
-			body:        PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "COBOL", Domain: "backend"},
+			body:        helpers.PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "COBOL", Domain: "backend"},
 			expectField: "language",
 		},
 		{
 			name:        "invalid domain value",
-			body:        PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "Not A Domain"},
+			body:        helpers.PatternCreate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "Not A Domain"},
 			expectField: "domain",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			client := NewTestClient(t)
+			client := helpers.NewTestClient(t)
 
 			resp, err := client.Post("/v1/api/patterns", tc.body)
 			if err != nil {
 				t.Fatalf("failed to POST /v1/api/patterns: %v", err)
 			}
 
-			AssertStatusCode(t, resp, http.StatusBadRequest)
+			helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 
-			errResp := ParseJSON[ErrorResponse](t, resp)
+			errResp := helpers.ParseJSON[helpers.ErrorResponse](t, resp)
 
 			fieldFound := false
 			for _, fe := range errResp.Errors {
@@ -830,12 +831,12 @@ func TestCreatePattern_ValidationErrors(t *testing.T) {
 
 func TestCreatePattern_InvalidAgentAssociation(t *testing.T) {
 	t.Run("non-existent agent name", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
-		body := PatternCreate{
-			Name:    GenerateUniqueName("pattern"),
+		body := helpers.PatternCreate{
+			Name:    helpers.GenerateUniqueName("pattern"),
 			Content: "content with non-existent agent",
-			AgentAssociations: []AgentAssociation{
+			AgentAssociations: []helpers.AgentAssociation{
 				{AgentName: "definitely-does-not-exist", Relevance: 0.5},
 			},
 		}
@@ -851,12 +852,12 @@ func TestCreatePattern_InvalidAgentAssociation(t *testing.T) {
 		}
 	})
 	t.Run("relevance below zero", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
-		body := PatternCreate{
-			Name:    GenerateUniqueName("pattern"),
+		body := helpers.PatternCreate{
+			Name:    helpers.GenerateUniqueName("pattern"),
 			Content: "content with invalid relevance",
-			AgentAssociations: []AgentAssociation{
+			AgentAssociations: []helpers.AgentAssociation{
 				{AgentName: "some-agent", Relevance: -0.1},
 			},
 		}
@@ -867,15 +868,15 @@ func TestCreatePattern_InvalidAgentAssociation(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		AssertStatusCode(t, resp, http.StatusBadRequest)
+		helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 	})
 	t.Run("relevance above one", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
-		body := PatternCreate{
-			Name:    GenerateUniqueName("pattern"),
+		body := helpers.PatternCreate{
+			Name:    helpers.GenerateUniqueName("pattern"),
 			Content: "content with relevance above one",
-			AgentAssociations: []AgentAssociation{
+			AgentAssociations: []helpers.AgentAssociation{
 				{AgentName: "some-agent", Relevance: 1.1},
 			},
 		}
@@ -886,12 +887,12 @@ func TestCreatePattern_InvalidAgentAssociation(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		AssertStatusCode(t, resp, http.StatusBadRequest)
+		helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 	})
 }
 
 func TestCreatePattern_InvalidJSONReturns400(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	req, err := http.NewRequest(http.MethodPost, client.BaseURL+"/v1/api/patterns", strings.NewReader(`{invalid json`))
 	if err != nil {
@@ -904,11 +905,11 @@ func TestCreatePattern_InvalidJSONReturns400(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusBadRequest)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 func TestCreatePattern_EmptyBodyReturns400(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	req, err := http.NewRequest(http.MethodPost, client.BaseURL+"/v1/api/patterns", strings.NewReader(`{}`))
 	if err != nil {
@@ -921,7 +922,7 @@ func TestCreatePattern_EmptyBodyReturns400(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusBadRequest)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 // -----------------------------------------------------------------------------
@@ -929,7 +930,7 @@ func TestCreatePattern_EmptyBodyReturns400(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestSearchPatterns_ReturnsRankedResultsWithSimilarity(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns/search?q=error+handling+in+go")
 	if err != nil {
@@ -937,14 +938,14 @@ func TestSearchPatterns_ReturnsRankedResultsWithSimilarity(t *testing.T) {
 	}
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
-		ReadBody(t, resp)
+		helpers.ReadBody(t, resp)
 		t.Skip("search unavailable: OpenAI API key not configured")
 		return
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	searchResp := ParseJSON[PatternSearchResponse](t, resp)
+	searchResp := helpers.ParseJSON[helpers.PatternSearchResponse](t, resp)
 
 	// Results slice must be present (may be empty since nothing is enriched)
 	if searchResp.Results == nil {
@@ -953,7 +954,7 @@ func TestSearchPatterns_ReturnsRankedResultsWithSimilarity(t *testing.T) {
 }
 
 func TestSearchPatterns_ResultsIncludeContentAndScores(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns/search?q=test+query+for+content+and+scores")
 	if err != nil {
@@ -961,14 +962,14 @@ func TestSearchPatterns_ResultsIncludeContentAndScores(t *testing.T) {
 	}
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
-		ReadBody(t, resp)
+		helpers.ReadBody(t, resp)
 		t.Skip("search unavailable: OpenAI API key not configured")
 		return
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	searchResp := ParseJSON[PatternSearchResponse](t, resp)
+	searchResp := helpers.ParseJSON[helpers.PatternSearchResponse](t, resp)
 
 	// Verify each result has content and similarity (if any results exist)
 	for _, r := range searchResp.Results {
@@ -982,7 +983,7 @@ func TestSearchPatterns_ResultsIncludeContentAndScores(t *testing.T) {
 }
 
 func TestSearchPatterns_ResponseIncludesMetadata(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns/search?q=metadata+test+query")
 	if err != nil {
@@ -990,14 +991,14 @@ func TestSearchPatterns_ResponseIncludesMetadata(t *testing.T) {
 	}
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
-		ReadBody(t, resp)
+		helpers.ReadBody(t, resp)
 		t.Skip("search unavailable: OpenAI API key not configured")
 		return
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	searchResp := ParseJSON[PatternSearchResponse](t, resp)
+	searchResp := helpers.ParseJSON[helpers.PatternSearchResponse](t, resp)
 
 	if searchResp.Metadata.Query == "" {
 		t.Fatal("expected metadata.query to be present")
@@ -1008,7 +1009,7 @@ func TestSearchPatterns_ResponseIncludesMetadata(t *testing.T) {
 }
 
 func TestSearchPatterns_MetadataEchoesQueryString(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	query := "echo this query string back"
 
@@ -1018,14 +1019,14 @@ func TestSearchPatterns_MetadataEchoesQueryString(t *testing.T) {
 	}
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
-		ReadBody(t, resp)
+		helpers.ReadBody(t, resp)
 		t.Skip("search unavailable: OpenAI API key not configured")
 		return
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	searchResp := ParseJSON[PatternSearchResponse](t, resp)
+	searchResp := helpers.ParseJSON[helpers.PatternSearchResponse](t, resp)
 
 	if searchResp.Metadata.Query != query {
 		t.Fatalf("expected metadata.query to echo %q, got %q", query, searchResp.Metadata.Query)
@@ -1033,7 +1034,7 @@ func TestSearchPatterns_MetadataEchoesQueryString(t *testing.T) {
 }
 
 func TestSearchPatterns_DefaultLimit(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns/search?q=default+limit+test")
 	if err != nil {
@@ -1041,14 +1042,14 @@ func TestSearchPatterns_DefaultLimit(t *testing.T) {
 	}
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
-		ReadBody(t, resp)
+		helpers.ReadBody(t, resp)
 		t.Skip("search unavailable: OpenAI API key not configured")
 		return
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	searchResp := ParseJSON[PatternSearchResponse](t, resp)
+	searchResp := helpers.ParseJSON[helpers.PatternSearchResponse](t, resp)
 
 	// Default limit per spec is 10; results should not exceed it
 	if len(searchResp.Results) > 10 {
@@ -1057,7 +1058,7 @@ func TestSearchPatterns_DefaultLimit(t *testing.T) {
 }
 
 func TestSearchPatterns_CustomLimit(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns/search?q=custom+limit+test&limit=3")
 	if err != nil {
@@ -1065,14 +1066,14 @@ func TestSearchPatterns_CustomLimit(t *testing.T) {
 	}
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
-		ReadBody(t, resp)
+		helpers.ReadBody(t, resp)
 		t.Skip("search unavailable: OpenAI API key not configured")
 		return
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	searchResp := ParseJSON[PatternSearchResponse](t, resp)
+	searchResp := helpers.ParseJSON[helpers.PatternSearchResponse](t, resp)
 
 	if len(searchResp.Results) > 3 {
 		t.Fatalf("expected at most 3 results, got %d", len(searchResp.Results))
@@ -1080,7 +1081,7 @@ func TestSearchPatterns_CustomLimit(t *testing.T) {
 }
 
 func TestSearchPatterns_CustomThreshold(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns/search?q=threshold+test&threshold=0.9")
 	if err != nil {
@@ -1088,14 +1089,14 @@ func TestSearchPatterns_CustomThreshold(t *testing.T) {
 	}
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
-		ReadBody(t, resp)
+		helpers.ReadBody(t, resp)
 		t.Skip("search unavailable: OpenAI API key not configured")
 		return
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	searchResp := ParseJSON[PatternSearchResponse](t, resp)
+	searchResp := helpers.ParseJSON[helpers.PatternSearchResponse](t, resp)
 
 	// All results must have similarity >= threshold
 	for _, r := range searchResp.Results {
@@ -1106,7 +1107,7 @@ func TestSearchPatterns_CustomThreshold(t *testing.T) {
 }
 
 func TestSearchPatterns_FilterByTags(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns/search?q=tag+filtered+search&tags=go,errors")
 	if err != nil {
@@ -1114,14 +1115,14 @@ func TestSearchPatterns_FilterByTags(t *testing.T) {
 	}
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
-		ReadBody(t, resp)
+		helpers.ReadBody(t, resp)
 		t.Skip("search unavailable: OpenAI API key not configured")
 		return
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	searchResp := ParseJSON[PatternSearchResponse](t, resp)
+	searchResp := helpers.ParseJSON[helpers.PatternSearchResponse](t, resp)
 
 	// Verify response structure is valid (no enriched patterns expected)
 	if searchResp.Results == nil {
@@ -1130,7 +1131,7 @@ func TestSearchPatterns_FilterByTags(t *testing.T) {
 }
 
 func TestSearchPatterns_FilterByAgent(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns/search?q=agent+filtered+search&agent=go-software-engineer")
 	if err != nil {
@@ -1138,14 +1139,14 @@ func TestSearchPatterns_FilterByAgent(t *testing.T) {
 	}
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
-		ReadBody(t, resp)
+		helpers.ReadBody(t, resp)
 		t.Skip("search unavailable: OpenAI API key not configured")
 		return
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	searchResp := ParseJSON[PatternSearchResponse](t, resp)
+	searchResp := helpers.ParseJSON[helpers.PatternSearchResponse](t, resp)
 
 	// Verify response structure is valid (no enriched patterns expected)
 	if searchResp.Results == nil {
@@ -1154,11 +1155,11 @@ func TestSearchPatterns_FilterByAgent(t *testing.T) {
 }
 
 func TestSearchPatterns_OnlyEnrichedPatternsAppear(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// Create a pattern — it will be in "pending" or "failed" state (not enriched)
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "content for enrichment exclusion test",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -1168,8 +1169,8 @@ func TestSearchPatterns_OnlyEnrichedPatternsAppear(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	// Search for the pattern by its unique name
 	resp, err := client.Get("/v1/api/patterns/search?q=" + strings.ReplaceAll(body.Name, "-", "+"))
@@ -1178,15 +1179,15 @@ func TestSearchPatterns_OnlyEnrichedPatternsAppear(t *testing.T) {
 	}
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
-		ReadBody(t, resp)
+		helpers.ReadBody(t, resp)
 		t.Skip("search unavailable: OpenAI API key not configured")
 		return
 	}
 
 	// Verify 200 + correct structure
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	searchResp := ParseJSON[PatternSearchResponse](t, resp)
+	searchResp := helpers.ParseJSON[helpers.PatternSearchResponse](t, resp)
 
 	if searchResp.Results == nil {
 		t.Fatal("expected results field to be present")
@@ -1201,7 +1202,7 @@ func TestSearchPatterns_OnlyEnrichedPatternsAppear(t *testing.T) {
 }
 
 func TestSearchPatterns_MissingQueryReturns400(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns/search")
 	if err != nil {
@@ -1209,11 +1210,11 @@ func TestSearchPatterns_MissingQueryReturns400(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusBadRequest)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 func TestSearchPatterns_EmptyQueryReturns400(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns/search?q=")
 	if err != nil {
@@ -1221,11 +1222,11 @@ func TestSearchPatterns_EmptyQueryReturns400(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusBadRequest)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 func TestSearchPatterns_QueryTooLongReturns400(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	longQuery := strings.Repeat("a", 1001)
 	resp, err := client.Get("/v1/api/patterns/search?q=" + longQuery)
@@ -1234,12 +1235,12 @@ func TestSearchPatterns_QueryTooLongReturns400(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusBadRequest)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 func TestSearchPatterns_InvalidLimitReturns400(t *testing.T) {
 	t.Run("limit below minimum", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
 		resp, err := client.Get("/v1/api/patterns/search?q=test&limit=0")
 		if err != nil {
@@ -1247,10 +1248,10 @@ func TestSearchPatterns_InvalidLimitReturns400(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		AssertStatusCode(t, resp, http.StatusBadRequest)
+		helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 	})
 	t.Run("limit above maximum", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
 		resp, err := client.Get("/v1/api/patterns/search?q=test&limit=51")
 		if err != nil {
@@ -1258,13 +1259,13 @@ func TestSearchPatterns_InvalidLimitReturns400(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		AssertStatusCode(t, resp, http.StatusBadRequest)
+		helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 	})
 }
 
 func TestSearchPatterns_InvalidThresholdReturns400(t *testing.T) {
 	t.Run("threshold below zero", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
 		resp, err := client.Get("/v1/api/patterns/search?q=test&threshold=-0.1")
 		if err != nil {
@@ -1272,10 +1273,10 @@ func TestSearchPatterns_InvalidThresholdReturns400(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		AssertStatusCode(t, resp, http.StatusBadRequest)
+		helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 	})
 	t.Run("threshold above one", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
 		resp, err := client.Get("/v1/api/patterns/search?q=test&threshold=1.1")
 		if err != nil {
@@ -1283,7 +1284,7 @@ func TestSearchPatterns_InvalidThresholdReturns400(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		AssertStatusCode(t, resp, http.StatusBadRequest)
+		helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 	})
 }
 
@@ -1296,10 +1297,10 @@ func TestSearchPatterns_ServiceUnavailableReturns503(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestGetPattern_ReturnsFullPatternWithContent(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "# Full Content Pattern\n\nComplete markdown content here.",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -1309,17 +1310,17 @@ func TestGetPattern_ReturnsFullPatternWithContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	resp, err := client.Get(patternPath(created.ID))
 	if err != nil {
 		t.Fatalf("failed to GET %s: %v", patternPath(created.ID), err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	pattern := ParseJSON[Pattern](t, resp)
+	pattern := helpers.ParseJSON[helpers.Pattern](t, resp)
 
 	if pattern.ID != created.ID {
 		t.Fatalf("expected id %q, got %q", created.ID, pattern.ID)
@@ -1333,10 +1334,10 @@ func TestGetPattern_ReturnsFullPatternWithContent(t *testing.T) {
 }
 
 func TestGetPattern_IncludesEnrichmentStatus(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "content for enrichment status test",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -1346,17 +1347,17 @@ func TestGetPattern_IncludesEnrichmentStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	resp, err := client.Get(patternPath(created.ID))
 	if err != nil {
 		t.Fatalf("failed to GET %s: %v", patternPath(created.ID), err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	pattern := ParseJSON[Pattern](t, resp)
+	pattern := helpers.ParseJSON[helpers.Pattern](t, resp)
 
 	if pattern.EnrichmentStatus == "" {
 		t.Fatal("expected enrichment_status to be present")
@@ -1369,7 +1370,7 @@ func TestGetPattern_IncludesEnrichmentStatus(t *testing.T) {
 }
 
 func TestGetPattern_NotFoundReturns404(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	nonExistentID := uuid.New().String()
 	resp, err := client.Get(patternPath(nonExistentID))
@@ -1378,12 +1379,12 @@ func TestGetPattern_NotFoundReturns404(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusNotFound)
+	helpers.AssertStatusCode(t, resp, http.StatusNotFound)
 }
 
 func TestGetPattern_InvalidUUIDReturns400(t *testing.T) {
 	t.Run("not a uuid", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
 		resp, err := client.Get("/v1/api/patterns/not-a-uuid")
 		if err != nil {
@@ -1391,10 +1392,10 @@ func TestGetPattern_InvalidUUIDReturns400(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		AssertStatusCode(t, resp, http.StatusBadRequest)
+		helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 	})
 	t.Run("empty id", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
 		// This routes to the list endpoint, not an invalid UUID — verify 200 not 400
 		resp, err := client.Get("/v1/api/patterns/")
@@ -1412,10 +1413,10 @@ func TestGetPattern_InvalidUUIDReturns400(t *testing.T) {
 }
 
 func TestGetPattern_ResponseIncludesRequestIDHeader(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "content for request id header test",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -1425,8 +1426,8 @@ func TestGetPattern_ResponseIncludesRequestIDHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	resp, err := client.Get(patternPath(created.ID))
 	if err != nil {
@@ -1434,8 +1435,8 @@ func TestGetPattern_ResponseIncludesRequestIDHeader(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusOK)
-	AssertRequestIDHeader(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertRequestIDHeader(t, resp)
 }
 
 // -----------------------------------------------------------------------------
@@ -1443,10 +1444,10 @@ func TestGetPattern_ResponseIncludesRequestIDHeader(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestUpdatePattern_ReturnsNoContent(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	createBody := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	createBody := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "original content",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -1456,10 +1457,10 @@ func TestUpdatePattern_ReturnsNoContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
-	updateBody := PatternUpdate{
+	updateBody := helpers.PatternUpdate{
 		Name:       createBody.Name,
 		Content:    "updated content with new information",
 		EntityType: "go-pattern",
@@ -1472,15 +1473,15 @@ func TestUpdatePattern_ReturnsNoContent(t *testing.T) {
 		t.Fatalf("failed to PUT %s: %v", patternPath(created.ID), err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusNoContent)
-	ReadBody(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusNoContent)
+	helpers.ReadBody(t, resp)
 }
 
 func TestUpdatePattern_UpdatedAtChangesCreatedAtPreserved(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	createBody := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	createBody := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "original content for timestamp test",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -1490,10 +1491,10 @@ func TestUpdatePattern_UpdatedAtChangesCreatedAtPreserved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
-	updateBody := PatternUpdate{
+	updateBody := helpers.PatternUpdate{
 		Name:       createBody.Name,
 		Content:    "updated content for timestamp test",
 		EntityType: "go-pattern",
@@ -1506,15 +1507,15 @@ func TestUpdatePattern_UpdatedAtChangesCreatedAtPreserved(t *testing.T) {
 		t.Fatalf("failed to PUT %s: %v", patternPath(created.ID), err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusNoContent)
-	ReadBody(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusNoContent)
+	helpers.ReadBody(t, resp)
 }
 
 func TestUpdatePattern_FullReplacementResetsOmittedFields(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	createBody := PatternCreate{
-		Name:        GenerateUniqueName("pattern"),
+	createBody := helpers.PatternCreate{
+		Name:        helpers.GenerateUniqueName("pattern"),
 		Content:     "original content",
 		Description: "original description",
 		Tags:        []string{"original-tag"},
@@ -1526,11 +1527,11 @@ func TestUpdatePattern_FullReplacementResetsOmittedFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	// Update with only name and content — description and tags are omitted
-	updateBody := PatternUpdate{
+	updateBody := helpers.PatternUpdate{
 		Name:       createBody.Name,
 		Content:    "replacement content",
 		EntityType: "go-pattern",
@@ -1543,15 +1544,15 @@ func TestUpdatePattern_FullReplacementResetsOmittedFields(t *testing.T) {
 		t.Fatalf("failed to PUT %s: %v", patternPath(created.ID), err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusNoContent)
-	ReadBody(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusNoContent)
+	helpers.ReadBody(t, resp)
 }
 
 func TestUpdatePattern_ContentChangeResetsEnrichmentToPending(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	createBody := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	createBody := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "original content before update",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -1561,10 +1562,10 @@ func TestUpdatePattern_ContentChangeResetsEnrichmentToPending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
-	updateBody := PatternUpdate{
+	updateBody := helpers.PatternUpdate{
 		Name:       createBody.Name,
 		Content:    "completely new content triggers re-enrichment",
 		EntityType: "go-pattern",
@@ -1577,15 +1578,15 @@ func TestUpdatePattern_ContentChangeResetsEnrichmentToPending(t *testing.T) {
 		t.Fatalf("failed to PUT %s: %v", patternPath(created.ID), err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusNoContent)
-	ReadBody(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusNoContent)
+	helpers.ReadBody(t, resp)
 }
 
 func TestUpdatePattern_NotFoundReturns404(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	nonExistentID := uuid.New().String()
-	updateBody := PatternUpdate{
+	updateBody := helpers.PatternUpdate{
 		Name:       "valid-name",
 		Content:    "content for non-existent pattern",
 		EntityType: "go-pattern",
@@ -1599,7 +1600,7 @@ func TestUpdatePattern_NotFoundReturns404(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusNotFound)
+	helpers.AssertStatusCode(t, resp, http.StatusNotFound)
 }
 
 func TestUpdatePattern_ValidationErrors(t *testing.T) {
@@ -1610,37 +1611,37 @@ func TestUpdatePattern_ValidationErrors(t *testing.T) {
 	}{
 		{
 			name:        "missing name",
-			body:        PatternUpdate{Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        helpers.PatternUpdate{Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "missing content",
-			body:        PatternUpdate{Name: "valid-name", EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        helpers.PatternUpdate{Name: "valid-name", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "content",
 		},
 		{
 			name:        "name too long",
-			body:        PatternUpdate{Name: strings.Repeat("a", 129), Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        helpers.PatternUpdate{Name: strings.Repeat("a", 129), Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "name invalid format",
-			body:        PatternUpdate{Name: "BAD_NAME", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        helpers.PatternUpdate{Name: "BAD_NAME", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "name",
 		},
 		{
 			name:        "content exceeds max size",
-			body:        PatternUpdate{Name: "valid-name", Content: strings.Repeat("x", 100_001), EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        helpers.PatternUpdate{Name: "valid-name", Content: strings.Repeat("x", 100_001), EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "content",
 		},
 		{
 			name:        "description too long",
-			body:        PatternUpdate{Name: "valid-name", Content: "content", Description: strings.Repeat("d", 501), EntityType: "go-pattern", Language: "go", Domain: "backend"},
+			body:        helpers.PatternUpdate{Name: "valid-name", Content: "content", Description: strings.Repeat("d", 501), EntityType: "go-pattern", Language: "go", Domain: "backend"},
 			expectField: "description",
 		},
 		{
 			name: "too many tags",
-			body: PatternUpdate{
+			body: helpers.PatternUpdate{
 				Name:       "valid-name",
 				Content:    "content",
 				Tags:       makeTags(21),
@@ -1652,38 +1653,38 @@ func TestUpdatePattern_ValidationErrors(t *testing.T) {
 		},
 		{
 			name:        "missing entity_type",
-			body:        PatternUpdate{Name: "valid-name", Content: "content", Language: "go", Domain: "backend"},
+			body:        helpers.PatternUpdate{Name: "valid-name", Content: "content", Language: "go", Domain: "backend"},
 			expectField: "entity_type",
 		},
 		{
 			name:        "missing language",
-			body:        PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Domain: "backend"},
+			body:        helpers.PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Domain: "backend"},
 			expectField: "language",
 		},
 		{
 			name:        "missing domain",
-			body:        PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go"},
+			body:        helpers.PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go"},
 			expectField: "domain",
 		},
 		{
 			name:        "invalid language value",
-			body:        PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "COBOL", Domain: "backend"},
+			body:        helpers.PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "COBOL", Domain: "backend"},
 			expectField: "language",
 		},
 		{
 			name:        "invalid domain value",
-			body:        PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "Not A Domain"},
+			body:        helpers.PatternUpdate{Name: "valid-name", Content: "content", EntityType: "go-pattern", Language: "go", Domain: "Not A Domain"},
 			expectField: "domain",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			client := NewTestClient(t)
+			client := helpers.NewTestClient(t)
 
 			// Create a real pattern to update (so we get 400, not 404)
-			createBody := PatternCreate{
-				Name:       GenerateUniqueName("pattern"),
+			createBody := helpers.PatternCreate{
+				Name:       helpers.GenerateUniqueName("pattern"),
 				Content:    "content for validation test",
 				EntityType: "go-pattern",
 				Language:   "go",
@@ -1693,17 +1694,17 @@ func TestUpdatePattern_ValidationErrors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create pattern: %v", err)
 			}
-			AssertStatusCode(t, createResp, http.StatusAccepted)
-			created := ParseJSON[Pattern](t, createResp)
+			helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+			created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 			resp, err := client.Put(patternPath(created.ID), tc.body)
 			if err != nil {
 				t.Fatalf("failed to PUT %s: %v", patternPath(created.ID), err)
 			}
 
-			AssertStatusCode(t, resp, http.StatusBadRequest)
+			helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 
-			errResp := ParseJSON[ErrorResponse](t, resp)
+			errResp := helpers.ParseJSON[helpers.ErrorResponse](t, resp)
 
 			fieldFound := false
 			for _, fe := range errResp.Errors {
@@ -1723,9 +1724,9 @@ func TestUpdatePattern_ValidationErrors(t *testing.T) {
 }
 
 func TestUpdatePattern_InvalidUUIDReturns400(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	updateBody := PatternUpdate{
+	updateBody := helpers.PatternUpdate{
 		Name:       "valid-name",
 		Content:    "content for invalid uuid test",
 		EntityType: "go-pattern",
@@ -1739,7 +1740,7 @@ func TestUpdatePattern_InvalidUUIDReturns400(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusBadRequest)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 // -----------------------------------------------------------------------------
@@ -1747,10 +1748,10 @@ func TestUpdatePattern_InvalidUUIDReturns400(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestDeletePattern_ReturnsNoContent(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "content for delete test",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -1760,8 +1761,8 @@ func TestDeletePattern_ReturnsNoContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	resp, err := client.Delete(patternPath(created.ID))
 	if err != nil {
@@ -1769,14 +1770,14 @@ func TestDeletePattern_ReturnsNoContent(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusNoContent)
+	helpers.AssertStatusCode(t, resp, http.StatusNoContent)
 }
 
 func TestDeletePattern_PatternNoLongerRetrievable(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "content for delete then get test",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -1786,15 +1787,15 @@ func TestDeletePattern_PatternNoLongerRetrievable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	deleteResp, err := client.Delete(patternPath(created.ID))
 	if err != nil {
 		t.Fatalf("failed to DELETE %s: %v", patternPath(created.ID), err)
 	}
 	deleteResp.Body.Close()
-	AssertStatusCode(t, deleteResp, http.StatusNoContent)
+	helpers.AssertStatusCode(t, deleteResp, http.StatusNoContent)
 
 	getResp, err := client.Get(patternPath(created.ID))
 	if err != nil {
@@ -1802,11 +1803,11 @@ func TestDeletePattern_PatternNoLongerRetrievable(t *testing.T) {
 	}
 	defer getResp.Body.Close()
 
-	AssertStatusCode(t, getResp, http.StatusNotFound)
+	helpers.AssertStatusCode(t, getResp, http.StatusNotFound)
 }
 
 func TestDeletePattern_NotFoundReturns404(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	nonExistentID := uuid.New().String()
 	resp, err := client.Delete(patternPath(nonExistentID))
@@ -1815,14 +1816,14 @@ func TestDeletePattern_NotFoundReturns404(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusNotFound)
+	helpers.AssertStatusCode(t, resp, http.StatusNotFound)
 }
 
 func TestDeletePattern_SecondDeleteReturns404(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "content for double delete test",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -1832,8 +1833,8 @@ func TestDeletePattern_SecondDeleteReturns404(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	// First delete
 	resp1, err := client.Delete(patternPath(created.ID))
@@ -1841,7 +1842,7 @@ func TestDeletePattern_SecondDeleteReturns404(t *testing.T) {
 		t.Fatalf("failed first DELETE %s: %v", patternPath(created.ID), err)
 	}
 	resp1.Body.Close()
-	AssertStatusCode(t, resp1, http.StatusNoContent)
+	helpers.AssertStatusCode(t, resp1, http.StatusNoContent)
 
 	// Second delete should return 404
 	resp2, err := client.Delete(patternPath(created.ID))
@@ -1850,11 +1851,11 @@ func TestDeletePattern_SecondDeleteReturns404(t *testing.T) {
 	}
 	defer resp2.Body.Close()
 
-	AssertStatusCode(t, resp2, http.StatusNotFound)
+	helpers.AssertStatusCode(t, resp2, http.StatusNotFound)
 }
 
 func TestDeletePattern_InvalidUUIDReturns400(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Delete("/v1/api/patterns/not-a-valid-uuid")
 	if err != nil {
@@ -1862,7 +1863,7 @@ func TestDeletePattern_InvalidUUIDReturns400(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusBadRequest)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 // -----------------------------------------------------------------------------
@@ -1870,11 +1871,11 @@ func TestDeletePattern_InvalidUUIDReturns400(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestGetPatternAgentAssociations_ReturnsAssociations(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// Create an agent first
-	agentName := GenerateUniqueName("agent")
-	agentBody := AgentCreate{
+	agentName := helpers.GenerateUniqueName("agent")
+	agentBody := helpers.AgentCreate{
 		Name:         agentName,
 		SystemPrompt: "You are a test agent for associations",
 		Model:        "sonnet",
@@ -1891,10 +1892,10 @@ func TestGetPatternAgentAssociations_ReturnsAssociations(t *testing.T) {
 	}
 
 	// Create pattern with agent association
-	patternBody := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
+	patternBody := helpers.PatternCreate{
+		Name:    helpers.GenerateUniqueName("pattern"),
 		Content: "content for agent associations test",
-		AgentAssociations: []AgentAssociation{
+		AgentAssociations: []helpers.AgentAssociation{
 			{AgentName: agentName, Relevance: 0.85},
 		},
 		EntityType: "go-pattern",
@@ -1905,17 +1906,17 @@ func TestGetPatternAgentAssociations_ReturnsAssociations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	resp, err := client.Get(patternAgentsPath(created.ID))
 	if err != nil {
 		t.Fatalf("failed to GET %s: %v", patternAgentsPath(created.ID), err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	associations := ParseJSON[PatternAgentAssociations](t, resp)
+	associations := helpers.ParseJSON[helpers.PatternAgentAssociations](t, resp)
 
 	if len(associations.Associations) != 1 {
 		t.Fatalf("expected 1 association, got %d", len(associations.Associations))
@@ -1926,10 +1927,10 @@ func TestGetPatternAgentAssociations_ReturnsAssociations(t *testing.T) {
 }
 
 func TestGetPatternAgentAssociations_EmptyListWhenNoAssociations(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "content with no agent associations",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -1939,17 +1940,17 @@ func TestGetPatternAgentAssociations_EmptyListWhenNoAssociations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	resp, err := client.Get(patternAgentsPath(created.ID))
 	if err != nil {
 		t.Fatalf("failed to GET %s: %v", patternAgentsPath(created.ID), err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	associations := ParseJSON[PatternAgentAssociations](t, resp)
+	associations := helpers.ParseJSON[helpers.PatternAgentAssociations](t, resp)
 
 	if len(associations.Associations) != 0 {
 		t.Fatalf("expected 0 associations, got %d", len(associations.Associations))
@@ -1957,7 +1958,7 @@ func TestGetPatternAgentAssociations_EmptyListWhenNoAssociations(t *testing.T) {
 }
 
 func TestGetPatternAgentAssociations_PatternNotFoundReturns404(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	nonExistentID := uuid.New().String()
 	resp, err := client.Get(patternAgentsPath(nonExistentID))
@@ -1966,11 +1967,11 @@ func TestGetPatternAgentAssociations_PatternNotFoundReturns404(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusNotFound)
+	helpers.AssertStatusCode(t, resp, http.StatusNotFound)
 }
 
 func TestGetPatternAgentAssociations_InvalidUUIDReturns400(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns/not-a-valid-uuid/agents")
 	if err != nil {
@@ -1978,14 +1979,14 @@ func TestGetPatternAgentAssociations_InvalidUUIDReturns400(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusBadRequest)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 func TestGetPatternAgentAssociations_ResponseIncludesRequestIDHeader(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "content for request id header on agents endpoint",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -1995,8 +1996,8 @@ func TestGetPatternAgentAssociations_ResponseIncludesRequestIDHeader(t *testing.
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	resp, err := client.Get(patternAgentsPath(created.ID))
 	if err != nil {
@@ -2004,8 +2005,8 @@ func TestGetPatternAgentAssociations_ResponseIncludesRequestIDHeader(t *testing.
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusOK)
-	AssertRequestIDHeader(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertRequestIDHeader(t, resp)
 }
 
 // -----------------------------------------------------------------------------
@@ -2013,14 +2014,14 @@ func TestGetPatternAgentAssociations_ResponseIncludesRequestIDHeader(t *testing.
 // -----------------------------------------------------------------------------
 
 func TestSetPatternAgentAssociations_ReplacesAllAssociations(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// Create two agents
-	agentA := GenerateUniqueName("agent")
-	agentB := GenerateUniqueName("agent")
+	agentA := helpers.GenerateUniqueName("agent")
+	agentB := helpers.GenerateUniqueName("agent")
 
 	for _, name := range []string{agentA, agentB} {
-		agentBody := AgentCreate{
+		agentBody := helpers.AgentCreate{
 			Name:         name,
 			SystemPrompt: "You are a test agent",
 			Model:        "sonnet",
@@ -2038,10 +2039,10 @@ func TestSetPatternAgentAssociations_ReplacesAllAssociations(t *testing.T) {
 	}
 
 	// Create pattern with agentA
-	patternBody := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
+	patternBody := helpers.PatternCreate{
+		Name:    helpers.GenerateUniqueName("pattern"),
 		Content: "content for replace associations test",
-		AgentAssociations: []AgentAssociation{
+		AgentAssociations: []helpers.AgentAssociation{
 			{AgentName: agentA, Relevance: 0.7},
 		},
 		EntityType: "go-pattern",
@@ -2052,12 +2053,12 @@ func TestSetPatternAgentAssociations_ReplacesAllAssociations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	// Replace with agentB only
-	newAssociations := PatternAgentAssociations{
-		Associations: []AgentAssociation{
+	newAssociations := helpers.PatternAgentAssociations{
+		Associations: []helpers.AgentAssociation{
 			{AgentName: agentB, Relevance: 0.9},
 		},
 	}
@@ -2067,16 +2068,16 @@ func TestSetPatternAgentAssociations_ReplacesAllAssociations(t *testing.T) {
 		t.Fatalf("failed to PUT %s: %v", patternAgentsPath(created.ID), err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusNoContent)
-	ReadBody(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusNoContent)
+	helpers.ReadBody(t, resp)
 }
 
 func TestSetPatternAgentAssociations_ClearAssociationsWithEmptyArray(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// Create an agent first
-	agentName := GenerateUniqueName("agent")
-	agentBody := AgentCreate{
+	agentName := helpers.GenerateUniqueName("agent")
+	agentBody := helpers.AgentCreate{
 		Name:         agentName,
 		SystemPrompt: "You are a test agent",
 		Model:        "sonnet",
@@ -2090,10 +2091,10 @@ func TestSetPatternAgentAssociations_ClearAssociationsWithEmptyArray(t *testing.
 	agentResp.Body.Close()
 
 	// Create pattern with one association
-	patternBody := PatternCreate{
-		Name:    GenerateUniqueName("pattern"),
+	patternBody := helpers.PatternCreate{
+		Name:    helpers.GenerateUniqueName("pattern"),
 		Content: "content for clear associations test",
-		AgentAssociations: []AgentAssociation{
+		AgentAssociations: []helpers.AgentAssociation{
 			{AgentName: agentName, Relevance: 0.75},
 		},
 		EntityType: "go-pattern",
@@ -2104,12 +2105,12 @@ func TestSetPatternAgentAssociations_ClearAssociationsWithEmptyArray(t *testing.
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	// Clear associations with empty array
-	clearBody := PatternAgentAssociations{
-		Associations: []AgentAssociation{},
+	clearBody := helpers.PatternAgentAssociations{
+		Associations: []helpers.AgentAssociation{},
 	}
 
 	resp, err := client.Put(patternAgentsPath(created.ID), clearBody)
@@ -2117,16 +2118,16 @@ func TestSetPatternAgentAssociations_ClearAssociationsWithEmptyArray(t *testing.
 		t.Fatalf("failed to PUT %s: %v", patternAgentsPath(created.ID), err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusNoContent)
-	ReadBody(t, resp)
+	helpers.AssertStatusCode(t, resp, http.StatusNoContent)
+	helpers.ReadBody(t, resp)
 }
 
 func TestSetPatternAgentAssociations_PatternNotFoundReturns404(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	nonExistentID := uuid.New().String()
-	body := PatternAgentAssociations{
-		Associations: []AgentAssociation{},
+	body := helpers.PatternAgentAssociations{
+		Associations: []helpers.AgentAssociation{},
 	}
 
 	resp, err := client.Put(patternAgentsPath(nonExistentID), body)
@@ -2135,16 +2136,16 @@ func TestSetPatternAgentAssociations_PatternNotFoundReturns404(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusNotFound)
+	helpers.AssertStatusCode(t, resp, http.StatusNotFound)
 }
 
 func TestSetPatternAgentAssociations_ValidationErrors(t *testing.T) {
 	t.Run("non-existent agent name", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
 		// Create a pattern to PUT against
-		patternBody := PatternCreate{
-			Name:       GenerateUniqueName("pattern"),
+		patternBody := helpers.PatternCreate{
+			Name:       helpers.GenerateUniqueName("pattern"),
 			Content:    "content for non-existent agent validation",
 			EntityType: "go-pattern",
 			Language:   "go",
@@ -2154,11 +2155,11 @@ func TestSetPatternAgentAssociations_ValidationErrors(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create pattern: %v", err)
 		}
-		AssertStatusCode(t, createResp, http.StatusAccepted)
-		created := ParseJSON[Pattern](t, createResp)
+		helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+		created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
-		body := PatternAgentAssociations{
-			Associations: []AgentAssociation{
+		body := helpers.PatternAgentAssociations{
+			Associations: []helpers.AgentAssociation{
 				{AgentName: "definitely-does-not-exist", Relevance: 0.5},
 			},
 		}
@@ -2174,10 +2175,10 @@ func TestSetPatternAgentAssociations_ValidationErrors(t *testing.T) {
 		}
 	})
 	t.Run("relevance below zero", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
-		patternBody := PatternCreate{
-			Name:       GenerateUniqueName("pattern"),
+		patternBody := helpers.PatternCreate{
+			Name:       helpers.GenerateUniqueName("pattern"),
 			Content:    "content for relevance below zero validation",
 			EntityType: "go-pattern",
 			Language:   "go",
@@ -2187,11 +2188,11 @@ func TestSetPatternAgentAssociations_ValidationErrors(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create pattern: %v", err)
 		}
-		AssertStatusCode(t, createResp, http.StatusAccepted)
-		created := ParseJSON[Pattern](t, createResp)
+		helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+		created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
-		body := PatternAgentAssociations{
-			Associations: []AgentAssociation{
+		body := helpers.PatternAgentAssociations{
+			Associations: []helpers.AgentAssociation{
 				{AgentName: "some-agent", Relevance: -0.1},
 			},
 		}
@@ -2202,13 +2203,13 @@ func TestSetPatternAgentAssociations_ValidationErrors(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		AssertStatusCode(t, resp, http.StatusBadRequest)
+		helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 	})
 	t.Run("relevance above one", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
-		patternBody := PatternCreate{
-			Name:       GenerateUniqueName("pattern"),
+		patternBody := helpers.PatternCreate{
+			Name:       helpers.GenerateUniqueName("pattern"),
 			Content:    "content for relevance above one validation",
 			EntityType: "go-pattern",
 			Language:   "go",
@@ -2218,11 +2219,11 @@ func TestSetPatternAgentAssociations_ValidationErrors(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create pattern: %v", err)
 		}
-		AssertStatusCode(t, createResp, http.StatusAccepted)
-		created := ParseJSON[Pattern](t, createResp)
+		helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+		created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
-		body := PatternAgentAssociations{
-			Associations: []AgentAssociation{
+		body := helpers.PatternAgentAssociations{
+			Associations: []helpers.AgentAssociation{
 				{AgentName: "some-agent", Relevance: 1.1},
 			},
 		}
@@ -2233,13 +2234,13 @@ func TestSetPatternAgentAssociations_ValidationErrors(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		AssertStatusCode(t, resp, http.StatusBadRequest)
+		helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 	})
 	t.Run("missing associations field", func(t *testing.T) {
-		client := NewTestClient(t)
+		client := helpers.NewTestClient(t)
 
-		patternBody := PatternCreate{
-			Name:       GenerateUniqueName("pattern"),
+		patternBody := helpers.PatternCreate{
+			Name:       helpers.GenerateUniqueName("pattern"),
 			Content:    "content for missing associations field validation",
 			EntityType: "go-pattern",
 			Language:   "go",
@@ -2249,8 +2250,8 @@ func TestSetPatternAgentAssociations_ValidationErrors(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create pattern: %v", err)
 		}
-		AssertStatusCode(t, createResp, http.StatusAccepted)
-		created := ParseJSON[Pattern](t, createResp)
+		helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+		created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 		// Send empty JSON object — no "associations" field
 		req, err := http.NewRequest(http.MethodPut, client.BaseURL+patternAgentsPath(created.ID), strings.NewReader(`{}`))
@@ -2264,15 +2265,15 @@ func TestSetPatternAgentAssociations_ValidationErrors(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		AssertStatusCode(t, resp, http.StatusBadRequest)
+		helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 	})
 }
 
 func TestSetPatternAgentAssociations_InvalidUUIDReturns400(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternAgentAssociations{
-		Associations: []AgentAssociation{},
+	body := helpers.PatternAgentAssociations{
+		Associations: []helpers.AgentAssociation{},
 	}
 
 	resp, err := client.Put("/v1/api/patterns/not-a-valid-uuid/agents", body)
@@ -2281,7 +2282,7 @@ func TestSetPatternAgentAssociations_InvalidUUIDReturns400(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusBadRequest)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 // -----------------------------------------------------------------------------
@@ -2289,10 +2290,10 @@ func TestSetPatternAgentAssociations_InvalidUUIDReturns400(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestPatternEnrichment_NewPatternStartsWithPendingStatus(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "content for enrichment pending status test",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -2304,9 +2305,9 @@ func TestPatternEnrichment_NewPatternStartsWithPendingStatus(t *testing.T) {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusAccepted)
+	helpers.AssertStatusCode(t, resp, http.StatusAccepted)
 
-	pattern := ParseJSON[Pattern](t, resp)
+	pattern := helpers.ParseJSON[helpers.Pattern](t, resp)
 
 	if pattern.EnrichmentStatus != "pending" {
 		t.Fatalf("expected enrichment_status 'pending' immediately after create, got %q", pattern.EnrichmentStatus)
@@ -2314,10 +2315,10 @@ func TestPatternEnrichment_NewPatternStartsWithPendingStatus(t *testing.T) {
 }
 
 func TestPatternEnrichment_StatusTransitionsToPendingOrFailed(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "content for enrichment status transition test",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -2328,8 +2329,8 @@ func TestPatternEnrichment_StatusTransitionsToPendingOrFailed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	// Poll until enrichment completes (pending → enriched or failed)
 	deadline := time.Now().Add(10 * time.Second)
@@ -2339,7 +2340,7 @@ func TestPatternEnrichment_StatusTransitionsToPendingOrFailed(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to GET %s: %v", patternPath(created.ID), err)
 		}
-		p := ParseJSON[Pattern](t, resp)
+		p := helpers.ParseJSON[helpers.Pattern](t, resp)
 		finalStatus = p.EnrichmentStatus
 		if p.EnrichmentStatus != "pending" {
 			break
@@ -2355,10 +2356,10 @@ func TestPatternEnrichment_StatusTransitionsToPendingOrFailed(t *testing.T) {
 }
 
 func TestPatternEnrichment_EnrichedAtSetWhenEnriched(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "content for enriched_at timestamp test",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -2369,18 +2370,18 @@ func TestPatternEnrichment_EnrichedAtSetWhenEnriched(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	// Poll until enrichment is no longer pending
 	deadline := time.Now().Add(10 * time.Second)
-	var finalPattern Pattern
+	var finalPattern helpers.Pattern
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(patternPath(created.ID))
 		if err != nil {
 			t.Fatalf("failed to GET %s: %v", patternPath(created.ID), err)
 		}
-		finalPattern = ParseJSON[Pattern](t, resp)
+		finalPattern = helpers.ParseJSON[helpers.Pattern](t, resp)
 		if finalPattern.EnrichmentStatus != "pending" {
 			break
 		}
@@ -2394,10 +2395,10 @@ func TestPatternEnrichment_EnrichedAtSetWhenEnriched(t *testing.T) {
 }
 
 func TestPatternEnrichment_ErrorSetWhenFailed(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "content for enrichment error test",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -2408,18 +2409,18 @@ func TestPatternEnrichment_ErrorSetWhenFailed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	// Poll until enrichment is no longer pending
 	deadline := time.Now().Add(10 * time.Second)
-	var finalPattern Pattern
+	var finalPattern helpers.Pattern
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(patternPath(created.ID))
 		if err != nil {
 			t.Fatalf("failed to GET %s: %v", patternPath(created.ID), err)
 		}
-		finalPattern = ParseJSON[Pattern](t, resp)
+		finalPattern = helpers.ParseJSON[helpers.Pattern](t, resp)
 		if finalPattern.EnrichmentStatus != "pending" {
 			break
 		}
@@ -2433,10 +2434,10 @@ func TestPatternEnrichment_ErrorSetWhenFailed(t *testing.T) {
 }
 
 func TestPatternEnrichment_ContentUpdateTriggersReenrichment(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
-	createBody := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	createBody := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "original content before re-enrichment",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -2446,8 +2447,8 @@ func TestPatternEnrichment_ContentUpdateTriggersReenrichment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
-	created := ParseJSON[Pattern](t, createResp)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	// Wait for initial enrichment to settle (pending → failed with dummy key)
 	deadline := time.Now().Add(10 * time.Second)
@@ -2456,7 +2457,7 @@ func TestPatternEnrichment_ContentUpdateTriggersReenrichment(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to GET %s: %v", patternPath(created.ID), err)
 		}
-		p := ParseJSON[Pattern](t, resp)
+		p := helpers.ParseJSON[helpers.Pattern](t, resp)
 		if p.EnrichmentStatus != "pending" {
 			break
 		}
@@ -2464,7 +2465,7 @@ func TestPatternEnrichment_ContentUpdateTriggersReenrichment(t *testing.T) {
 	}
 
 	// Update content — should reset enrichment_status to pending
-	updateBody := PatternUpdate{
+	updateBody := helpers.PatternUpdate{
 		Name:       createBody.Name,
 		Content:    "new content after re-enrichment trigger",
 		EntityType: "go-pattern",
@@ -2477,8 +2478,8 @@ func TestPatternEnrichment_ContentUpdateTriggersReenrichment(t *testing.T) {
 		t.Fatalf("failed to PUT %s: %v", patternPath(created.ID), err)
 	}
 
-	AssertStatusCode(t, updateResp, http.StatusNoContent)
-	ReadBody(t, updateResp)
+	helpers.AssertStatusCode(t, updateResp, http.StatusNoContent)
+	helpers.ReadBody(t, updateResp)
 }
 
 // -----------------------------------------------------------------------------
@@ -2486,11 +2487,11 @@ func TestPatternEnrichment_ContentUpdateTriggersReenrichment(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestGetPatternChunks_ReturnsChunksForPattern(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	// Create a pattern (chunks are populated asynchronously by enrichment)
-	body := PatternCreate{
-		Name:       GenerateUniqueName("pattern"),
+	body := helpers.PatternCreate{
+		Name:       helpers.GenerateUniqueName("pattern"),
 		Content:    "## Philosophy\nStorage-only databases.\n\n## Usage\nCall the API.",
 		EntityType: "go-pattern",
 		Language:   "go",
@@ -2500,9 +2501,9 @@ func TestGetPatternChunks_ReturnsChunksForPattern(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pattern: %v", err)
 	}
-	AssertStatusCode(t, createResp, http.StatusAccepted)
+	helpers.AssertStatusCode(t, createResp, http.StatusAccepted)
 
-	created := ParseJSON[Pattern](t, createResp)
+	created := helpers.ParseJSON[helpers.Pattern](t, createResp)
 
 	// GET /v1/api/patterns/:id/chunks — returns 200 with chunks (may be empty if not yet enriched)
 	resp, err := client.Get("/v1/api/patterns/" + created.ID + "/chunks")
@@ -2510,9 +2511,9 @@ func TestGetPatternChunks_ReturnsChunksForPattern(t *testing.T) {
 		t.Fatalf("failed to GET chunks: %v", err)
 	}
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	chunkList := ParseJSON[ChunkListResponse](t, resp)
+	chunkList := helpers.ParseJSON[helpers.ChunkListResponse](t, resp)
 
 	if chunkList.Chunks == nil {
 		t.Fatal("expected chunks field to be present (may be empty)")
@@ -2520,7 +2521,7 @@ func TestGetPatternChunks_ReturnsChunksForPattern(t *testing.T) {
 }
 
 func TestGetPatternChunks_InvalidUUIDReturns400(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/v1/api/patterns/not-a-uuid/chunks")
 	if err != nil {
@@ -2528,7 +2529,7 @@ func TestGetPatternChunks_InvalidUUIDReturns400(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusBadRequest)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 }
 
 // -----------------------------------------------------------------------------
@@ -2557,25 +2558,25 @@ func patternAgentsPath(id string) string {
 // Compile-time interface assertions to ensure test types from types.go are used.
 // These prevent the types from appearing unused if no test body references them yet.
 var (
-	_ = PatternCreate{}
-	_ = PatternUpdate{}
-	_ = PatternList{}
-	_ = PatternSearchResponse{}
-	_ = PatternAgentAssociations{}
-	_ = Pattern{}
-	_ = ErrorResponse{}
-	_ = ChunkListResponse{}
+	_ = helpers.PatternCreate{}
+	_ = helpers.PatternUpdate{}
+	_ = helpers.PatternList{}
+	_ = helpers.PatternSearchResponse{}
+	_ = helpers.PatternAgentAssociations{}
+	_ = helpers.Pattern{}
+	_ = helpers.ErrorResponse{}
+	_ = helpers.ChunkListResponse{}
 )
 
 // Compile-time assertions for helpers, uuid, http, and strings packages.
 var (
-	_ = NewTestClient
-	_ = NewReadOnlyTestClient
-	_ = NewUnauthenticatedClient
-	_ = AssertStatusCode
-	_ = AssertContentType
-	_ = AssertRequestIDHeader
-	_ = GenerateUniqueName
+	_ = helpers.NewTestClient
+	_ = helpers.NewReadOnlyTestClient
+	_ = helpers.NewUnauthenticatedClient
+	_ = helpers.AssertStatusCode
+	_ = helpers.AssertContentType
+	_ = helpers.AssertRequestIDHeader
+	_ = helpers.GenerateUniqueName
 	_ = uuid.New
 	_ = http.StatusOK
 	_ = strings.Repeat

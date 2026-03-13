@@ -13,6 +13,18 @@ on:
       - "src/mnemonic/build/**"
       - "src/mnemonic/tests/**"
       - ".github/workflows/mnemonic-ci.yaml"
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - "src/mnemonic/internal/**"
+      - "src/mnemonic/cmd/**"
+      - "src/mnemonic/go.mod"
+      - "src/mnemonic/go.sum"
+      - "src/mnemonic/build/**"
+      - "src/mnemonic/tests/**"
+      - ".github/workflows/mnemonic-ci.yaml"
   workflow_dispatch:
 
 jobs:
