@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJ_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+LOCAL=${LOCAL:-0}
 
 BUILD_VER="${BUILD_VER:-$(git -C "${PROJ_ROOT}" describe --tags --abbrev=0 2>/dev/null || echo 'dev')}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
@@ -41,6 +42,11 @@ e2e_tests(){
 
     cleanup() {
         docker compose -f "${E2E_COMPOSE_FILE}" down -v --remove-orphans > /dev/null 2>&1 || true
+
+        if [ ${LOCAL} = 1 ]; then
+            docker rmi tests_mnemonic_tests:latest -f > /dev/null 2>&1 || true
+            docker system prune -f > /dev/null 2>&1 || true
+        fi
     }
     trap cleanup EXIT
 

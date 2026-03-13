@@ -1,4 +1,4 @@
-package e2e
+package api_test
 
 import (
 	"net/http"
@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/twistingmercury/mnemonic/tests/e2e/helpers"
 )
 
 // =============================================================================
@@ -32,7 +34,7 @@ func metricsBaseURL() string {
 // (postgres, pgvector, neo4j) are healthy, the endpoint returns 200 OK with
 // status "OK" and a dependencies array containing each component.
 func TestHealthCheck_AllHealthyReturns200(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/health")
 	if err != nil {
@@ -40,12 +42,12 @@ func TestHealthCheck_AllHealthyReturns200(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
 	// The heartbeat library returns a Response struct with fields:
 	//   status, name, resource, machine, utc_DateTime, request_duration_ms, dependencies
 	// Use a flexible map to parse the response.
-	body := ParseJSON[map[string]any](t, resp)
+	body := helpers.ParseJSON[map[string]any](t, resp)
 
 	status, ok := body["status"].(string)
 	if !ok {
@@ -73,7 +75,7 @@ func TestHealthCheck_AllHealthyReturns200(t *testing.T) {
 // successful response without any authentication headers. This confirms the
 // endpoint is public as specified.
 func TestHealthCheck_NoAuthRequired(t *testing.T) {
-	client := NewUnauthenticatedClient(t)
+	client := helpers.NewUnauthenticatedClient(t)
 
 	resp, err := client.Get("/health")
 	if err != nil {
@@ -81,14 +83,14 @@ func TestHealthCheck_NoAuthRequired(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 }
 
 // TestHealthCheck_ResponseContainsAllComponents verifies the dependencies array
 // in the response contains entries for PostgreSQL, Neo4j, and the two OpenAI
 // placeholders registered via the health package.
 func TestHealthCheck_ResponseContainsAllComponents(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/health")
 	if err != nil {
@@ -96,9 +98,9 @@ func TestHealthCheck_ResponseContainsAllComponents(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	body := ParseJSON[map[string]any](t, resp)
+	body := helpers.ParseJSON[map[string]any](t, resp)
 
 	depsRaw, ok := body["dependencies"]
 	if !ok {
@@ -140,7 +142,7 @@ func TestHealthCheck_ResponseContainsAllComponents(t *testing.T) {
 // TestHealthCheck_ContentTypeIsJSON verifies the Content-Type header is
 // application/json (with optional charset parameter).
 func TestHealthCheck_ContentTypeIsJSON(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/health")
 	if err != nil {
@@ -170,7 +172,7 @@ func TestHealthCheck_UnhealthyReturns503(t *testing.T) {
 // TestVersion_ReturnsOKWithVersionInfo verifies the version endpoint returns
 // 200 OK with service, version, build_date, and commit fields populated.
 func TestVersion_ReturnsOKWithVersionInfo(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/version")
 	if err != nil {
@@ -178,9 +180,9 @@ func TestVersion_ReturnsOKWithVersionInfo(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
-	ver := ParseJSON[VersionResponse](t, resp)
+	ver := helpers.ParseJSON[helpers.VersionResponse](t, resp)
 
 	if ver.Service != "mnemonic" {
 		t.Fatalf("expected service 'mnemonic', got %q", ver.Service)
@@ -194,7 +196,7 @@ func TestVersion_ReturnsOKWithVersionInfo(t *testing.T) {
 // TestVersion_NoAuthRequired verifies the version endpoint returns a
 // successful response without any authentication headers.
 func TestVersion_NoAuthRequired(t *testing.T) {
-	client := NewUnauthenticatedClient(t)
+	client := helpers.NewUnauthenticatedClient(t)
 
 	resp, err := client.Get("/version")
 	if err != nil {
@@ -202,13 +204,13 @@ func TestVersion_NoAuthRequired(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 }
 
 // TestVersion_ContentTypeIsJSON verifies the Content-Type header is
 // application/json (with optional charset parameter).
 func TestVersion_ContentTypeIsJSON(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/version")
 	if err != nil {
@@ -226,7 +228,7 @@ func TestVersion_ContentTypeIsJSON(t *testing.T) {
 // version, build_date, commit) are present in the response. Fields default to
 // "n/a" when the binary is built without ldflags.
 func TestVersion_FieldsArePresent(t *testing.T) {
-	client := NewTestClient(t)
+	client := helpers.NewTestClient(t)
 
 	resp, err := client.Get("/version")
 	if err != nil {
@@ -234,10 +236,10 @@ func TestVersion_FieldsArePresent(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 
 	// Parse into a generic map to verify all expected keys exist.
-	body := ParseJSON[map[string]any](t, resp)
+	body := helpers.ParseJSON[map[string]any](t, resp)
 
 	expectedFields := []string{"service", "version", "build_date", "commit"}
 	for _, field := range expectedFields {
@@ -308,7 +310,7 @@ func TestMetrics_NoAuthRequired(t *testing.T) {
 // TestSwaggerUI_ReturnsOK verifies the Swagger UI index page is served and
 // returns HTTP 200. The endpoint is public and requires no authentication.
 func TestSwaggerUI_ReturnsOK(t *testing.T) {
-	client := NewUnauthenticatedClient(t)
+	client := helpers.NewUnauthenticatedClient(t)
 
 	resp, err := client.Get("/swagger/index.html")
 	if err != nil {
@@ -316,7 +318,7 @@ func TestSwaggerUI_ReturnsOK(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	AssertStatusCode(t, resp, http.StatusOK)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
 }
 
 // TestMetrics_ContainsStandardGoMetrics verifies the response body contains
@@ -336,7 +338,7 @@ func TestMetrics_ContainsStandardGoMetrics(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", resp.StatusCode)
 	}
 
-	body := ReadBody(t, resp)
+	body := helpers.ReadBody(t, resp)
 	bodyStr := string(body)
 
 	// Standard Go runtime metrics exposed by the default Prometheus registry.
