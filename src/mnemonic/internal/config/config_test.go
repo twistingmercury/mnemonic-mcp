@@ -40,6 +40,7 @@ func TestDefaultValues(t *testing.T) {
 	assert.Equal(t, config.DefaultMCPReadTimeout, cfg.MCP.ReadTimeout)
 	assert.Equal(t, config.DefaultMCPWriteTimeout, cfg.MCP.WriteTimeout)
 	assert.Equal(t, config.DefaultMCPIdleTimeout, cfg.MCP.IdleTimeout)
+	assert.Equal(t, config.DefaultMCPDefaultSearchThreshold, cfg.MCP.DefaultSearchThreshold)
 
 	// PostgreSQL defaults
 	assert.Equal(t, config.DefaultPostgresHost, cfg.Database.Postgres.Host)
@@ -423,6 +424,58 @@ func TestValidation_ServerConfig(t *testing.T) {
 			errs := cfg.Validate()
 			require.NotEmpty(t, errs, "expected validation errors")
 			assert.Contains(t, errs.Error(), tt.expectError)
+		})
+	}
+}
+
+// TestValidation_MCPConfig tests MCP server configuration validation.
+func TestValidation_MCPConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		modify      func(cfg *config.MnemonicConfig)
+		expectError string
+	}{
+		{
+			name: "default_search_threshold below zero",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.MCP.DefaultSearchThreshold = -0.1
+			},
+			expectError: "mcp.default_search_threshold",
+		},
+		{
+			name: "default_search_threshold above one",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.MCP.DefaultSearchThreshold = 1.1
+			},
+			expectError: "mcp.default_search_threshold",
+		},
+		{
+			name: "default_search_threshold at zero is valid",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.MCP.DefaultSearchThreshold = 0.0
+			},
+			expectError: "",
+		},
+		{
+			name: "default_search_threshold at one is valid",
+			modify: func(cfg *config.MnemonicConfig) {
+				cfg.MCP.DefaultSearchThreshold = 1.0
+			},
+			expectError: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			tt.modify(cfg)
+			errs := cfg.Validate()
+			if tt.expectError == "" {
+				assert.Empty(t, errs, "expected no validation errors")
+			} else {
+				require.NotEmpty(t, errs, "expected validation errors")
+				assert.Contains(t, errs.Error(), tt.expectError)
+			}
 		})
 	}
 }
@@ -1543,10 +1596,11 @@ func validConfig() *config.MnemonicConfig {
 			},
 		},
 		MCP: config.MCPConfig{
-			Port:         8081,
-			ReadTimeout:  30 * time.Second,
-			WriteTimeout: 30 * time.Second,
-			IdleTimeout:  120 * time.Second,
+			Port:                   8081,
+			ReadTimeout:            30 * time.Second,
+			WriteTimeout:           30 * time.Second,
+			IdleTimeout:            120 * time.Second,
+			DefaultSearchThreshold: 0.5,
 		},
 		Database: config.DatabaseConfig{
 			Postgres: config.PostgresConfig{

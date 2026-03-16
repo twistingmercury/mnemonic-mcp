@@ -105,7 +105,7 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	adminServer := CreateHTTPServer(router, cfg)
 
 	// Build the MCP HTTP server.
-	mcpSrv := mcpserver.NewMCPServer(toolDeps, logger)
+	mcpSrv := mcpserver.NewMCPServer(toolDeps, logger, cfg.MCP)
 	mcpHandler := mcpserver.NewMCPHTTPHandler(mcpSrv)
 	mcpHTTPServer := mcpserver.NewMCPHTTPServer(cfg.MCP, cfg.Server.Host, mcpHandler)
 

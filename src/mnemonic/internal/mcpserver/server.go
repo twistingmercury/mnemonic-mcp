@@ -13,7 +13,7 @@ import (
 // NewMCPServer creates a configured MCP server with all 3 pattern search
 // tools registered. The returned server is ready to be wrapped in an HTTP
 // handler via NewMCPHTTPHandler.
-func NewMCPServer(deps ToolDependencies, logger zerolog.Logger) *mcp.Server {
+func NewMCPServer(deps ToolDependencies, logger zerolog.Logger, mcpCfg config.MCPConfig) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "mnemonic",
 		Version: version.Version(),
@@ -21,15 +21,15 @@ func NewMCPServer(deps ToolDependencies, logger zerolog.Logger) *mcp.Server {
 		SchemaCache: mcp.NewSchemaCache(),
 	})
 
-	RegisterTools(server, deps, logger)
+	RegisterTools(server, deps, logger, mcpCfg)
 
 	return server
 }
 
 // RegisterTools registers all 3 pattern search tools on the MCP server.
 // The deps parameter provides access to services needed by tool handlers.
-func RegisterTools(server *mcp.Server, deps ToolDependencies, logger zerolog.Logger) {
-	mcp.AddTool(server, searchPatternsTool, handleSearchPatterns(deps, logger))
+func RegisterTools(server *mcp.Server, deps ToolDependencies, logger zerolog.Logger, mcpCfg config.MCPConfig) {
+	mcp.AddTool(server, searchPatternsTool, handleSearchPatterns(deps, logger, mcpCfg.DefaultSearchThreshold))
 	mcp.AddTool(server, findRelatedPatternsTool, handleFindRelatedPatterns(deps, logger))
 	mcp.AddTool(server, getPatternTool, handleGetPattern(deps, logger))
 }
