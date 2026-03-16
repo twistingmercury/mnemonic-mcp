@@ -75,7 +75,7 @@ func TestHandleSearchPatterns_HappyPath(t *testing.T) {
 	t.Parallel()
 
 	deps := new(mockToolDeps)
-	handler := handleSearchPatterns(deps, noopLogger())
+	handler := handleSearchPatterns(deps, noopLogger(), 0.5)
 
 	searchResult := &searchsvc.SearchResult{
 		Query:            "error handling",
@@ -89,7 +89,7 @@ func TestHandleSearchPatterns_HappyPath(t *testing.T) {
 	deps.On("SearchPatterns", mock.Anything, searchsvc.SearchOptions{
 		Query:     "error handling",
 		Limit:     10,
-		Threshold: 0.7,
+		Threshold: 0.5,
 	}).Return(searchResult, nil)
 
 	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
@@ -109,7 +109,7 @@ func TestHandleSearchPatterns_NoResults(t *testing.T) {
 	t.Parallel()
 
 	deps := new(mockToolDeps)
-	handler := handleSearchPatterns(deps, noopLogger())
+	handler := handleSearchPatterns(deps, noopLogger(), 0.5)
 
 	searchResult := &searchsvc.SearchResult{
 		Query:   "nonexistent topic",
@@ -131,7 +131,7 @@ func TestHandleSearchPatterns_WithAgentFilter(t *testing.T) {
 	t.Parallel()
 
 	deps := new(mockToolDeps)
-	handler := handleSearchPatterns(deps, noopLogger())
+	handler := handleSearchPatterns(deps, noopLogger(), 0.5)
 
 	searchResult := &searchsvc.SearchResult{
 		Query: "testing",
@@ -142,7 +142,7 @@ func TestHandleSearchPatterns_WithAgentFilter(t *testing.T) {
 	deps.On("SearchPatterns", mock.Anything, searchsvc.SearchOptions{
 		Query:     "testing",
 		Limit:     10,
-		Threshold: 0.7,
+		Threshold: 0.5,
 		AgentName: "go-engineer",
 	}).Return(searchResult, nil)
 
@@ -161,7 +161,7 @@ func TestHandleSearchPatterns_ServiceUnavailable(t *testing.T) {
 	t.Parallel()
 
 	deps := new(mockToolDeps)
-	handler := handleSearchPatterns(deps, noopLogger())
+	handler := handleSearchPatterns(deps, noopLogger(), 0.5)
 
 	deps.On("SearchPatterns", mock.Anything, mock.Anything).
 		Return(nil, errors.Join(service.ErrServiceUnavailable, errors.New("embedding failed")))
@@ -179,7 +179,7 @@ func TestHandleSearchPatterns_InvalidLimit(t *testing.T) {
 	t.Parallel()
 
 	deps := new(mockToolDeps)
-	handler := handleSearchPatterns(deps, noopLogger())
+	handler := handleSearchPatterns(deps, noopLogger(), 0.5)
 
 	limit := 100
 	_, _, err := handler(context.Background(), nil, SearchPatternsInput{
@@ -196,7 +196,7 @@ func TestHandleSearchPatterns_InvalidThreshold(t *testing.T) {
 	t.Parallel()
 
 	deps := new(mockToolDeps)
-	handler := handleSearchPatterns(deps, noopLogger())
+	handler := handleSearchPatterns(deps, noopLogger(), 0.5)
 
 	threshold := 1.5
 	_, _, err := handler(context.Background(), nil, SearchPatternsInput{
@@ -213,7 +213,7 @@ func TestHandleSearchPatterns_CustomLimitAndThreshold(t *testing.T) {
 	t.Parallel()
 
 	deps := new(mockToolDeps)
-	handler := handleSearchPatterns(deps, noopLogger())
+	handler := handleSearchPatterns(deps, noopLogger(), 0.5)
 
 	searchResult := &searchsvc.SearchResult{
 		Query:   "go patterns",
@@ -242,7 +242,7 @@ func TestHandleSearchPatterns_WithTags(t *testing.T) {
 	t.Parallel()
 
 	deps := new(mockToolDeps)
-	handler := handleSearchPatterns(deps, noopLogger())
+	handler := handleSearchPatterns(deps, noopLogger(), 0.5)
 
 	searchResult := &searchsvc.SearchResult{
 		Query:   "error handling",
@@ -251,7 +251,7 @@ func TestHandleSearchPatterns_WithTags(t *testing.T) {
 	deps.On("SearchPatterns", mock.Anything, searchsvc.SearchOptions{
 		Query:     "error handling",
 		Limit:     10,
-		Threshold: 0.7,
+		Threshold: 0.5,
 		Tags:      []string{"go", "errors"},
 	}).Return(searchResult, nil)
 
@@ -269,7 +269,7 @@ func TestHandleSearchPatterns_WithLanguageFilter(t *testing.T) {
 	t.Parallel()
 
 	deps := new(mockToolDeps)
-	handler := handleSearchPatterns(deps, noopLogger())
+	handler := handleSearchPatterns(deps, noopLogger(), 0.5)
 
 	searchResult := &searchsvc.SearchResult{
 		Query:   "error handling",
@@ -278,7 +278,7 @@ func TestHandleSearchPatterns_WithLanguageFilter(t *testing.T) {
 	deps.On("SearchPatterns", mock.Anything, searchsvc.SearchOptions{
 		Query:     "error handling",
 		Limit:     10,
-		Threshold: 0.7,
+		Threshold: 0.5,
 		Language:  "python",
 	}).Return(searchResult, nil)
 
@@ -296,7 +296,7 @@ func TestHandleSearchPatterns_WithDomainFilter(t *testing.T) {
 	t.Parallel()
 
 	deps := new(mockToolDeps)
-	handler := handleSearchPatterns(deps, noopLogger())
+	handler := handleSearchPatterns(deps, noopLogger(), 0.5)
 
 	searchResult := &searchsvc.SearchResult{
 		Query:   "error handling",
@@ -305,7 +305,7 @@ func TestHandleSearchPatterns_WithDomainFilter(t *testing.T) {
 	deps.On("SearchPatterns", mock.Anything, searchsvc.SearchOptions{
 		Query:     "error handling",
 		Limit:     10,
-		Threshold: 0.7,
+		Threshold: 0.5,
 		Domain:    "backend",
 	}).Return(searchResult, nil)
 
@@ -323,7 +323,7 @@ func TestHandleSearchPatterns_ZeroLimit(t *testing.T) {
 	t.Parallel()
 
 	deps := new(mockToolDeps)
-	handler := handleSearchPatterns(deps, noopLogger())
+	handler := handleSearchPatterns(deps, noopLogger(), 0.5)
 
 	limit := 0
 	_, _, err := handler(context.Background(), nil, SearchPatternsInput{
@@ -339,7 +339,7 @@ func TestHandleSearchPatterns_NegativeThreshold(t *testing.T) {
 	t.Parallel()
 
 	deps := new(mockToolDeps)
-	handler := handleSearchPatterns(deps, noopLogger())
+	handler := handleSearchPatterns(deps, noopLogger(), 0.5)
 
 	threshold := -0.1
 	_, _, err := handler(context.Background(), nil, SearchPatternsInput{

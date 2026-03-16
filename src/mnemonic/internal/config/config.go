@@ -32,10 +32,11 @@ type VocabularyConfig struct {
 
 // MCPConfig contains MCP server settings.
 type MCPConfig struct {
-	Port         int           `mapstructure:"port"`
-	ReadTimeout  time.Duration `mapstructure:"read_timeout"`
-	WriteTimeout time.Duration `mapstructure:"write_timeout"`
-	IdleTimeout  time.Duration `mapstructure:"idle_timeout"`
+	Port                   int           `mapstructure:"port"`
+	ReadTimeout            time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout           time.Duration `mapstructure:"write_timeout"`
+	IdleTimeout            time.Duration `mapstructure:"idle_timeout"`
+	DefaultSearchThreshold float64       `mapstructure:"default_search_threshold"`
 }
 
 // ServerConfig contains HTTP server settings.
@@ -271,6 +272,7 @@ func SetDefaults(v *viper.Viper) {
 	v.SetDefault("mcp.read_timeout", DefaultMCPReadTimeout)
 	v.SetDefault("mcp.write_timeout", DefaultMCPWriteTimeout)
 	v.SetDefault("mcp.idle_timeout", DefaultMCPIdleTimeout)
+	v.SetDefault("mcp.default_search_threshold", DefaultMCPDefaultSearchThreshold)
 
 	// PostgreSQL defaults
 	v.SetDefault("database.postgres.host", DefaultPostgresHost)
@@ -526,6 +528,13 @@ func (c *MCPConfig) validate() ValidationErrors {
 		errs = append(errs, ValidationError{
 			Field:   "mcp.idle_timeout",
 			Message: "must be a positive duration",
+		})
+	}
+
+	if c.DefaultSearchThreshold < 0 || c.DefaultSearchThreshold > 1 {
+		errs = append(errs, ValidationError{
+			Field:   "mcp.default_search_threshold",
+			Message: fmt.Sprintf("must be between 0.0 and 1.0, got %f", c.DefaultSearchThreshold),
 		})
 	}
 

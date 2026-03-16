@@ -14,9 +14,8 @@ import (
 )
 
 const (
-	defaultSearchLimit     = 10
-	maxSearchLimit         = 50
-	defaultSearchThreshold = 0.7
+	defaultSearchLimit = 10
+	maxSearchLimit     = 50
 
 	defaultRelatedLimit = 5
 	maxRelatedLimit     = 20
@@ -25,7 +24,7 @@ const (
 // handleSearchPatterns returns a handler for the search_patterns tool.
 // It validates input constraints, delegates to the search service, and
 // formats results as markdown.
-func handleSearchPatterns(deps ToolDependencies, logger zerolog.Logger) mcp.ToolHandlerFor[SearchPatternsInput, any] {
+func handleSearchPatterns(deps ToolDependencies, logger zerolog.Logger, defaultThreshold float64) mcp.ToolHandlerFor[SearchPatternsInput, any] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, input SearchPatternsInput) (*mcp.CallToolResult, any, error) {
 		// Apply defaults.
 		limit := defaultSearchLimit
@@ -33,7 +32,7 @@ func handleSearchPatterns(deps ToolDependencies, logger zerolog.Logger) mcp.Tool
 			limit = *input.Limit
 		}
 
-		threshold := defaultSearchThreshold
+		threshold := defaultThreshold
 		if input.Threshold != nil {
 			threshold = *input.Threshold
 		}
