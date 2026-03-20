@@ -170,7 +170,7 @@ These images have the schema already applied. The `migrate/migrate` service and 
   - Verify: `cd src/mnemonic && go build ./... && go test ./...`
   - Done: Both commands exit 0 with no test failures.
 
-- [ ] **Cycle 12 - Full build**: Run the complete CI build pipeline via `make build` and fix any issues it surfaces.
+- [x] **Cycle 12 - Full build**: Run the complete CI build pipeline via `make build` and fix any issues it surfaces.
   - Agent: `go software engineer`
   - Files: any files requiring fixes to make the build pass
   - Steps:

@@ -52,3 +52,8 @@
 - No files changed; module was already in a clean state after prior cycles
 - Verify: cd src/mnemonic && go build ./... && go test ./... exits 0 (5 packages pass)
 - Note: make analyze also exits 0 with no lint, vuln, or security issues
+
+[Cycle 12 — Full build] DONE
+- Removed E2E_COMPOSE_FILE variable, e2e_tests() function, and e2e_tests call from build/build.sh (tests/ was deleted in Cycle 9); no Go source changes needed
+- Verify: cd src/mnemonic && make build exits 0; image ghcr.io/twistingmercury/mnemonic:dev produced (35.5MB)
+- Note: goimports, golangci-lint, govulncheck, gosec, and unit tests all passed clean inside the Docker build
