@@ -96,7 +96,7 @@ These images have the schema already applied. The `migrate/migrate` service and 
   - Verify: `cd src/mnemonic && go build ./internal/server/... && go test ./internal/server/...`
   - Done: Both commands exit 0.
 
-- [ ] **Cycle 4 - Delete REST API handler packages**: Remove the handler packages that served the REST API. Keep `operations/`.
+- [x] **Cycle 4 - Delete REST API handler packages**: Remove the handler packages that served the REST API. Keep `operations/`.
   - Agent: `go software engineer`
   - Files: removes `internal/handlers/agents/`, `handlers/patterns/`, `handlers/skillfiles/`, `handlers/skills/`, `handlers/respond.go`, `handlers/respond_test.go`
   - Steps:

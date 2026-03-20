@@ -12,3 +12,8 @@
 - Deleted routes.go (Services struct, RegisterAPIRoutes); removed agentSvc/skillSvc/skillFileSvc from wireDependencies; changed wireDependencies return type to (mcpserver.ToolDependencies, *enricher.Worker, error); removed RegisterAPIRoutes call from ListenAndServe; dropped all now-unused imports
 - Verify: cd src/mnemonic && go build ./internal/server/... && go test ./internal/server/... exits 0
 - Note: none
+
+[Cycle 4 — Delete REST API handler packages] DONE
+- git rm'd agents/, patterns/, skillfiles/, skills/ sub-packages plus respond.go and respond_test.go (14 files total); updated handlers/doc.go to remove stale sub-package references
+- Verify: cd src/mnemonic && go build ./... exits 0
+- Note: none
