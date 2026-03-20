@@ -141,14 +141,6 @@ logging:
   level: debug
   format: text
   include_caller: true
-
-vocabulary:
-  languages:
-    - agnostic
-    - go
-  domains:
-    - backend
-    - testing
 `
 
 	err := os.WriteFile(configPath, []byte(configContent), 0644)
@@ -212,14 +204,6 @@ database:
 logging:
   level: info
   format: json
-
-vocabulary:
-  languages:
-    - agnostic
-    - go
-  domains:
-    - backend
-    - testing
 `
 
 	err := os.WriteFile(configPath, []byte(configContent), 0644)
@@ -329,7 +313,6 @@ func TestEnvironmentVariableNaming(t *testing.T) {
 
 			v := viper.New()
 			config.SetDefaults(v)
-			applyTestVocabulary(v)
 			v.SetEnvPrefix("MNEMONIC")
 			v.SetEnvKeyReplacer(replaceUnderscores())
 			v.AutomaticEnv()
@@ -1427,7 +1410,6 @@ func TestBooleanEnvironmentVariables(t *testing.T) {
 
 			v := viper.New()
 			config.SetDefaults(v)
-			applyTestVocabulary(v)
 			v.SetEnvPrefix("MNEMONIC")
 			v.SetEnvKeyReplacer(replaceUnderscores())
 			v.AutomaticEnv()
@@ -1459,7 +1441,6 @@ func TestDurationEnvironmentVariables(t *testing.T) {
 
 			v := viper.New()
 			config.SetDefaults(v)
-			applyTestVocabulary(v)
 			v.SetEnvPrefix("MNEMONIC")
 			v.SetEnvKeyReplacer(replaceUnderscores())
 			v.AutomaticEnv()
@@ -1476,53 +1457,6 @@ func TestValidConfig(t *testing.T) {
 	cfg := validConfig()
 	errs := cfg.Validate()
 	assert.Empty(t, errs, "expected no validation errors, got: %v", errs)
-}
-
-// TestVocabularyConfig_Validate tests VocabularyConfig validation.
-func TestVocabularyConfig_Validate(t *testing.T) {
-	tests := []struct {
-		name        string
-		modify      func(cfg *config.MnemonicConfig)
-		expectError string
-		wantNoError bool
-	}{
-		{
-			name: "empty languages fails validation",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Vocabulary.Languages = nil
-			},
-			expectError: "vocabulary.languages",
-		},
-		{
-			name: "empty domains fails validation",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Vocabulary.Domains = nil
-			},
-			expectError: "vocabulary.domains",
-		},
-		{
-			name: "both populated passes validation",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Vocabulary.Languages = []string{"go", "python"}
-				cfg.Vocabulary.Domains = []string{"backend", "testing"}
-			},
-			wantNoError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := validConfig()
-			tt.modify(cfg)
-			errs := cfg.Validate()
-			if tt.wantNoError {
-				assert.Empty(t, errs, "expected no validation errors, got: %v", errs)
-				return
-			}
-			require.NotEmpty(t, errs, "expected validation errors")
-			assert.Contains(t, errs.Error(), tt.expectError)
-		})
-	}
 }
 
 // TestValidationErrorFormat tests the ValidationError and ValidationErrors formatting.
@@ -1569,14 +1503,6 @@ func clearMnemonicEnvVars(t *testing.T) {
 // strings helper for env key replacement
 func replaceUnderscores() *strings.Replacer {
 	return strings.NewReplacer(".", "_")
-}
-
-// applyTestVocabulary sets minimal valid vocabulary values on a viper instance.
-// Call this in tests that use LoadFromViper without a config file so that
-// vocabulary validation does not cause false failures.
-func applyTestVocabulary(v *viper.Viper) {
-	v.Set("vocabulary.languages", []string{"agnostic", "go"})
-	v.Set("vocabulary.domains", []string{"backend", "testing"})
 }
 
 // validConfig returns a fully valid configuration for testing.
@@ -1673,10 +1599,6 @@ func validConfig() *config.MnemonicConfig {
 				SampleRate:   0.1,
 				OTLPInsecure: true,
 			},
-		},
-		Vocabulary: config.VocabularyConfig{
-			Languages: []string{"agnostic", "go", "python"},
-			Domains:   []string{"backend", "frontend", "testing"},
 		},
 	}
 }

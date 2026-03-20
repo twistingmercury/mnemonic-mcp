@@ -27,15 +27,10 @@ import (
 	enrichmentjobrepo "github.com/twistingmercury/mnemonic/internal/repository/enrichmentjob"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
-	skillrepo "github.com/twistingmercury/mnemonic/internal/repository/skill"
-	skillfilerepo "github.com/twistingmercury/mnemonic/internal/repository/skillfile"
-	agentsvc "github.com/twistingmercury/mnemonic/internal/service/agent"
 	enrichmentsvc "github.com/twistingmercury/mnemonic/internal/service/enrichment"
 	openaisvc "github.com/twistingmercury/mnemonic/internal/service/openai"
 	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
-	skillsvc "github.com/twistingmercury/mnemonic/internal/service/skill"
-	skillfilesvc "github.com/twistingmercury/mnemonic/internal/service/skillfile"
 	"github.com/twistingmercury/mnemonic/internal/telemetry"
 	otelxgin "github.com/twistingmercury/otelx/middleware/gin"
 )
@@ -85,7 +80,7 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	}
 
 	// Wire all dependencies.
-	svc, toolDeps, enrichWorker, err := wireDependencies(pgPool, neo4jDriver, cfg, logger)
+	toolDeps, enrichWorker, err := wireDependencies(pgPool, neo4jDriver, cfg, logger)
 	if err != nil {
 		return fmt.Errorf("failed to wire dependencies: %w", err)
 	}
@@ -99,7 +94,6 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	// Build the Admin API router.
 	router := setupRouter(tel, requestMetrics)
 	operations.SetupHandlers(router, health.Descriptors())
-	RegisterAPIRoutes(router, svc, cfg.Vocabulary)
 
 	// Build the Admin API HTTP server.
 	adminServer := CreateHTTPServer(router, cfg)
@@ -177,18 +171,16 @@ func closeDatabases(pgPool *pgxpool.Pool, neo4jDriver neo4j.DriverWithContext, l
 }
 
 // wireDependencies creates all repositories, services, and the enrichment
-// worker. Returns the route Services, MCP ToolDependencies, and enrichment Worker.
+// worker. Returns MCP ToolDependencies and the enrichment Worker.
 func wireDependencies(
 	pgPool *pgxpool.Pool,
 	neo4jDriver neo4j.DriverWithContext,
 	cfg *config.MnemonicConfig,
 	logger zerolog.Logger,
-) (Services, mcpserver.ToolDependencies, *enricher.Worker, error) {
+) (mcpserver.ToolDependencies, *enricher.Worker, error) {
 	// Repositories.
 	agentRepo := agentrepo.NewRepository(pgPool)
 	patternRepo := patternrepo.NewRepository(pgPool)
-	skillRepo := skillrepo.NewRepository(pgPool)
-	skillFileRepo := skillfilerepo.NewRepository(pgPool)
 	enrichmentJobRepo := enrichmentjobrepo.NewRepository(pgPool)
 	graphRepo := graphrepo.NewRepository(neo4jDriver, cfg.Database.Neo4j.Database)
 	chunkRepo := chunkrepo.NewRepository(pgPool)
@@ -198,9 +190,6 @@ func wireDependencies(
 	extractionSvc := openaisvc.NewExtractionService(cfg.OpenAI)
 
 	// Domain services.
-	agentSvc := agentsvc.New(agentRepo, graphRepo, logger)
-	skillSvc := skillsvc.New(skillRepo, logger)
-	skillFileSvc := skillfilesvc.New(skillFileRepo, skillRepo, logger)
 	searchSvc := searchsvc.New(embeddingSvc, patternRepo, agentRepo, chunkRepo, logger)
 	patternSvc := patternsvc.New(patternRepo, enrichmentJobRepo, graphRepo, agentRepo, pgPool, chunkRepo, logger)
 	enrichmentSvc, err := enrichmentsvc.New(
@@ -209,25 +198,16 @@ func wireDependencies(
 		cfg.Enrichment, chunkRepo, logger,
 	)
 	if err != nil {
-		return Services{}, nil, nil, fmt.Errorf("wire enrichment service: %w", err)
+		return nil, nil, fmt.Errorf("wire enrichment service: %w", err)
 	}
 
 	// MCP facade.
 	toolDeps := mcpserver.NewToolDependencies(searchSvc, patternSvc)
 
-	// REST API services.
-	svc := Services{
-		Agent:     agentSvc,
-		Pattern:   patternSvc,
-		Search:    searchSvc,
-		Skill:     skillSvc,
-		SkillFile: skillFileSvc,
-	}
-
 	// Enrichment worker.
 	enrichWorker := enricher.New(enrichmentSvc, cfg.Enrichment, logger)
 
-	return svc, toolDeps, enrichWorker, nil
+	return toolDeps, enrichWorker, nil
 }
 
 // runHTTPServer starts the admin API HTTP server and gracefully shuts it down

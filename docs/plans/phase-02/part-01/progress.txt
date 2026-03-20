@@ -1,0 +1,59 @@
+[Cycle 1 — Update docker-compose] DONE
+- Changed dev_postgres image to mnemonic-postgres:v1.0.0-dev, dev_neo4j image to mnemonic-neo4j:v1.0.0-dev, removed migrate service block, removed migrate depends_on from dev_api
+- Verify: docker compose config --quiet exits 0
+- Note: none
+
+[Cycle 2 — Remove migrations from version control] DONE
+- Ran git rm -r src/migrations/ removing 29 tracked files (SQL, Cypher, BATS, shell scripts)
+- Verify: git ls-files src/migrations | wc -l returns 0
+- Note: wc -l adds leading whitespace so grep '^0$' fails; actual count is 0, verified manually
+
+[Cycle 3 — Refactor server package] DONE
+- Deleted routes.go (Services struct, RegisterAPIRoutes); removed agentSvc/skillSvc/skillFileSvc from wireDependencies; changed wireDependencies return type to (mcpserver.ToolDependencies, *enricher.Worker, error); removed RegisterAPIRoutes call from ListenAndServe; dropped all now-unused imports
+- Verify: cd src/mnemonic && go build ./internal/server/... && go test ./internal/server/... exits 0
+- Note: none
+
+[Cycle 4 — Delete REST API handler packages] DONE
+- git rm'd agents/, patterns/, skillfiles/, skills/ sub-packages plus respond.go and respond_test.go (14 files total); updated handlers/doc.go to remove stale sub-package references
+- Verify: cd src/mnemonic && go build ./... exits 0
+- Note: none
+
+[Cycle 5 — Delete REST-only service and repository packages] DONE
+- git rm -r removed 16 files across service/agent, service/skill, service/skillfile, repository/skill, repository/skillfile
+- Verify: cd src/mnemonic && go build ./... exits 0
+- Note: no other packages imported these; no additional fixes needed
+
+[Cycle 6 — Remove VocabularyConfig from config] DONE
+- Removed VocabularyConfig struct, Vocabulary field from MnemonicConfig, vocabulary defaults in SetDefaults(), c.Vocabulary.validate() call, VocabularyConfig.validate() method; removed DefaultVocabularyLanguages/DefaultVocabularyDomains from defaults.go; removed TestVocabularyConfig_Validate, applyTestVocabulary helper and all call sites, vocabulary YAML blocks from test fixtures
+- Verify: cd src/mnemonic && go build ./internal/config/... && go test ./internal/config/... exits 0
+- Note: config.yaml was already absent; defaults helpers lived in defaults.go, not config.go
+
+[Cycle 7 — Update Dockerfile] DONE
+- Removed comment + RUN go install swag + RUN swag init lines from build/Dockerfile
+- Verify: ! grep -qE 'swag/cmd|swag init' src/mnemonic/build/Dockerfile && echo ok exits 0
+- Note: none
+
+[Cycle 8 — go mod tidy] DONE
+- Removed docs/swagger/ (docs.go, swagger.json, swagger.yaml) which held the last live swaggo import; ran go mod tidy to drop swaggo/files, swaggo/gin-swagger, swaggo/swag direct deps and their transitive-only indirects
+- Verify: cd src/mnemonic && go build ./... && go mod verify exits 0
+- Note: go mod tidy alone was insufficient — generated docs/swagger/docs.go was still importing swaggo; deleting it was required first
+
+[Cycle 9 — Delete E2E tests and OpenAPI spec] DONE
+- git rm -r removed 15 files: docs/openapi/mnemonic-v1.yaml and all of src/mnemonic/tests/ (docker-compose.yaml, run-e2e.sh, e2e/ subtree)
+- Verify: test ! -d src/mnemonic/tests && test ! -d docs/openapi exits 0
+- Note: none
+
+[Cycle 10 — Update CI workflow] DONE
+- Removed - "src/mnemonic/tests/**" from push.paths and pull_request.paths trigger lists in .github/workflows/mnemonic-ci.yaml
+- Verify: python3 -c "import yaml; yaml.safe_load(open('.github/workflows/mnemonic-ci.yaml')); print('YAML valid')" exits 0
+- Note: none
+
+[Cycle 11 — Full test suite] DONE
+- No files changed; module was already in a clean state after prior cycles
+- Verify: cd src/mnemonic && go build ./... && go test ./... exits 0 (5 packages pass)
+- Note: make analyze also exits 0 with no lint, vuln, or security issues
+
+[Cycle 12 — Full build] DONE
+- Removed E2E_COMPOSE_FILE variable, e2e_tests() function, and e2e_tests call from build/build.sh (tests/ was deleted in Cycle 9); no Go source changes needed
+- Verify: cd src/mnemonic && make build exits 0; image ghcr.io/twistingmercury/mnemonic:dev produced (35.5MB)
+- Note: goimports, golangci-lint, govulncheck, gosec, and unit tests all passed clean inside the Docker build

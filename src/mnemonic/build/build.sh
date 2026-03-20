@@ -15,7 +15,6 @@ IMAGE_TAG="${IMAGE_TAG:-$BUILD_VER}"
 
 E2E_COMPOSE_FILE="${PROJ_ROOT}/tests/docker-compose.yaml"
 
-
 build_api(){
     printf "\n=== starting image build, version %s ===\n" "${BUILD_VER}"
 
@@ -38,8 +37,6 @@ build_api(){
 e2e_tests(){
     printf "\n=== starting end-to-end tests ===\n"
 
-    # local compose_file="${PROJ_ROOT}/tests/docker-compose.yaml"
-
     cleanup() {
         docker compose -f "${E2E_COMPOSE_FILE}" down -v --remove-orphans > /dev/null 2>&1 || true
 
@@ -56,17 +53,11 @@ e2e_tests(){
         return 1
     fi
 
-    printf "Waiting for infrastructure to be healthy...\n"
-    if ! docker compose -f "${E2E_COMPOSE_FILE}" run --rm migrate; then
-        printf "ERROR: E2E migrations failed\n" >&2
-        return 1
-    fi
-
     docker compose -f "${E2E_COMPOSE_FILE}" up \
         --build \
         --abort-on-container-exit \
         --exit-code-from mnemonic_tests \
-        mnemonic_api mnemonic_tests
+        mnemonic_mcp mnemonic_api mnemonic_tests
 
     trap - EXIT
     cleanup
@@ -76,7 +67,6 @@ e2e_tests(){
 
 main(){
     build_api
-
     e2e_tests
 
     return 0
