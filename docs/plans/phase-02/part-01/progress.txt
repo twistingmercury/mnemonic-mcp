@@ -42,3 +42,8 @@
 - git rm -r removed 15 files: docs/openapi/mnemonic-v1.yaml and all of src/mnemonic/tests/ (docker-compose.yaml, run-e2e.sh, e2e/ subtree)
 - Verify: test ! -d src/mnemonic/tests && test ! -d docs/openapi exits 0
 - Note: none
+
+[Cycle 10 — Update CI workflow] DONE
+- Removed - "src/mnemonic/tests/**" from push.paths and pull_request.paths trigger lists in .github/workflows/mnemonic-ci.yaml
+- Verify: python3 -c "import yaml; yaml.safe_load(open('.github/workflows/mnemonic-ci.yaml')); print('YAML valid')" exits 0
+- Note: none

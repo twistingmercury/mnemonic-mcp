@@ -151,7 +151,7 @@ These images have the schema already applied. The `migrate/migrate` service and 
   - Verify: `test ! -d src/mnemonic/tests && test ! -d docs/openapi && echo ok`
   - Done: Both directories are absent; `echo ok` prints.
 
-- [ ] **Cycle 10 - Update CI workflow**: Remove the `src/mnemonic/tests/**` path trigger (the E2E test directory no longer exists).
+- [x] **Cycle 10 - Update CI workflow**: Remove the `src/mnemonic/tests/**` path trigger (the E2E test directory no longer exists).
   - Agent: `devops engineer`
   - Files: `.github/workflows/mnemonic-ci.yaml`
   - Steps:
