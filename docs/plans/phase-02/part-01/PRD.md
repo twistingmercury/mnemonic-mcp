@@ -143,7 +143,7 @@ These images have the schema already applied. The `migrate/migrate` service and 
   - Verify: `cd src/mnemonic && go build ./... && go mod verify`
   - Done: Both commands exit 0; `go.mod` contains no `swaggo` direct deps.
 
-- [ ] **Cycle 9 - Delete E2E tests and OpenAPI spec**: Remove the E2E test suite (tested the REST API) and the OpenAPI spec (now owned by `mnemonic-api`).
+- [x] **Cycle 9 - Delete E2E tests and OpenAPI spec**: Remove the E2E test suite (tested the REST API) and the OpenAPI spec (now owned by `mnemonic-api`).
   - Agent: `go software engineer`
   - Files: removes `src/mnemonic/tests/`, `docs/openapi/`
   - Steps:

@@ -37,3 +37,8 @@
 - Removed docs/swagger/ (docs.go, swagger.json, swagger.yaml) which held the last live swaggo import; ran go mod tidy to drop swaggo/files, swaggo/gin-swagger, swaggo/swag direct deps and their transitive-only indirects
 - Verify: cd src/mnemonic && go build ./... && go mod verify exits 0
 - Note: go mod tidy alone was insufficient — generated docs/swagger/docs.go was still importing swaggo; deleting it was required first
+
+[Cycle 9 — Delete E2E tests and OpenAPI spec] DONE
+- git rm -r removed 15 files: docs/openapi/mnemonic-v1.yaml and all of src/mnemonic/tests/ (docker-compose.yaml, run-e2e.sh, e2e/ subtree)
+- Verify: test ! -d src/mnemonic/tests && test ! -d docs/openapi exits 0
+- Note: none
