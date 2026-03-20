@@ -27,3 +27,8 @@
 - Removed VocabularyConfig struct, Vocabulary field from MnemonicConfig, vocabulary defaults in SetDefaults(), c.Vocabulary.validate() call, VocabularyConfig.validate() method; removed DefaultVocabularyLanguages/DefaultVocabularyDomains from defaults.go; removed TestVocabularyConfig_Validate, applyTestVocabulary helper and all call sites, vocabulary YAML blocks from test fixtures
 - Verify: cd src/mnemonic && go build ./internal/config/... && go test ./internal/config/... exits 0
 - Note: config.yaml was already absent; defaults helpers lived in defaults.go, not config.go
+
+[Cycle 7 — Update Dockerfile] DONE
+- Removed comment + RUN go install swag + RUN swag init lines from build/Dockerfile
+- Verify: ! grep -qE 'swag/cmd|swag init' src/mnemonic/build/Dockerfile && echo ok exits 0
+- Note: none

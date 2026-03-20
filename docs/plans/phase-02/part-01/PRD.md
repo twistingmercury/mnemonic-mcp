@@ -124,7 +124,7 @@ These images have the schema already applied. The `migrate/migrate` service and 
   - Verify: `cd src/mnemonic && go build ./internal/config/... && go test ./internal/config/...`
   - Done: Both commands exit 0.
 
-- [ ] **Cycle 7 - Update Dockerfile**: Remove the swag generation steps that are no longer needed (routes.go no longer imports the generated swagger package).
+- [x] **Cycle 7 - Update Dockerfile**: Remove the swag generation steps that are no longer needed (routes.go no longer imports the generated swagger package).
   - Agent: `devops engineer`
   - Files: `src/mnemonic/build/Dockerfile`
   - Steps:
