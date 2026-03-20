@@ -32,3 +32,8 @@
 - Removed comment + RUN go install swag + RUN swag init lines from build/Dockerfile
 - Verify: ! grep -qE 'swag/cmd|swag init' src/mnemonic/build/Dockerfile && echo ok exits 0
 - Note: none
+
+[Cycle 8 — go mod tidy] DONE
+- Removed docs/swagger/ (docs.go, swagger.json, swagger.yaml) which held the last live swaggo import; ran go mod tidy to drop swaggo/files, swaggo/gin-swagger, swaggo/swag direct deps and their transitive-only indirects
+- Verify: cd src/mnemonic && go build ./... && go mod verify exits 0
+- Note: go mod tidy alone was insufficient — generated docs/swagger/docs.go was still importing swaggo; deleting it was required first

@@ -134,7 +134,7 @@ These images have the schema already applied. The `migrate/migrate` service and 
   - Verify: `! grep -qE 'swag/cmd|swag init' src/mnemonic/build/Dockerfile && echo ok`
   - Done: The grep finds no swag installation or generation lines; `echo ok` prints.
 
-- [ ] **Cycle 8 - go mod tidy**: Remove unused dependencies (swaggo and any other packages dropped by the REST API removal).
+- [x] **Cycle 8 - go mod tidy**: Remove unused dependencies (swaggo and any other packages dropped by the REST API removal).
   - Agent: `go software engineer`
   - Files: `src/mnemonic/go.mod`, `src/mnemonic/go.sum`
   - Steps:
