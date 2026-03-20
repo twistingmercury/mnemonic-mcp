@@ -75,7 +75,7 @@ These images have the schema already applied. The `migrate/migrate` service and 
   - Verify: `docker compose config --quiet`
   - Done: `docker compose config` exits 0; output contains `mnemonic-postgres` and `mnemonic-neo4j`; no `migrate/migrate` image appears.
 
-- [ ] **Cycle 2 - Remove migrations from version control**: The `src/migrations/` directory was physically moved to `mnemonic-dbs`. Remove it from this git repository.
+- [x] **Cycle 2 - Remove migrations from version control**: The `src/migrations/` directory was physically moved to `mnemonic-dbs`. Remove it from this git repository.
   - Agent: `go software engineer`
   - Files: removes `src/migrations/`
   - Steps:

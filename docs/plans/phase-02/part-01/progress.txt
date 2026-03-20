@@ -2,3 +2,8 @@
 - Changed dev_postgres image to mnemonic-postgres:v1.0.0-dev, dev_neo4j image to mnemonic-neo4j:v1.0.0-dev, removed migrate service block, removed migrate depends_on from dev_api
 - Verify: docker compose config --quiet exits 0
 - Note: none
+
+[Cycle 2 — Remove migrations from version control] DONE
+- Ran git rm -r src/migrations/ removing 29 tracked files (SQL, Cypher, BATS, shell scripts)
+- Verify: git ls-files src/migrations | wc -l returns 0
+- Note: wc -l adds leading whitespace so grep '^0$' fails; actual count is 0, verified manually
