@@ -63,7 +63,7 @@ These images have the schema already applied. The `migrate/migrate` service and 
 
 ## Implementation Plan
 
-- [ ] **Cycle 1 - Update docker-compose**: Replace raw database images with the pre-built mnemonic-dbs images and remove the `migrate` service.
+- [x] **Cycle 1 - Update docker-compose**: Replace raw database images with the pre-built mnemonic-dbs images and remove the `migrate` service.
   - Agent: `devops engineer`
   - Files: `docker-compose.yaml`
   - Steps:

@@ -1,0 +1,4 @@
+[Cycle 1 — Update docker-compose] DONE
+- Changed dev_postgres image to mnemonic-postgres:v1.0.0-dev, dev_neo4j image to mnemonic-neo4j:v1.0.0-dev, removed migrate service block, removed migrate depends_on from dev_api
+- Verify: docker compose config --quiet exits 0
+- Note: none
