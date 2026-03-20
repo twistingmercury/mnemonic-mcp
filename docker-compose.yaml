@@ -72,7 +72,7 @@ services:
       - dev_network
 
   dev_api:
-    image: ghcr.io/twistingmercury/mnemonic-api:latest
+    image: ghcr.io/twistingmercury/mnemonic-api:latest-dev
     pull_policy: always
     restart: unless-stopped
     ports:

@@ -57,7 +57,7 @@ e2e_tests(){
         --build \
         --abort-on-container-exit \
         --exit-code-from mnemonic_tests \
-        mnemonic_api mnemonic_tests
+        mnemonic_mcp mnemonic_api mnemonic_tests
 
     trap - EXIT
     cleanup

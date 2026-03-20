@@ -6,8 +6,6 @@ services:
       POSTGRES_DB: mnemonic
       POSTGRES_USER: mnemonic
       POSTGRES_PASSWORD: mnemonic_dev
-    ports:
-      - "5434:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -25,9 +23,6 @@ services:
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_dbms_security_procedures_unrestricted: apoc.*
       NEO4J_dbms_security_procedures_allowlist: apoc.*
-    ports:
-      - "7476:7474"
-      - "7689:7687"
     volumes:
       - neo4j-data:/data
     healthcheck:
@@ -38,10 +33,9 @@ services:
     networks:
       - mnemonic-network
 
-  mnemonic_api:
+  mnemonic_mcp:
     image: ghcr.io/twistingmercury/mnemonic:latest
     pull_policy: never
-    container_name: mnemonic_api
     environment:
       MNEMONIC_DATABASE_POSTGRES_HOST: postgres
       MNEMONIC_DATABASE_POSTGRES_PASSWORD: mnemonic_dev
@@ -64,10 +58,9 @@ services:
     networks:
       - mnemonic-network
 
-  mnemonic_rest:
-    image: ghcr.io/twistingmercury/mnemonic-api:latest
-    pull_policy: never
-    container_name: mnemonic_rest
+  mnemonic_api:
+    image: ghcr.io/twistingmercury/mnemonic-api:latest-dev
+    pull_policy: always
     environment:
       MNEMONIC_DATABASE_POSTGRES_HOST: postgres
       MNEMONIC_DATABASE_POSTGRES_PASSWORD: mnemonic_dev
@@ -95,13 +88,13 @@ services:
       dockerfile: Dockerfile
     container_name: mnemonic_tests
     environment:
-      - API_URL=http://mnemonic_rest:8080
-      - MCP_URL=http://mnemonic_api:8081
-      - METRICS_URL=http://mnemonic_api:9090
+      - API_URL=http://mnemonic_api:8080
+      - MCP_URL=http://mnemonic_mcp:8081
+      - METRICS_URL=http://mnemonic_mcp:9090
     depends_on:
-      mnemonic_api:
+      mnemonic_mcp:
         condition: service_healthy
-      mnemonic_rest:
+      mnemonic_api:
         condition: service_healthy
     networks:
       - mnemonic-network
