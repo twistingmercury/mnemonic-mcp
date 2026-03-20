@@ -106,7 +106,7 @@ These images have the schema already applied. The `migrate/migrate` service and 
   - Verify: `cd src/mnemonic && go build ./...`
   - Done: `go build ./...` exits 0.
 
-- [ ] **Cycle 5 - Delete REST-only service and repository packages**: Remove service and repository packages that existed solely to support the REST API.
+- [x] **Cycle 5 - Delete REST-only service and repository packages**: Remove service and repository packages that existed solely to support the REST API.
   - Agent: `go software engineer`
   - Files: removes `internal/service/agent/`, `service/skill/`, `service/skillfile/`, `repository/skill/`, `repository/skillfile/`
   - Steps:

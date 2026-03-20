@@ -17,3 +17,8 @@
 - git rm'd agents/, patterns/, skillfiles/, skills/ sub-packages plus respond.go and respond_test.go (14 files total); updated handlers/doc.go to remove stale sub-package references
 - Verify: cd src/mnemonic && go build ./... exits 0
 - Note: none
+
+[Cycle 5 — Delete REST-only service and repository packages] DONE
+- git rm -r removed 16 files across service/agent, service/skill, service/skillfile, repository/skill, repository/skillfile
+- Verify: cd src/mnemonic && go build ./... exits 0
+- Note: no other packages imported these; no additional fixes needed
