@@ -83,7 +83,7 @@ These images have the schema already applied. The `migrate/migrate` service and 
   - Verify: `git ls-files src/migrations | wc -l | grep -q '^0$'`
   - Done: `git ls-files src/migrations` returns no output.
 
-- [ ] **Cycle 3 - Refactor server package**: Slim `server.go` to remove REST API wiring; delete `routes.go`.
+- [x] **Cycle 3 - Refactor server package**: Slim `server.go` to remove REST API wiring; delete `routes.go`.
   - Agent: `go software engineer`
   - Files: `src/mnemonic/internal/server/server.go`, `src/mnemonic/internal/server/routes.go`
   - Steps:

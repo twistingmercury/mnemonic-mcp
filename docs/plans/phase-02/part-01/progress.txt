@@ -7,3 +7,8 @@
 - Ran git rm -r src/migrations/ removing 29 tracked files (SQL, Cypher, BATS, shell scripts)
 - Verify: git ls-files src/migrations | wc -l returns 0
 - Note: wc -l adds leading whitespace so grep '^0$' fails; actual count is 0, verified manually
+
+[Cycle 3 — Refactor server package] DONE
+- Deleted routes.go (Services struct, RegisterAPIRoutes); removed agentSvc/skillSvc/skillFileSvc from wireDependencies; changed wireDependencies return type to (mcpserver.ToolDependencies, *enricher.Worker, error); removed RegisterAPIRoutes call from ListenAndServe; dropped all now-unused imports
+- Verify: cd src/mnemonic && go build ./internal/server/... && go test ./internal/server/... exits 0
+- Note: none
