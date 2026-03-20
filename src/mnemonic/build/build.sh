@@ -13,6 +13,8 @@ BUILD_COMMIT="${BUILD_COMMIT:-$(git -C "${PROJ_ROOT}" rev-parse --short HEAD 2>/
 IMAGE_NAME="${IMAGE_NAME:-ghcr.io/twistingmercury/mnemonic}"
 IMAGE_TAG="${IMAGE_TAG:-$BUILD_VER}"
 
+E2E_COMPOSE_FILE="${PROJ_ROOT}/tests/docker-compose.yaml"
+
 build_api(){
     printf "\n=== starting image build, version %s ===\n" "${BUILD_VER}"
 
@@ -32,8 +34,40 @@ build_api(){
     return 0
 }
 
+e2e_tests(){
+    printf "\n=== starting end-to-end tests ===\n"
+
+    cleanup() {
+        docker compose -f "${E2E_COMPOSE_FILE}" down -v --remove-orphans > /dev/null 2>&1 || true
+
+        if [ ${LOCAL} = 1 ]; then
+            docker rmi tests_mnemonic_tests:latest -f > /dev/null 2>&1 || true
+            docker system prune -f > /dev/null 2>&1 || true
+        fi
+    }
+    trap cleanup EXIT
+
+    printf "Starting infrastructure services...\n"
+    if ! docker compose -f "${E2E_COMPOSE_FILE}" up -d postgres neo4j; then
+        printf "ERROR: Failed to start infrastructure services\n" >&2
+        return 1
+    fi
+
+    docker compose -f "${E2E_COMPOSE_FILE}" up \
+        --build \
+        --abort-on-container-exit \
+        --exit-code-from mnemonic_tests \
+        mnemonic_api mnemonic_tests
+
+    trap - EXIT
+    cleanup
+
+    return 0
+}
+
 main(){
     build_api
+    e2e_tests
 
     return 0
 }
