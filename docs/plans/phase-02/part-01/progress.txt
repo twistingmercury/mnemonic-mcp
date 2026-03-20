@@ -22,3 +22,8 @@
 - git rm -r removed 16 files across service/agent, service/skill, service/skillfile, repository/skill, repository/skillfile
 - Verify: cd src/mnemonic && go build ./... exits 0
 - Note: no other packages imported these; no additional fixes needed
+
+[Cycle 6 — Remove VocabularyConfig from config] DONE
+- Removed VocabularyConfig struct, Vocabulary field from MnemonicConfig, vocabulary defaults in SetDefaults(), c.Vocabulary.validate() call, VocabularyConfig.validate() method; removed DefaultVocabularyLanguages/DefaultVocabularyDomains from defaults.go; removed TestVocabularyConfig_Validate, applyTestVocabulary helper and all call sites, vocabulary YAML blocks from test fixtures
+- Verify: cd src/mnemonic && go build ./internal/config/... && go test ./internal/config/... exits 0
+- Note: config.yaml was already absent; defaults helpers lived in defaults.go, not config.go

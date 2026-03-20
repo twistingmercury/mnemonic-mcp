@@ -94,61 +94,6 @@ const (
 	DefaultTracingOTLPInsecure = true
 )
 
-// DefaultVocabularyLanguages returns a fresh slice of the default allowed language values.
-func DefaultVocabularyLanguages() []string {
-	return []string{
-		"agnostic",
-		"bash",
-		"c",
-		"cpp",
-		"csharp",
-		"cql",
-		"cypher",
-		"dart",
-		"delphi",
-		"docker",
-		"elixir",
-		"erlang",
-		"go",
-		"json",
-		"java",
-		"javascript",
-		"kotlin",
-		"lua",
-		"markdown",
-		"matlab",
-		"mql",
-		"objective-c",
-		"perl",
-		"php",
-		"plsql",
-		"powershell",
-		"python",
-		"r",
-		"react",
-		"ruby",
-		"rust",
-		"scala",
-		"shell",
-		"sql",
-		"swift",
-		"terraform",
-		"toml",
-		"tsql",
-		"typescript",
-		"visual-basic",
-		"yaml",
-		"zig",
-	}
-}
-
-// DefaultVocabularyDomains returns a fresh slice of the default allowed domain values.
-func DefaultVocabularyDomains() []string {
-	return []string{
-		"api-design", "backend", "frontend", "testing", "devops", "cli", "data-design", "documentation", "data-access", "security", "shell-scripting", "configuration", "observability", "source-management",
-	}
-}
-
 // Configuration file paths
 const (
 	ProductionConfigPath  = "/etc/mnemonic/config.yaml"

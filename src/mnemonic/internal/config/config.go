@@ -21,13 +21,6 @@ type MnemonicConfig struct {
 	Enrichment    EnrichmentConfig    `mapstructure:"enrichment"`
 	Logging       LoggingConfig       `mapstructure:"logging"`
 	Observability ObservabilityConfig `mapstructure:"observability"`
-	Vocabulary    VocabularyConfig    `mapstructure:"vocabulary"`
-}
-
-// VocabularyConfig holds the allowed values for pattern language and domain fields.
-type VocabularyConfig struct {
-	Languages []string `mapstructure:"languages"`
-	Domains   []string `mapstructure:"domains"`
 }
 
 // MCPConfig contains MCP server settings.
@@ -325,10 +318,6 @@ func SetDefaults(v *viper.Viper) {
 	v.SetDefault("logging.format", DefaultLoggingFormat)
 	v.SetDefault("logging.include_caller", DefaultLoggingIncludeCaller)
 
-	// Vocabulary defaults
-	v.SetDefault("vocabulary.languages", DefaultVocabularyLanguages())
-	v.SetDefault("vocabulary.domains", DefaultVocabularyDomains())
-
 	// Observability defaults
 	v.SetDefault("observability.metrics.enabled", DefaultMetricsEnabled)
 	v.SetDefault("observability.metrics.path", DefaultMetricsPath)
@@ -412,9 +401,6 @@ func (c *MnemonicConfig) Validate() ValidationErrors {
 
 	// Observability validation
 	errs = append(errs, c.Observability.validate()...)
-
-	// Vocabulary validation
-	errs = append(errs, c.Vocabulary.validate()...)
 
 	// Cross-configuration validation
 	if c.Observability.Metrics.Enabled && c.Server.Port == c.Observability.Metrics.Port {
@@ -843,26 +829,6 @@ func (c *ObservabilityConfig) validate() ValidationErrors {
 				Message: fmt.Sprintf("must be between 0 and 1, got %f", c.Tracing.SampleRate),
 			})
 		}
-	}
-
-	return errs
-}
-
-func (c *VocabularyConfig) validate() ValidationErrors {
-	var errs ValidationErrors
-
-	if len(c.Languages) == 0 {
-		errs = append(errs, ValidationError{
-			Field:   "vocabulary.languages",
-			Message: "required",
-		})
-	}
-
-	if len(c.Domains) == 0 {
-		errs = append(errs, ValidationError{
-			Field:   "vocabulary.domains",
-			Message: "required",
-		})
 	}
 
 	return errs

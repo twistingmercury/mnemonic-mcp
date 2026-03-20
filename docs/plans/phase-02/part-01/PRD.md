@@ -114,7 +114,7 @@ These images have the schema already applied. The `migrate/migrate` service and 
   - Verify: `cd src/mnemonic && go build ./...`
   - Done: `go build ./...` exits 0.
 
-- [ ] **Cycle 6 - Remove VocabularyConfig from config**: Drop the vocabulary type and its validation — it was only used by the deleted pattern handler.
+- [x] **Cycle 6 - Remove VocabularyConfig from config**: Drop the vocabulary type and its validation — it was only used by the deleted pattern handler.
   - Agent: `go software engineer`
   - Files: `src/mnemonic/internal/config/config.go`, `src/mnemonic/internal/config/config_test.go`, `src/mnemonic/config.yaml`
   - Steps:
