@@ -2,7 +2,7 @@
 
 [![Mnemonic CI](https://github.com/twistingmercury/mnemonic/actions/workflows/mnemonic-ci.yaml/badge.svg)](https://github.com/twistingmercury/mnemonic/actions/workflows/mnemonic-ci.yaml)
 
-> **Maturity Level**: Emerging — MCP server and Admin REST API functional, enrichment pipeline active
+> **Maturity Level**: Emerging — MCP server functional, Admin REST API in a separate service (`mnemonic-api`)
 > **Version**: v0.1.7
 
 > - **Emerging**: Prototype, not production-ready, expect breaking changes
@@ -21,9 +21,7 @@
 
 ## Usage
 
-Mnemonic exposes two interfaces:
-
-**MCP Server** — read-only, for Claude Code (port 8081):
+Mnemonic exposes an MCP server for Claude Code (port 8081):
 
 ```json
 {
@@ -32,27 +30,15 @@ Mnemonic exposes two interfaces:
 }
 ```
 
-**Admin REST API** — data management (port 8080):
+MCP tools available: `search_patterns`, `find_related_patterns`, `get_pattern`.
 
-```bash
-# Create a pattern
-curl -X POST http://localhost:8080/v1/api/patterns \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "go-error-wrapping",
-    "content": "Use fmt.Errorf with %w for error chains...",
-    "tags": ["go", "error-handling"]
-  }'
-
-# Semantic search
-curl "http://localhost:8080/v1/api/patterns/search?q=error+handling&limit=5"
-```
+Pattern and agent data is managed via the companion [mnemonic-api](https://github.com/twistingmercury/mnemonic-api) service.
 
 ## How it works
 
-Mnemonic stores curated engineering patterns in Postgres (with PGVector for embeddings) and Neo4j (for concept relationships). When a pattern is created via the REST API, an enrichment job is queued. The enrichment worker embeds the pattern content via OpenAI and syncs extracted concepts to Neo4j, enabling semantic search and graph traversal.
+Mnemonic stores curated engineering patterns in Postgres (with PGVector for embeddings) and Neo4j (for concept relationships). When a pattern is created via `mnemonic-api`, an enrichment job is queued. The enrichment worker in this service embeds the pattern content via OpenAI and syncs extracted concepts to Neo4j, enabling semantic search and graph traversal.
 
-**Three services run together via Docker Compose:**
+**Local dev stack (Docker Compose):**
 
 | Service | Image | Role |
 |---------|-------|------|
@@ -66,7 +52,7 @@ Both database images are pre-configured with the required schema — no migratio
 ## Key Considerations
 
 - **MVP scope**: Local deployment via Docker Compose, single-user trusted environment, no authentication
-- **MCP tools**: `search_patterns`, `find_related_patterns`, `get_pattern` (read-only)
+- **This repo**: MCP server + enrichment worker only — Admin REST API lives in `mnemonic-api`
 - **Enrichment**: Database-driven job queue; worker polls Postgres and processes pending jobs asynchronously
 - **Post-MVP**: Event-driven enrichment (queue-based), multi-user auth, production deployment
 
