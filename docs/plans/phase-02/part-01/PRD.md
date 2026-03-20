@@ -160,7 +160,7 @@ These images have the schema already applied. The `migrate/migrate` service and 
   - Verify: `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/mnemonic-ci.yaml')); print('YAML valid')"`
   - Done: YAML parses without error; `YAML valid` prints.
 
-- [ ] **Cycle 11 - Full test suite**: Verify the entire module builds cleanly and all remaining unit tests pass.
+- [x] **Cycle 11 - Full test suite**: Verify the entire module builds cleanly and all remaining unit tests pass.
   - Agent: `go software engineer`
   - Files: any files requiring minor fixes to restore a passing state
   - Steps:
