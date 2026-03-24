@@ -86,7 +86,7 @@ The `search_patterns` tool currently returns only pgvector cosine similarity res
   - Verify: `cd src/mnemonic && go test ./internal/service/search/... -v`
   - Done: All existing search tests pass with nil graphRepo; build succeeds
 
-- [ ] **Cycle 4 - Implement graph expansion logic**: Add the graph expansion phase to `SearchPatterns` — seed selection, graph traversal, deduplication, filtering, and capping.
+- [x] **Cycle 4 - Implement graph expansion logic**: Add the graph expansion phase to `SearchPatterns` — seed selection, graph traversal, deduplication, filtering, and capping.
   - Agent: `go software engineer`
   - Files: `src/mnemonic/internal/service/search/service.go`, `src/mnemonic/internal/service/search/service_test.go`
   - Steps:

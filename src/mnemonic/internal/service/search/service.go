@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -185,10 +186,159 @@ func (s *searchService) SearchPatterns(ctx context.Context, opts SearchOptions) 
 		}
 	}
 
+	graphMatches := s.expandViaGraph(ctx, matches, opts)
+
 	return &SearchResult{
 		Matches:          matches,
+		GraphMatches:     graphMatches,
 		Query:            opts.Query,
 		TotalCandidates:  len(matches),
 		SearchDurationMs: time.Since(start).Milliseconds(),
 	}, nil
+}
+
+// seedPattern holds the identifying fields for a top vector-result pattern.
+type seedPattern struct {
+	id         uuid.UUID
+	name       string
+	similarity float64
+}
+
+// expandViaGraph performs graph-based expansion from the top vector seeds.
+// Returns nil (no error surfaced to caller) when graph is unavailable or fails.
+func (s *searchService) expandViaGraph(ctx context.Context, matches []*ChunkMatch, opts SearchOptions) []*GraphMatch {
+	// Guard: skip if graph repo not configured or no vector results to seed from.
+	if s.graphRepo == nil || len(matches) == 0 {
+		return nil
+	}
+
+	// Build per-pattern best similarity from vector results.
+	bestSim := make(map[uuid.UUID]seedPattern)
+	for _, m := range matches {
+		if existing, ok := bestSim[m.PatternID]; !ok || m.Similarity > existing.similarity {
+			bestSim[m.PatternID] = seedPattern{
+				id:         m.PatternID,
+				name:       m.PatternName,
+				similarity: m.Similarity,
+			}
+		}
+	}
+
+	// Sort seeds by similarity descending; take top 3.
+	seeds := make([]seedPattern, 0, len(bestSim))
+	for _, sp := range bestSim {
+		seeds = append(seeds, sp)
+	}
+	sort.Slice(seeds, func(i, j int) bool {
+		return seeds[i].similarity > seeds[j].similarity
+	})
+	if len(seeds) > 3 {
+		seeds = seeds[:3]
+	}
+
+	// Call graph repo for each seed; collect across all seeds with cross-seed dedup.
+	// Keep the entry with the highest Similarity when the same pattern appears from multiple seeds.
+	type graphEntry struct {
+		related graphrepo.RelatedPattern
+		seed    seedPattern
+	}
+	best := make(map[uuid.UUID]graphEntry)
+
+	for _, seed := range seeds {
+		related, err := s.graphRepo.FindRelatedPatterns(ctx, seed.id, 5)
+		if err != nil {
+			s.logger.Warn().Err(err).Str("seed_pattern_id", seed.id.String()).Msg("graph expansion failed; returning vector-only results")
+			return nil
+		}
+		for _, rp := range related {
+			if existing, ok := best[rp.ID]; !ok || rp.Similarity > existing.related.Similarity {
+				best[rp.ID] = graphEntry{related: rp, seed: seed}
+			}
+		}
+	}
+
+	// Exclude patterns already present in the vector result set.
+	vectorIDs := make(map[uuid.UUID]struct{}, len(bestSim))
+	for id := range bestSim {
+		vectorIDs[id] = struct{}{}
+	}
+	filtered := make([]graphEntry, 0, len(best))
+	for id, entry := range best {
+		if _, inVector := vectorIDs[id]; !inVector {
+			filtered = append(filtered, entry)
+		}
+	}
+
+	if len(filtered) == 0 {
+		return nil
+	}
+
+	// Batch-fetch metadata for remaining graph candidates.
+	candidateIDs := make([]uuid.UUID, len(filtered))
+	for i, entry := range filtered {
+		candidateIDs[i] = entry.related.ID
+	}
+
+	patterns, err := s.patternRepo.GetByIDs(ctx, candidateIDs)
+	if err != nil {
+		s.logger.Warn().Err(err).Msg("failed to fetch graph-expanded pattern metadata; returning vector-only results")
+		return nil
+	}
+
+	// Index metadata by ID for O(1) lookup.
+	meta := make(map[uuid.UUID]*patternrepo.Pattern, len(patterns))
+	for _, p := range patterns {
+		meta[p.ID] = p
+	}
+
+	// Post-filter by language / domain / tags and build GraphMatch slice.
+	graphMatches := make([]*GraphMatch, 0, len(filtered))
+	for _, entry := range filtered {
+		p, ok := meta[entry.related.ID]
+		if !ok {
+			continue
+		}
+		if opts.Language != "" && p.Language != opts.Language && p.Language != "agnostic" {
+			continue
+		}
+		if opts.Domain != "" && p.Domain != opts.Domain {
+			continue
+		}
+		if len(opts.Tags) > 0 && !hasAllTags(p.Tags, opts.Tags) {
+			continue
+		}
+		graphMatches = append(graphMatches, &GraphMatch{
+			PatternID:       p.ID,
+			PatternName:     p.Name,
+			Similarity:      entry.related.Similarity,
+			ConceptNames:    entry.related.ConceptNames,
+			SeedPatternID:   entry.seed.id,
+			SeedPatternName: entry.seed.name,
+		})
+	}
+
+	if len(graphMatches) == 0 {
+		return nil
+	}
+
+	// Cap at 5.
+	if len(graphMatches) > 5 {
+		graphMatches = graphMatches[:5]
+	}
+
+	return graphMatches
+}
+
+// hasAllTags reports whether tags contains every element of required (conjunctive filter).
+func hasAllTags(tags []string, required []string) bool {
+	tagSet := make(map[string]struct{}, len(tags))
+	for _, t := range tags {
+		tagSet[t] = struct{}{}
+	}
+	for _, r := range required {
+		if _, ok := tagSet[r]; !ok {
+			return false
+		}
+	}
+	return true
 }
