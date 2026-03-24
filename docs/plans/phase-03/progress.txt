@@ -25,3 +25,10 @@
 - 10 new tests: happy path, nil graphRepo, graph failure, dedup against vector, cross-seed dedup, language filtering, empty language filter, empty vector results, cap at 5, GetByIDs failure
 - Verify: cd src/mnemonic && go test ./internal/service/search/... -v -count=1 exits 0
 - Note: govulncheck pre-existing GO-2026-4773 still present (unrelated)
+
+[Cycle 5 — Update response formatting] DONE
+- Added writeGraphMatchEntry helper to format.go for GraphMatch entries (decimal similarity, seed name, shared concepts)
+- Updated formatSearchResults to append "Related Patterns (via graph)" section when GraphMatches is non-nil and non-empty
+- Added 3 new tests: WithGraphMatches, NilGraphMatches, EmptyGraphMatches
+- Verify: cd src/mnemonic && go test ./internal/mcpserver/... -v -run TestFormat exits 0
+- Note: none

@@ -102,7 +102,7 @@ The `search_patterns` tool currently returns only pgvector cosine similarity res
   - Verify: `cd src/mnemonic && go test ./internal/service/search/... -v -count=1`
   - Done: All tests pass including new tests for: happy path, nil graphRepo, graph failure, dedup against vector, cross-seed dedup, language filtering, empty vector results
 
-- [ ] **Cycle 5 - Update response formatting**: Add graph results section to `formatSearchResults` output.
+- [x] **Cycle 5 - Update response formatting**: Add graph results section to `formatSearchResults` output.
   - Agent: `go software engineer`
   - Files: `src/mnemonic/internal/mcpserver/format.go`, `src/mnemonic/internal/mcpserver/format_test.go`
   - Steps:

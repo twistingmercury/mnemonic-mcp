@@ -156,6 +156,91 @@ func TestFormatSearchResults_SimilarityRounding(t *testing.T) {
 	assert.Contains(t, md, "99% match")
 }
 
+func TestFormatSearchResults_WithGraphMatches(t *testing.T) {
+	t.Parallel()
+
+	seedID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	graphID := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+
+	result := &searchsvc.SearchResult{
+		Query: "error handling",
+		Matches: []*searchsvc.ChunkMatch{
+			{
+				PatternID:   seedID,
+				PatternName: "go-error-handling",
+				Content:     "Always wrap errors with context.",
+				Similarity:  0.92,
+			},
+		},
+		GraphMatches: []*searchsvc.GraphMatch{
+			{
+				PatternID:       graphID,
+				PatternName:     "circuit-breaker",
+				Similarity:      0.78,
+				ConceptNames:    []string{"resilience", "fault-tolerance"},
+				SeedPatternID:   seedID,
+				SeedPatternName: "go-error-handling",
+			},
+		},
+	}
+
+	md := formatSearchResults(result, "")
+
+	// Vector section present.
+	assert.Contains(t, md, "## go-error-handling (92% match)")
+	assert.Contains(t, md, "Always wrap errors with context.")
+
+	// Graph section present.
+	assert.Contains(t, md, "### Related Patterns (via graph)")
+	assert.Contains(t, md, "## circuit-breaker (similarity: 0.78)")
+	assert.Contains(t, md, "**Found via:** go-error-handling")
+	assert.Contains(t, md, "**Shared concepts:** resilience, fault-tolerance")
+}
+
+func TestFormatSearchResults_NilGraphMatches(t *testing.T) {
+	t.Parallel()
+
+	result := &searchsvc.SearchResult{
+		Query: "error handling",
+		Matches: []*searchsvc.ChunkMatch{
+			{
+				PatternID:   uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+				PatternName: "go-error-handling",
+				Content:     "Always wrap errors with context.",
+				Similarity:  0.92,
+			},
+		},
+		GraphMatches: nil,
+	}
+
+	md := formatSearchResults(result, "")
+
+	assert.Contains(t, md, "## go-error-handling (92% match)")
+	assert.NotContains(t, md, "Related Patterns (via graph)")
+}
+
+func TestFormatSearchResults_EmptyGraphMatches(t *testing.T) {
+	t.Parallel()
+
+	result := &searchsvc.SearchResult{
+		Query: "error handling",
+		Matches: []*searchsvc.ChunkMatch{
+			{
+				PatternID:   uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+				PatternName: "go-error-handling",
+				Content:     "Always wrap errors with context.",
+				Similarity:  0.92,
+			},
+		},
+		GraphMatches: []*searchsvc.GraphMatch{},
+	}
+
+	md := formatSearchResults(result, "")
+
+	assert.Contains(t, md, "## go-error-handling (92% match)")
+	assert.NotContains(t, md, "Related Patterns (via graph)")
+}
+
 // --- formatRelatedPatterns tests ---
 
 func TestFormatRelatedPatterns_WithResults(t *testing.T) {

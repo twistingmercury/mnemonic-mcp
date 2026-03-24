@@ -40,6 +40,14 @@ func formatSearchResults(result *searchsvc.SearchResult, agentFilter string) str
 		writeMatchEntry(&sb, m)
 	}
 
+	if len(result.GraphMatches) > 0 {
+		sb.WriteString("\n---\n\n")
+		sb.WriteString("### Related Patterns (via graph)\n\n")
+		for _, gm := range result.GraphMatches {
+			writeGraphMatchEntry(&sb, gm)
+		}
+	}
+
 	return sb.String()
 }
 
@@ -58,6 +66,16 @@ func writeMatchEntry(sb *strings.Builder, m *searchsvc.ChunkMatch) {
 
 	sb.WriteString(m.Content)
 	sb.WriteByte('\n')
+}
+
+// writeGraphMatchEntry writes a single graph-expanded match entry to the builder.
+func writeGraphMatchEntry(sb *strings.Builder, gm *searchsvc.GraphMatch) {
+	fmt.Fprintf(sb, "## %s (similarity: %.2f)\n\n", gm.PatternName, gm.Similarity)
+	fmt.Fprintf(sb, "**Found via:** %s\n", gm.SeedPatternName)
+
+	if len(gm.ConceptNames) > 0 {
+		fmt.Fprintf(sb, "**Shared concepts:** %s\n", strings.Join(gm.ConceptNames, ", "))
+	}
 }
 
 // formatRelatedPatterns formats related patterns as markdown for LLM consumption.
