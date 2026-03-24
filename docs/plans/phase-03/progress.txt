@@ -4,3 +4,9 @@
 - 4 unit tests: success, empty slice, partial match, query error
 - Verify: cd src/mnemonic && go test ./internal/repository/pattern/... -v -run TestGetByIDs exits 0
 - Note: govulncheck reports pre-existing GO-2026-4773 in go-sdk@v1.3.1 (unrelated)
+
+[Cycle 2 — Add GraphMatch type and extend SearchResult] DONE
+- Added GraphMatch struct (PatternID, PatternName, Similarity, ConceptNames, SeedPatternID, SeedPatternName)
+- Added GraphMatches []*GraphMatch field to SearchResult
+- Verify: cd src/mnemonic && go build ./... exits 0
+- Note: none

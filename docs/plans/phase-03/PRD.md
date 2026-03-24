@@ -66,7 +66,7 @@ The `search_patterns` tool currently returns only pgvector cosine similarity res
   - Verify: `cd src/mnemonic && go test ./internal/repository/pattern/... -v -run TestGetByIDs`
   - Done: All `TestGetByIDs` tests pass and `GetByIDs` is on the `Repository` interface
 
-- [ ] **Cycle 2 - Add GraphMatch type and extend SearchResult**: Add the `GraphMatch` struct and `GraphMatches` field to `SearchResult` in the search service package.
+- [x] **Cycle 2 - Add GraphMatch type and extend SearchResult**: Add the `GraphMatch` struct and `GraphMatches` field to `SearchResult` in the search service package.
   - Agent: `go software engineer`
   - Files: `src/mnemonic/internal/service/search/service.go`
   - Steps:

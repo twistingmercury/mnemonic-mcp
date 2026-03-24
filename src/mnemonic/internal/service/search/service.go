@@ -53,13 +53,24 @@ type ChunkMatch struct {
 	Similarity   float64
 }
 
+// GraphMatch is a pattern discovered via Neo4j graph traversal from a vector search seed.
+type GraphMatch struct {
+	PatternID       uuid.UUID
+	PatternName     string
+	Similarity      float64  // concept-overlap similarity from RELATED_TO edge
+	ConceptNames    []string // shared concept names from graph relationship
+	SeedPatternID   uuid.UUID
+	SeedPatternName string
+}
+
 // SearchResult wraps similarity search matches with metadata required by
 // the OpenAPI PatternSearchResponse schema.
 type SearchResult struct {
 	Matches          []*ChunkMatch
-	Query            string // Echo of the original query text
-	TotalCandidates  int    // Total chunk matches returned (after threshold filtering)
-	SearchDurationMs int64  // Wall-clock search time in milliseconds
+	GraphMatches     []*GraphMatch // graph-expanded results (nil if unavailable)
+	Query            string        // Echo of the original query text
+	TotalCandidates  int           // Total chunk matches returned (after threshold filtering)
+	SearchDurationMs int64         // Wall-clock search time in milliseconds
 }
 
 // searchService implements the Service interface.
