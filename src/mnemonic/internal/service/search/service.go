@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog"
 	agentrepo "github.com/twistingmercury/mnemonic/internal/repository/agent"
 	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
+	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
 	"github.com/twistingmercury/mnemonic/internal/service"
 	openaisvc "github.com/twistingmercury/mnemonic/internal/service/openai"
@@ -79,15 +80,18 @@ type searchService struct {
 	patternRepo  patternrepo.Repository
 	agentRepo    agentrepo.Repository
 	chunkRepo    chunkrepo.Repository
+	graphRepo    graphrepo.Repository
 	logger       zerolog.Logger
 }
 
 // New creates a new search Service backed by the given dependencies.
+// graphRepo may be nil; graph-enhanced search will be skipped when absent.
 func New(
 	embeddingSvc openaisvc.EmbeddingService,
 	patternRepo patternrepo.Repository,
 	agentRepo agentrepo.Repository,
 	chunkRepo chunkrepo.Repository,
+	graphRepo graphrepo.Repository,
 	logger zerolog.Logger,
 ) Service {
 	return &searchService{
@@ -95,6 +99,7 @@ func New(
 		patternRepo:  patternRepo,
 		agentRepo:    agentRepo,
 		chunkRepo:    chunkRepo,
+		graphRepo:    graphRepo,
 		logger:       logger,
 	}
 }

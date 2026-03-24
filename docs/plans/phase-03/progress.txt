@@ -10,3 +10,10 @@
 - Added GraphMatches []*GraphMatch field to SearchResult
 - Verify: cd src/mnemonic && go build ./... exits 0
 - Note: none
+
+[Cycle 3 — Add graph repo dependency to search service] DONE
+- Added graphRepo graphrepo.Repository field to searchService struct and New constructor parameter (before logger)
+- Updated server.go wireDependencies to pass graphRepo to searchsvc.New
+- Updated all test call sites (newTestService helper + direct New call) to pass nil for graphRepo
+- Verify: cd src/mnemonic && go test ./internal/service/search/... -v exits 0
+- Note: govulncheck pre-existing GO-2026-4773 still present (unrelated)

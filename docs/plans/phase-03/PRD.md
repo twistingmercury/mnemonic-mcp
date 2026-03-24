@@ -75,7 +75,7 @@ The `search_patterns` tool currently returns only pgvector cosine similarity res
   - Verify: `cd src/mnemonic && go build ./...`
   - Done: Build succeeds with new types; existing tests still pass
 
-- [ ] **Cycle 3 - Add graph repo dependency to search service**: Update the search service constructor to accept an optional `graph.Repository` parameter and store it on the struct.
+- [x] **Cycle 3 - Add graph repo dependency to search service**: Update the search service constructor to accept an optional `graph.Repository` parameter and store it on the struct.
   - Agent: `go software engineer`
   - Files: `src/mnemonic/internal/service/search/service.go`, `src/mnemonic/internal/service/search/service_test.go`, `src/mnemonic/internal/server/server.go`
   - Steps:

@@ -263,7 +263,7 @@ var testEmbedding = []float32{0.1, 0.2, 0.3}
 
 func newTestService(embSvc *mockEmbeddingService, patternRepo *mockPatternRepo, agentRepo *mockAgentRepo, chunkRepo *mockChunkRepo) search.Service {
 	logger := zerolog.Nop()
-	return search.New(embSvc, patternRepo, agentRepo, chunkRepo, logger)
+	return search.New(embSvc, patternRepo, agentRepo, chunkRepo, nil, logger)
 }
 
 func testChunkMatch(patternID uuid.UUID, patternName string, similarity float64) *chunkrepo.Match {
@@ -639,7 +639,7 @@ func TestSearchPatterns_ChunkRepoNotConfigured(t *testing.T) {
 	patternRepo := new(mockPatternRepo)
 	agentRepo := new(mockAgentRepo)
 	// Pass nil chunkRepo explicitly.
-	svc := search.New(embSvc, patternRepo, agentRepo, nil, zerolog.Nop())
+	svc := search.New(embSvc, patternRepo, agentRepo, nil, nil, zerolog.Nop())
 
 	embSvc.On("Embed", mock.Anything, "some query").Return(testEmbedding, nil)
 

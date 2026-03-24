@@ -190,7 +190,7 @@ func wireDependencies(
 	extractionSvc := openaisvc.NewExtractionService(cfg.OpenAI)
 
 	// Domain services.
-	searchSvc := searchsvc.New(embeddingSvc, patternRepo, agentRepo, chunkRepo, logger)
+	searchSvc := searchsvc.New(embeddingSvc, patternRepo, agentRepo, chunkRepo, graphRepo, logger)
 	patternSvc := patternsvc.New(patternRepo, enrichmentJobRepo, graphRepo, agentRepo, pgPool, chunkRepo, logger)
 	enrichmentSvc, err := enrichmentsvc.New(
 		enrichmentJobRepo, patternRepo, agentRepo, graphRepo,
