@@ -113,7 +113,7 @@ The `search_patterns` tool currently returns only pgvector cosine similarity res
   - Verify: `cd src/mnemonic && go test ./internal/mcpserver/... -v -run TestFormat`
   - Done: All format tests pass; graph section renders correctly in output
 
-- [ ] **Cycle 6 - Unit test completeness and make build**: Run full test suite and Docker build to verify everything integrates correctly.
+- [x] **Cycle 6 - Unit test completeness and make build**: Run full test suite and Docker build to verify everything integrates correctly.
   - Agent: `go software engineer`
   - Files: `src/mnemonic/internal/service/search/service_test.go`
   - Steps:

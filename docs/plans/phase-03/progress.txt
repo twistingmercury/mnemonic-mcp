@@ -32,3 +32,11 @@
 - Added 3 new tests: WithGraphMatches, NilGraphMatches, EmptyGraphMatches
 - Verify: cd src/mnemonic && go test ./internal/mcpserver/... -v -run TestFormat exits 0
 - Note: none
+
+[Cycle 6 — Unit test completeness and make build] DONE
+- All 17 testable packages pass (go test ./...)
+- Upgraded go-sdk v1.3.1 → v1.4.1 to resolve pre-existing GO-2026-4773 govulncheck finding
+- Docker image ghcr.io/twistingmercury/mnemonic:v0.1.7 builds successfully (48.2MB)
+- make analyze clean: 0 lint issues, no vulnerabilities, no gosec findings
+- Verify: cd src/mnemonic && go test ./... exits 0; Docker image build exits 0
+- Note: E2E compose phase in build.sh fails due to missing RabbitMQ for mnemonic_api — pre-existing infra issue, not related to phase-03
