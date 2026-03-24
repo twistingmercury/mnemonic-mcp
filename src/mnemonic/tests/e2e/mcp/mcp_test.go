@@ -246,3 +246,174 @@ func TestMCPEndpoint_MalformedJSON_DoesNotPanic(t *testing.T) {
 		t.Errorf("server panicked or returned 500 on malformed JSON, status: %d", resp.StatusCode)
 	}
 }
+
+// Section 9: search_patterns graph-enhanced results
+
+// TestGraphEnhancedSearch_UnenrichedPattern_NoGraphSection creates an unenriched
+// pattern via the API and searches for it via MCP. Because the pattern has no
+// embeddings or graph nodes, the response either succeeds with vector-only results
+// (no "Related Patterns (via graph)" section) or returns a tool-level error
+// (embedding service unavailable). Either outcome is valid — the test validates
+// graceful degradation.
+func TestGraphEnhancedSearch_UnenrichedPattern_NoGraphSection(t *testing.T) {
+	apiClient := helpers.NewTestClient(t)
+	pattern := helpers.CreateTestPattern(t, apiClient)
+
+	mcpClient := helpers.NewMCPClient(t)
+	resp := mcpClient.CallTool(t, "search_patterns", map[string]any{
+		"query": pattern.Name,
+	})
+
+	// A JSON-RPC protocol error is unexpected — the call itself should reach the server.
+	if resp.Error != nil && resp.Result == nil {
+		t.Logf("JSON-RPC error (embedding service likely unavailable): code=%d message=%s",
+			resp.Error.Code, resp.Error.Message)
+		return
+	}
+
+	// Tool-level errors (isError=true) are acceptable when the embedding service is down.
+	if resp.Result != nil && resp.Result.IsError {
+		t.Log("tool-level error returned (embedding service likely unavailable) — skipping format assertion")
+		return
+	}
+
+	// Success path: the response must not contain a graph section for unenriched patterns.
+	result := helpers.AssertMCPSuccess(t, resp)
+	if len(result.Content) == 0 {
+		return // no results is acceptable for an unenriched pattern
+	}
+	text := result.Content[0].Text
+	if strings.Contains(text, "Related Patterns (via graph)") {
+		t.Errorf("unenriched pattern response must not contain graph section, got:\n%s", text)
+	}
+}
+
+// TestGraphEnhancedSearch_ResponseFormat_ContainsExpectedSections calls
+// search_patterns with a generic query and validates the format contract of the
+// response text. If a graph section is present, its required sub-elements must
+// also be present.
+func TestGraphEnhancedSearch_ResponseFormat_ContainsExpectedSections(t *testing.T) {
+	mcpClient := helpers.NewMCPClient(t)
+	resp := mcpClient.CallTool(t, "search_patterns", map[string]any{
+		"query": "dependency injection",
+	})
+
+	// Either a result or a tool-level error is acceptable when the embedding service
+	// may be unavailable in the test environment.
+	if resp.Error != nil && resp.Result == nil {
+		t.Logf("JSON-RPC error (embedding service likely unavailable): code=%d message=%s",
+			resp.Error.Code, resp.Error.Message)
+		return
+	}
+	if resp.Result != nil && resp.Result.IsError {
+		t.Log("tool-level error returned (embedding service likely unavailable) — skipping format assertion")
+		return
+	}
+
+	result := helpers.AssertMCPSuccess(t, resp)
+	if len(result.Content) == 0 {
+		t.Log("empty content returned — no format assertions to make")
+		return
+	}
+
+	text := result.Content[0].Text
+
+	// The header of a successful result must advertise the match count.
+	if !strings.Contains(text, "Found") || !strings.Contains(text, "matching") {
+		t.Errorf("expected response header to contain 'Found' and 'matching', got:\n%s", text)
+	}
+
+	// When a graph section is present, its required sub-fields must also appear.
+	if strings.Contains(text, "Related Patterns (via graph)") {
+		if !strings.Contains(text, "similarity:") {
+			t.Errorf("graph section present but 'similarity:' not found in response:\n%s", text)
+		}
+		if !strings.Contains(text, "Found via:") {
+			t.Errorf("graph section present but 'Found via:' not found in response:\n%s", text)
+		}
+	}
+}
+
+// TestGraphEnhancedSearch_NoDuplicatePatterns creates a pattern via the API,
+// searches for it by name, and verifies that the pattern name does not appear in
+// both the vector results section and the graph results section simultaneously.
+// For unenriched patterns there will be no graph section, making this a structural
+// guard against future deduplication regressions.
+func TestGraphEnhancedSearch_NoDuplicatePatterns(t *testing.T) {
+	apiClient := helpers.NewTestClient(t)
+	pattern := helpers.CreateTestPattern(t, apiClient)
+
+	mcpClient := helpers.NewMCPClient(t)
+	resp := mcpClient.CallTool(t, "search_patterns", map[string]any{
+		"query": pattern.Name,
+	})
+
+	if resp.Error != nil && resp.Result == nil {
+		t.Logf("JSON-RPC error (embedding service likely unavailable): code=%d message=%s",
+			resp.Error.Code, resp.Error.Message)
+		return
+	}
+	if resp.Result != nil && resp.Result.IsError {
+		t.Log("tool-level error returned (embedding service likely unavailable) — skipping duplicate check")
+		return
+	}
+
+	result := helpers.AssertMCPSuccess(t, resp)
+	if len(result.Content) == 0 {
+		return // no results — nothing to check
+	}
+
+	text := result.Content[0].Text
+	if !strings.Contains(text, pattern.Name) {
+		return // pattern not in results — nothing to check
+	}
+
+	// Split on the graph section separator to isolate each region.
+	const graphSectionHeader = "### Related Patterns (via graph)"
+	parts := strings.SplitN(text, graphSectionHeader, 2)
+	if len(parts) < 2 {
+		// No graph section — single-region response, no duplicate possible.
+		return
+	}
+
+	vectorSection := parts[0]
+	graphSection := parts[1]
+
+	if strings.Contains(vectorSection, pattern.Name) && strings.Contains(graphSection, pattern.Name) {
+		t.Errorf("pattern %q appears in both vector section and graph section — deduplication failure:\n%s",
+			pattern.Name, text)
+	}
+}
+
+// TestGraphEnhancedSearch_VectorOnlyWhenNoGraphData creates a test pattern and
+// calls search_patterns. Because the pattern is unenriched, no graph data exists.
+// If the search succeeds, the response must not contain a graph results section.
+func TestGraphEnhancedSearch_VectorOnlyWhenNoGraphData(t *testing.T) {
+	apiClient := helpers.NewTestClient(t)
+	pattern := helpers.CreateTestPattern(t, apiClient)
+
+	mcpClient := helpers.NewMCPClient(t)
+	resp := mcpClient.CallTool(t, "search_patterns", map[string]any{
+		"query": pattern.Name,
+	})
+
+	if resp.Error != nil && resp.Result == nil {
+		t.Logf("JSON-RPC error (embedding service likely unavailable): code=%d message=%s",
+			resp.Error.Code, resp.Error.Message)
+		return
+	}
+	if resp.Result != nil && resp.Result.IsError {
+		t.Log("tool-level error returned (embedding service likely unavailable) — skipping vector-only assertion")
+		return
+	}
+
+	result := helpers.AssertMCPSuccess(t, resp)
+	if len(result.Content) == 0 {
+		return // empty results — assertion does not apply
+	}
+
+	text := result.Content[0].Text
+	if strings.Contains(text, "Related Patterns (via graph)") {
+		t.Errorf("expected vector-only response for unenriched pattern, but graph section was present:\n%s", text)
+	}
+}

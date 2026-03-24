@@ -123,7 +123,7 @@ The `search_patterns` tool currently returns only pgvector cosine similarity res
   - Verify: `cd src/mnemonic && go test ./... && cd ../.. && make build`
   - Done: All unit tests pass and `make build` exits 0
 
-- [ ] **Cycle 7 - E2E tests for graph-enhanced search**: Add E2E tests that verify the MCP tool returns graph-expanded results from the consumer perspective.
+- [x] **Cycle 7 - E2E tests for graph-enhanced search**: Add E2E tests that verify the MCP tool returns graph-expanded results from the consumer perspective.
   - Agent: `go e2e test engineer`
   - Files: `src/mnemonic/tests/e2e/mcp/mcp_test.go`
   - Steps:

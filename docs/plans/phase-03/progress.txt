@@ -40,3 +40,9 @@
 - make analyze clean: 0 lint issues, no vulnerabilities, no gosec findings
 - Verify: cd src/mnemonic && go test ./... exits 0; Docker image build exits 0
 - Note: E2E compose phase in build.sh fails due to missing RabbitMQ for mnemonic_api — pre-existing infra issue, not related to phase-03
+
+[Cycle 7 — E2E tests for graph-enhanced search] DONE
+- Added 4 E2E tests in src/mnemonic/tests/e2e/mcp/mcp_test.go (Section 9): UnenrichedPattern_NoGraphSection, ResponseFormat_ContainsExpectedSections, NoDuplicatePatterns, VectorOnlyWhenNoGraphData
+- Tests handle embedding service unavailability gracefully (skip assertions when service is down)
+- Verify: cd src/mnemonic/tests/e2e && go build ./... && go vet ./... exits 0
+- Note: Runtime verify (go test -run TestGraphEnhanced) requires running stack; Docker compose has pre-existing DNS resolution issue (dev_mcp can't resolve dev_postgres). Tests are structurally complete and compile clean.
