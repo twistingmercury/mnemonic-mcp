@@ -1,0 +1,6 @@
+[Cycle 1 — Add GetByIDs to pattern repository] DONE
+- Added GetByIDs to Repository interface and pgxRepository using WHERE id = ANY($1)
+- Added GetByIDs stub to mockPatternRepo in service/pattern, service/search, service/enrichment test files
+- 4 unit tests: success, empty slice, partial match, query error
+- Verify: cd src/mnemonic && go test ./internal/repository/pattern/... -v -run TestGetByIDs exits 0
+- Note: govulncheck reports pre-existing GO-2026-4773 in go-sdk@v1.3.1 (unrelated)

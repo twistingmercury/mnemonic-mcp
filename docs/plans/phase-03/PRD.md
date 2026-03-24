@@ -56,7 +56,7 @@ The `search_patterns` tool currently returns only pgvector cosine similarity res
 
 ## Implementation Plan
 
-- [ ] **Cycle 1 - Add GetByIDs to pattern repository**: Add `GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*Pattern, error)` to the pattern repository interface and implementation using `WHERE id = ANY($1)`.
+- [x] **Cycle 1 - Add GetByIDs to pattern repository**: Add `GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*Pattern, error)` to the pattern repository interface and implementation using `WHERE id = ANY($1)`.
   - Agent: `go software engineer`
   - Files: `src/mnemonic/internal/repository/pattern/repository.go`, `src/mnemonic/internal/repository/pattern/repository_test.go`
   - Steps:

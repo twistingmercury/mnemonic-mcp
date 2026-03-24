@@ -1304,3 +1304,117 @@ func TestRepository_Create_NilTagsHandled(t *testing.T) {
 	assert.Empty(t, p.Tags, "Tags should be empty slice")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestGetByIDs(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	id1 := uuid.New()
+	id2 := uuid.New()
+	tagsJSON, _ := json.Marshal([]string{"test", "example"})
+	relatedPatternsJSON, _ := json.Marshal([]string{})
+	desc := "A pattern for testing"
+
+	newRow := func(id uuid.UUID, name string) []any {
+		return []any{
+			id, name, &desc, "This is test content for the pattern.", tagsJSON,
+			"go-pattern", "go", "backend", nil, relatedPatternsJSON,
+			"pending", nil, nil, now, now,
+		}
+	}
+
+	columns := []string{
+		"id", "name", "description", "content", "tags",
+		"entity_type", "language", "domain", "version", "related_patterns",
+		"enrichment_status", "enrichment_error", "enriched_at",
+		"created_at", "updated_at",
+	}
+
+	t.Run("success multiple IDs all found", func(t *testing.T) {
+		t.Parallel()
+
+		mock, err := pgxmock.NewPool()
+		require.NoError(t, err)
+		defer mock.Close()
+
+		rows := pgxmock.NewRows(columns).
+			AddRow(newRow(id1, "pattern-one")...).
+			AddRow(newRow(id2, "pattern-two")...)
+
+		mock.ExpectQuery("SELECT .* FROM patterns").
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnRows(rows)
+
+		repo := pattern.NewRepository(mock)
+		result, err := repo.GetByIDs(context.Background(), []uuid.UUID{id1, id2})
+
+		require.NoError(t, err)
+		assert.Len(t, result, 2)
+		assert.Equal(t, id1, result[0].ID)
+		assert.Equal(t, id2, result[1].ID)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("empty slice returns empty result without DB call", func(t *testing.T) {
+		t.Parallel()
+
+		mock, err := pgxmock.NewPool()
+		require.NoError(t, err)
+		defer mock.Close()
+
+		// No expectations set — any DB call would cause a failure.
+		repo := pattern.NewRepository(mock)
+		result, err := repo.GetByIDs(context.Background(), []uuid.UUID{})
+
+		require.NoError(t, err)
+		assert.Empty(t, result)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("partial match returns only found patterns", func(t *testing.T) {
+		t.Parallel()
+
+		missingID := uuid.New()
+
+		mock, err := pgxmock.NewPool()
+		require.NoError(t, err)
+		defer mock.Close()
+
+		// DB returns only id1 — missingID silently absent.
+		rows := pgxmock.NewRows(columns).
+			AddRow(newRow(id1, "pattern-one")...)
+
+		mock.ExpectQuery("SELECT .* FROM patterns").
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnRows(rows)
+
+		repo := pattern.NewRepository(mock)
+		result, err := repo.GetByIDs(context.Background(), []uuid.UUID{id1, missingID})
+
+		require.NoError(t, err)
+		assert.Len(t, result, 1)
+		assert.Equal(t, id1, result[0].ID)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("query error returns wrapped error", func(t *testing.T) {
+		t.Parallel()
+
+		mock, err := pgxmock.NewPool()
+		require.NoError(t, err)
+		defer mock.Close()
+
+		dbErr := errors.New("connection refused")
+		mock.ExpectQuery("SELECT .* FROM patterns").
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnError(dbErr)
+
+		repo := pattern.NewRepository(mock)
+		result, err := repo.GetByIDs(context.Background(), []uuid.UUID{id1})
+
+		assert.Nil(t, result)
+		assert.ErrorContains(t, err, "getting patterns by IDs")
+		assert.ErrorIs(t, err, dbErr)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}

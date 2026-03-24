@@ -126,6 +126,14 @@ func (m *mockPatternRepo) Exists(ctx context.Context, id uuid.UUID) (bool, error
 	return args.Bool(0), args.Error(1)
 }
 
+func (m *mockPatternRepo) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*pattern.Pattern, error) {
+	args := m.Called(ctx, ids)
+	if v := args.Get(0); v != nil {
+		return v.([]*pattern.Pattern), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
 // --- Mock: agentrepo.Repository ---
 
 type mockAgentRepo struct {

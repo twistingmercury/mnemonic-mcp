@@ -48,6 +48,10 @@ type Repository interface {
 	// Used by SearchService for agent-scoped similarity search pre-filtering.
 	GetPatternIDsByAgent(ctx context.Context, agentID uuid.UUID) ([]uuid.UUID, error)
 
+	// GetByIDs retrieves multiple patterns by their IDs.
+	// Returns only patterns that exist; missing IDs are silently skipped.
+	GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*Pattern, error)
+
 	// Exists checks if a pattern with the given ID exists.
 	Exists(ctx context.Context, id uuid.UUID) (bool, error)
 }
@@ -656,6 +660,74 @@ func (r *pgxRepository) Exists(ctx context.Context, id uuid.UUID) (bool, error) 
 	}
 
 	return exists, nil
+}
+
+// GetByIDs retrieves multiple patterns by their IDs.
+// Returns only patterns that exist; missing IDs are silently skipped.
+func (r *pgxRepository) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*Pattern, error) {
+	if len(ids) == 0 {
+		return []*Pattern{}, nil
+	}
+
+	query := `
+		SELECT id, name, description, content, tags,
+			   entity_type, language, domain, version, related_patterns,
+			   enrichment_status, enrichment_error, enriched_at,
+			   created_at, updated_at
+		FROM patterns
+		WHERE id = ANY($1)
+	`
+
+	rows, err := r.db.Query(ctx, query, ids)
+	if err != nil {
+		return nil, fmt.Errorf("getting patterns by IDs: %w", err)
+	}
+	defer rows.Close()
+
+	patterns := make([]*Pattern, 0)
+
+	for rows.Next() {
+		var p Pattern
+		var tagsJSON []byte
+		var relatedPatternsJSON []byte
+
+		err := rows.Scan(
+			&p.ID,
+			&p.Name,
+			&p.Description,
+			&p.Content,
+			&tagsJSON,
+			&p.EntityType,
+			&p.Language,
+			&p.Domain,
+			&p.Version,
+			&relatedPatternsJSON,
+			&p.EnrichmentStatus,
+			&p.EnrichmentError,
+			&p.EnrichedAt,
+			&p.CreatedAt,
+			&p.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("getting patterns by IDs: scanning row: %w", err)
+		}
+
+		if err := json.Unmarshal(tagsJSON, &p.Tags); err != nil {
+			return nil, fmt.Errorf("unmarshaling tags: %w", err)
+		}
+
+		if err := json.Unmarshal(relatedPatternsJSON, &p.RelatedPatterns); err != nil {
+			return nil, fmt.Errorf("unmarshaling related_patterns: %w", err)
+		}
+
+		patterns = append(patterns, &p)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("getting patterns by IDs: iterating rows: %w", err)
+	}
+
+	return patterns, nil
 }
 
 // validateAgentIDs checks that all agent IDs exist in the agents table.
