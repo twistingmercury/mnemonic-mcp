@@ -71,6 +71,25 @@ services:
     networks:
       - dev_network
 
+  dev_rabbitmq:
+    image: rabbitmq:4-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    volumes:
+      - dev_rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dev_network
+
   dev_api:
     image: ghcr.io/twistingmercury/mnemonic-api:latest-dev
     pull_policy: always
@@ -85,10 +104,16 @@ services:
       MNEMONIC_DATABASE_NEO4J_PASSWORD: mnemonic_dev
       MNEMONIC_OPENAI_API_KEY: ${MNEMONIC_OPENAI_API_KEY}
       MNEMONIC_LOGGING_LEVEL: debug
+      MNEMONIC_QUEUE_RABBITMQ_HOST: dev_rabbitmq
+      MNEMONIC_QUEUE_RABBITMQ_PORT: 5672
+      MNEMONIC_QUEUE_RABBITMQ_USER: guest
+      MNEMONIC_QUEUE_RABBITMQ_PASSWORD: guest
     depends_on:
       dev_neo4j:
         condition: service_healthy
       dev_postgres:
+        condition: service_healthy
+      dev_rabbitmq:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "/mnemonic-api", "--health"]
@@ -101,6 +126,7 @@ services:
 volumes:
   dev_postgres_data:
   dev_neo4j_data:
+  dev_rabbitmq_data:
 
 networks:
   dev_network:

@@ -75,14 +75,28 @@ type SearchResult struct {
 	SearchDurationMs int64         // Wall-clock search time in milliseconds
 }
 
+const (
+	// DefaultGraphSeedCount is the number of top vector-match patterns used as graph expansion seeds.
+	DefaultGraphSeedCount = 3
+
+	// DefaultGraphResultsPerSeed is the max related patterns fetched per seed from Neo4j.
+	DefaultGraphResultsPerSeed = 5
+
+	// DefaultGraphMatchCap is the maximum graph matches returned in a single search response.
+	DefaultGraphMatchCap = 5
+)
+
 // searchService implements the Service interface.
 type searchService struct {
-	embeddingSvc openaisvc.EmbeddingService
-	patternRepo  patternrepo.Repository
-	agentRepo    agentrepo.Repository
-	chunkRepo    chunkrepo.Repository
-	graphRepo    graphrepo.Repository
-	logger       zerolog.Logger
+	embeddingSvc        openaisvc.EmbeddingService
+	patternRepo         patternrepo.Repository
+	agentRepo           agentrepo.Repository
+	chunkRepo           chunkrepo.Repository
+	graphRepo           graphrepo.Repository
+	logger              zerolog.Logger
+	graphSeedCount      int
+	graphResultsPerSeed int
+	graphMatchCap       int
 }
 
 // New creates a new search Service backed by the given dependencies.
@@ -96,12 +110,15 @@ func New(
 	logger zerolog.Logger,
 ) Service {
 	return &searchService{
-		embeddingSvc: embeddingSvc,
-		patternRepo:  patternRepo,
-		agentRepo:    agentRepo,
-		chunkRepo:    chunkRepo,
-		graphRepo:    graphRepo,
-		logger:       logger,
+		embeddingSvc:        embeddingSvc,
+		patternRepo:         patternRepo,
+		agentRepo:           agentRepo,
+		chunkRepo:           chunkRepo,
+		graphRepo:           graphRepo,
+		logger:              logger,
+		graphSeedCount:      DefaultGraphSeedCount,
+		graphResultsPerSeed: DefaultGraphResultsPerSeed,
+		graphMatchCap:       DefaultGraphMatchCap,
 	}
 }
 
@@ -232,8 +249,8 @@ func (s *searchService) expandViaGraph(ctx context.Context, matches []*ChunkMatc
 	sort.Slice(seeds, func(i, j int) bool {
 		return seeds[i].similarity > seeds[j].similarity
 	})
-	if len(seeds) > 3 {
-		seeds = seeds[:3]
+	if len(seeds) > s.graphSeedCount {
+		seeds = seeds[:s.graphSeedCount]
 	}
 
 	// Call graph repo for each seed; collect across all seeds with cross-seed dedup.
@@ -245,10 +262,10 @@ func (s *searchService) expandViaGraph(ctx context.Context, matches []*ChunkMatc
 	best := make(map[uuid.UUID]graphEntry)
 
 	for _, seed := range seeds {
-		related, err := s.graphRepo.FindRelatedPatterns(ctx, seed.id, 5)
+		related, err := s.graphRepo.FindRelatedPatterns(ctx, seed.id, s.graphResultsPerSeed)
 		if err != nil {
-			s.logger.Warn().Err(err).Str("seed_pattern_id", seed.id.String()).Msg("graph expansion failed; returning vector-only results")
-			return nil
+			s.logger.Warn().Err(err).Str("seed_pattern_id", seed.id.String()).Msg("graph expansion failed for seed; continuing with remaining seeds")
+			continue
 		}
 		for _, rp := range related {
 			if existing, ok := best[rp.ID]; !ok || rp.Similarity > existing.related.Similarity {
@@ -321,9 +338,12 @@ func (s *searchService) expandViaGraph(ctx context.Context, matches []*ChunkMatc
 		return nil
 	}
 
-	// Cap at 5.
-	if len(graphMatches) > 5 {
-		graphMatches = graphMatches[:5]
+	// Sort by similarity descending, then cap.
+	sort.Slice(graphMatches, func(i, j int) bool {
+		return graphMatches[i].Similarity > graphMatches[j].Similarity
+	})
+	if len(graphMatches) > s.graphMatchCap {
+		graphMatches = graphMatches[:s.graphMatchCap]
 	}
 
 	return graphMatches

@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/google/uuid"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
 	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
@@ -21,7 +22,7 @@ func formatSearchResults(result *searchsvc.SearchResult, agentFilter string) str
 	var sb strings.Builder
 
 	// Count distinct pattern IDs; one pattern may have multiple matching chunks.
-	seen := make(map[interface{}]struct{}, len(result.Matches))
+	seen := make(map[uuid.UUID]struct{}, len(result.Matches))
 	for _, m := range result.Matches {
 		seen[m.PatternID] = struct{}{}
 	}
@@ -76,6 +77,7 @@ func writeGraphMatchEntry(sb *strings.Builder, gm *searchsvc.GraphMatch) {
 	if len(gm.ConceptNames) > 0 {
 		fmt.Fprintf(sb, "**Shared concepts:** %s\n", strings.Join(gm.ConceptNames, ", "))
 	}
+	sb.WriteByte('\n')
 }
 
 // formatRelatedPatterns formats related patterns as markdown for LLM consumption.
