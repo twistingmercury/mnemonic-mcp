@@ -420,7 +420,7 @@ While not part of the MVP, there's an interesting opportunity to visualize the e
 
 **The Idea:**
 
-Use dimensionality reduction techniques (t-SNE, UMAP) to project the 1536-dimensional embeddings down to 3D space for interactive visualization.
+Use dimensionality reduction techniques (t-SNE, UMAP) to project the 2000-dimensional embeddings down to 3D space for interactive visualization.
 
 **What You Could See:**
 
