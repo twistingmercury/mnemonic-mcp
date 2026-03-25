@@ -121,7 +121,7 @@ graph TB
 
 **Stores:**
 
-- Pattern chunk embeddings (one vector per H2 section, 1536 dimensions, OpenAI text-embedding-3-small)
+- Pattern chunk embeddings (one vector per H2 section, 2000 dimensions, OpenAI text-embedding-3-large)
 - Prompt embeddings for semantic search (generated at query time)
 
 **Why PGVector over Dedicated Vector DB:**
@@ -269,7 +269,7 @@ Patterns use relational columns (not JSONB) for enrichment tracking and metadata
 
 **Schema:** Columns include `id`, `name`, `description`, `content`, `tags` (JSONB), `entity_type`, `language`, `domain`, `version`, `related_patterns` (JSONB), `enrichment_status`, `enrichment_error`, `enriched_at`, `created_at`, `updated_at`. The `embedding` column was removed in migration 000009; vector embeddings now live in `pattern_chunks`.
 
-**Pattern chunks:** Each pattern is split at H2 headings into one or more rows in `pattern_chunks`. Each chunk holds its own `embedding vector(1536)` for section-level semantic search. If a pattern has no H2 headings it is stored as a single chunk. The `enrichment_status` on the pattern reflects aggregate chunk status: a pattern is `enriched` when all its chunks are enriched.
+**Pattern chunks:** Each pattern is split at H2 headings into one or more rows in `pattern_chunks`. Each chunk holds its own `embedding vector(2000)` for section-level semantic search. If a pattern has no H2 headings it is stored as a single chunk. The `enrichment_status` on the pattern reflects aggregate chunk status: a pattern is `enriched` when all its chunks are enriched.
 
 **Enrichment States:**
 
@@ -339,7 +339,7 @@ See [Index Strategies](#index-strategies) for the IVFFlat index definition. The 
 -- search_patterns: chunk-level semantic search
 -- Parameters:
 --   $1 = query embedding vector
---   $2 = similarity threshold (default 0.7)
+--   $2 = similarity threshold (default 0.5)
 --   $3 = result limit (default 10, max 50)
 --   $4 = tags filter (JSONB array or NULL)
 --   $5 = language filter (text or NULL)

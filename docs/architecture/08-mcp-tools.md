@@ -51,7 +51,7 @@ Semantic search over the team knowledge graph.
 | ----------- | ------------ | -------- | ------- | ----------- | ------------------------------------ |
 | `query`     | string       | yes      | —       | —           | Natural language search query        |
 | `limit`     | integer      | no       | 10      | max 50      | Maximum number of results to return  |
-| `threshold` | number       | no       | 0.7     | 0.0–1.0     | Minimum cosine similarity score      |
+| `threshold` | number       | no       | 0.5     | 0.0–1.0     | Minimum cosine similarity score      |
 | `tags`      | string array | no       | —       | —           | Conjunctive (AND) filter by tag      |
 | `agent`     | string       | no       | —       | —           | Filter results by agent association  |
 

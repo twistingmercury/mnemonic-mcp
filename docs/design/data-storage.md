@@ -402,8 +402,8 @@ create table if not exists patterns (
     -- Categorization tags (JSON array)
     tags jsonb not null default '[]'::jsonb,
 
-    -- Vector embedding for semantic search (1536 dimensions for text-embedding-3-small)
-    embedding vector(1536),
+    -- Vector embedding for semantic search (2000 dimensions for text-embedding-3-large)
+    embedding vector(2000),
 
     -- Enrichment processing state
     enrichment_status varchar(20) not null default 'pending',

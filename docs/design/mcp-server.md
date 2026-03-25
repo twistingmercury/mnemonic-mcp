@@ -257,7 +257,7 @@ When the handler returns `nil` error, it must return a `*mcp.CallToolResult` wit
 type SearchPatternsInput struct {
     Query     string    `json:"query"                jsonschema:"Natural language search query"`
     Limit     *int      `json:"limit,omitempty"      jsonschema:"Maximum number of results to return (default 10, max 50)"`
-    Threshold *float64  `json:"threshold,omitempty"   jsonschema:"Minimum cosine similarity score 0.0-1.0 (default 0.7)"`
+    Threshold *float64  `json:"threshold,omitempty"   jsonschema:"Minimum cosine similarity score 0.0-1.0 (default 0.5)"`
     Tags      []string  `json:"tags,omitempty"        jsonschema:"Conjunctive (AND) filter by tag. Pattern must contain ALL specified tags (SQL: tags @> $tags::jsonb)."`
     Agent     string    `json:"agent,omitempty"       jsonschema:"Filter results by agent association"`
     Language  string    `json:"language,omitempty"    jsonschema:"Filter by programming language (go, python, typescript, shell, sql, agnostic)"`
@@ -271,7 +271,7 @@ type SearchPatternsInput struct {
 // handleSearchPatterns returns a handler for the search_patterns tool.
 func handleSearchPatterns(deps ToolDependencies) func(ctx context.Context, req *mcp.CallToolRequest, input SearchPatternsInput) (*mcp.CallToolResult, any, error) {
     return func(ctx context.Context, req *mcp.CallToolRequest, input SearchPatternsInput) (*mcp.CallToolResult, any, error) {
-        // 1. Apply defaults: limit=10 if nil, threshold=0.7 if nil
+        // 1. Apply defaults: limit=10 if nil, threshold=0.5 if nil
         // 2. Validate constraints: limit 1-50, threshold 0.0-1.0
         // 3. Generate query embedding via OpenAI
         // 4. If Agent is set, resolve to pattern IDs:
