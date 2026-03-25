@@ -185,10 +185,10 @@ External AI service calls are abstracted behind interfaces so they can be mocked
 // Package: internal/service/openai
 
 // EmbeddingService generates vector embeddings from text.
-// MVP implementation calls OpenAI text-embedding-3-small.
+// MVP implementation calls OpenAI text-embedding-3-large.
 type EmbeddingService interface {
     // Embed generates a vector embedding for the given text.
-    // Returns a float32 slice of length matching the configured dimensions (1536).
+    // Returns a float32 slice of length matching the configured dimensions (2000).
     // Returns ErrEmbeddingFailed if the API call fails after retries.
     Embed(ctx context.Context, text string) ([]float32, error)
 }
@@ -688,7 +688,7 @@ type SearchResult struct {
 type SearchOptions struct {
     Query     string   // Natural language query text
     Limit     int      // Max results (default 10, max 50)
-    Threshold float64  // Min similarity (default 0.7)
+    Threshold float64  // Min similarity (default 0.5)
     Tags      []string // Conjunctive tag filter
     AgentName string   // Optional agent name filter
     Language  string   // Optional language filter (go, python, typescript, shell, sql, agnostic)

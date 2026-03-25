@@ -34,7 +34,7 @@ type Service interface {
 type SearchOptions struct {
 	Query     string   // Natural language query text
 	Limit     int      // Max results (default 10, max 50)
-	Threshold float64  // Min similarity (default 0.7)
+	Threshold float64  // Min similarity (default 0.5)
 	Tags      []string // Conjunctive tag filter
 	AgentName string   // Optional agent name filter
 	Language  string   // Optional: filter by pattern language
