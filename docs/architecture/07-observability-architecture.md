@@ -205,7 +205,9 @@ Mnemonic exposes a health check endpoint at `GET /health` on the Admin API (:808
 {
   "status": "healthy",
   "postgres": "reachable",
-  "neo4j": "reachable"
+  "neo4j": "reachable",
+  "openai_embedding_model": "reachable",
+  "openai_extraction_model": "reachable"
 }
 ```
 
@@ -215,11 +217,20 @@ Mnemonic exposes a health check endpoint at `GET /health` on the Admin API (:808
 {
   "status": "unhealthy",
   "postgres": "unreachable",
-  "neo4j": "reachable"
+  "neo4j": "reachable",
+  "openai_embedding_model": "reachable",
+  "openai_extraction_model": "reachable"
 }
 ```
 
-**Health determination:** Both Postgres and Neo4j must be reachable for the service to report healthy. A failure of either database results in an unhealthy response. The check performs a lightweight connectivity probe (ping or equivalent) against each database; it does not execute business logic.
+**Health determination:** The health check validates four dependencies. All four must pass for the service to report healthy. If any fails, the health endpoint returns an unhealthy status with details about which dependency is down.
+
+| Dependency | Check | Failure impact |
+|---|---|---|
+| PostgreSQL | `Ping()` | Pattern storage and search unavailable |
+| Neo4j | `VerifyConnectivity()` | Knowledge graph queries fail |
+| OpenAI embedding model | Model validation | New pattern enrichment fails |
+| OpenAI extraction model | Model validation | Concept extraction fails |
 
 **Logging:** Health check status changes (healthy → unhealthy, unhealthy → healthy) are logged as system events. Repeated healthy checks are not logged to avoid log noise.
 
