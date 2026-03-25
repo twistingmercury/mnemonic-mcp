@@ -85,12 +85,12 @@ An embedding is a numeric representation of text that captures its semantic mean
 - Each dimension captures different aspects of meaning
 - Similar concepts produce similar vector patterns
 
-### Why 1536 dimensions?
+### Why 2000 dimensions?
 
-It's not a magic number. That's just what OpenAI's text-embedding-3-large model outputs. Different embedding models have different dimensions:
+Mnemonic uses OpenAI's text-embedding-3-large model with Matryoshka truncation at 2000 dimensions. The full model outputs 3072 dimensions, but Matryoshka embeddings allow truncating to a shorter prefix while preserving most of the quality. Different embedding models have different native dimensions:
 
 - OpenAI text-embedding-3-small: 1536
-- OpenAI text-embedding-3-large: 2000
+- OpenAI text-embedding-3-large: 3072 (Mnemonic truncates to 2000)
 - Cohere embed-english-v3.0: 1024
 - Sentence Transformers all-MiniLM-L6-v2: 384
 

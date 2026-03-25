@@ -206,7 +206,7 @@ erDiagram
         string section_title
         int chunk_index
         text content
-        vector embedding "1536 dimensions"
+        vector embedding "2000 dimensions"
         enum enrichment_status "pending|enriched|failed"
         text enrichment_error
         timestamptz enriched_at
@@ -495,7 +495,7 @@ sequenceDiagram
     WORKER->>WORKER: Split content at H2 headings into chunks
     loop For each chunk
         WORKER->>OPENAI: Generate chunk embedding
-        OPENAI-->>WORKER: vector(1536)
+        OPENAI-->>WORKER: vector(2000)
         WORKER->>PGV: Store chunk embedding in pattern_chunks
     end
     WORKER->>OPENAI: Extract entities from full content (LLM)
@@ -538,7 +538,7 @@ sequenceDiagram
 
     CC->>MCP: search_patterns(query)
     MCP->>OPENAI: Generate query embedding
-    OPENAI-->>MCP: vector(1536)
+    OPENAI-->>MCP: vector(2000)
     MCP->>PGV: Chunk-level semantic search (pattern_chunks)
     PGV-->>MCP: ChunkMatch results
     MCP-->>CC: Chunk results (section_title, pattern metadata)
