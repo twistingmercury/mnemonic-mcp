@@ -4,7 +4,7 @@ default: help
 
 mnemonic: ## Run the build.sh script to build the mnemonic server
 	@printf "Starting full build of mnemonicn...\n"
-	@LOCAL=1 ./src/mnemonic/build/build.sh
+	@LOCAL=1 ./src/build/build.sh
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nAvailable targets:\n"} /^[a-zA-Z0-9_-]+:.*##/ { printf "  %-12s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)

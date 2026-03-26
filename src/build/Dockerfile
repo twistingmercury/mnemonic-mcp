@@ -44,7 +44,7 @@ ARG BUILD_COMMIT=unknown
 
 LABEL org.opencontainers.image.title="mnemonic" \
     org.opencontainers.image.description="Backend server providing routing and pattern retrieval via REST API for ACE CLI" \
-    org.opencontainers.image.source="https://github.com/twistingmercury/ace/tree/develop/src/mnemonic" \
+    org.opencontainers.image.source="https://github.com/twistingmercury/mnemonic-mcp/tree/develop/src" \
     org.opencontainers.image.licenses="MIT" \
     org.opencontainers.image.authors="Jeremy K. Johnson" \
     org.opencontainers.image.created="${BUILD_DATE}" \
