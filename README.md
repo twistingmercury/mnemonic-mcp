@@ -2,22 +2,29 @@
 
 [![Mnemonic CI](https://github.com/twistingmercury/mnemonic/actions/workflows/mnemonic-ci.yaml/badge.svg)](https://github.com/twistingmercury/mnemonic/actions/workflows/mnemonic-ci.yaml)
 
-> **Maturity Level**: Emerging — MCP server functional, Admin REST API in a separate service (`mnemonic-api`)
+> **Maturity Level**: Emerging — MCP search server functional, Admin REST API in a separate service (`mnemonic-api`)
 > **Version**: v0.1.7
-
+>
 > - **Emerging**: Prototype, not production-ready, expect breaking changes
-> - **Basic**: Production-ready but actively evolving, expect minor version changes
+> - **Basic**: Production-ready but actively evolving, expect minor version changes>
 > - **Mature**: Stable, battle-tested, changes are rare
 
 ---
 
 ## Table of Contents
 
-- [Usage](#usage)
-- [How it works](#how-it-works)
-- [Key Considerations](#key-considerations)
-- [Development Considerations](#development-considerations)
-- [Documentation](#documentation)
+- [Mnemonic](#mnemonic)
+  - [Table of Contents](#table-of-contents)
+  - [Usage](#usage)
+  - [How it works](#how-it-works)
+  - [Key Considerations](#key-considerations)
+  - [Development Considerations](#development-considerations)
+    - [Quick Start](#quick-start)
+    - [Testing](#testing)
+    - [Versioning](#versioning)
+  - [Documentation](#documentation)
+    - [Architecture](#architecture)
+    - [Design](#design)
 
 ## Usage
 
@@ -32,28 +39,28 @@ Mnemonic exposes an MCP server for Claude Code (port 8081):
 
 MCP tools available: `search_patterns`, `find_related_patterns`, `get_pattern`.
 
-Pattern and agent data is managed via the companion [mnemonic-api](https://github.com/twistingmercury/mnemonic-api) service.
+Pattern data is managed via the companion [mnemonic-api](https://github.com/twistingmercury/mnemonic-api) service.
 
 ## How it works
 
-Mnemonic stores curated engineering patterns in Postgres (with PGVector for embeddings) and Neo4j (for concept relationships). When a pattern is created via `mnemonic-api`, an enrichment job is queued. The enrichment worker in this service embeds the pattern content via OpenAI and syncs extracted concepts to Neo4j, enabling semantic search and graph traversal.
+Mnemonic stores curated engineering patterns in Postgres (with PGVector for embeddings) and Neo4j (for concept relationships). This service exposes MCP search tools over that data and a small operations surface (`/health`, `/metrics`, `/version`). Pattern creation and enrichment workflows are handled outside this repo.
 
 **Local dev stack (Docker Compose):**
 
-| Service | Image | Role |
-|---------|-------|------|
-| `dev_mcp` | `ghcr.io/twistingmercury/mnemonic` | MCP server (port 8081) + enrichment worker |
-| `dev_api` | `ghcr.io/twistingmercury/mnemonic-api` | Admin REST API (port 8080) |
-| `dev_postgres` | `ghcr.io/twistingmercury/mnemonic-postgres` | Postgres + PGVector |
-| `dev_neo4j` | `ghcr.io/twistingmercury/mnemonic-neo4j` | Neo4j + APOC |
+| Service        | Image                                       | Role                                                 |
+| -------------- | ------------------------------------------- | ---------------------------------------------------- |
+| `dev_mcp`      | `ghcr.io/twistingmercury/mnemonic`          | MCP search server (port 8081) + operations endpoints |
+| `dev_api`      | `ghcr.io/twistingmercury/mnemonic-api`      | Admin REST API (port 8080)                           |
+| `dev_postgres` | `ghcr.io/twistingmercury/mnemonic-postgres` | Postgres + PGVector                                  |
+| `dev_neo4j`    | `ghcr.io/twistingmercury/mnemonic-neo4j`    | Neo4j + APOC                                         |
 
 Both database images are pre-configured with the required schema — no migration step needed.
 
 ## Key Considerations
 
 - **MVP scope**: Local deployment via Docker Compose, single-user trusted environment, no authentication
-- **This repo**: MCP server + enrichment worker only — Admin REST API lives in `mnemonic-api`
-- **Enrichment**: Database-driven job queue; worker polls Postgres and processes pending jobs asynchronously
+- **This repo**: MCP search server + operations endpoints only — Admin REST API lives in `mnemonic-api`
+- **Enrichment**: Managed outside this service; this repo reads enriched/searchable data
 - **Post-MVP**: Event-driven enrichment (queue-based), multi-user auth, production deployment
 
 ## Development Considerations
@@ -78,7 +85,6 @@ go test ./...
 
 # Integration tests (requires Docker)
 cd src/internal/repository/tests
-./run-agent-integration-tests.sh
 ./run-pattern-integration-tests.sh
 
 # Full build + E2E tests
@@ -113,7 +119,7 @@ See [CHANGELOG.md](CHANGELOG.md) for development progress.
 
 ### Design
 
-- [Pattern Processing](docs/design/pattern-processing.md) — enrichment and search pipeline
+- [Pattern Processing](docs/design/pattern-processing.md) — search data pipeline
 - [MCP Server](docs/design/mcp-server.md) — MCP protocol integration
 - [Service Layer](docs/design/service-layer.md) — service package design
 - [Observability](docs/design/observability-implementation.md) — metrics, tracing, logging

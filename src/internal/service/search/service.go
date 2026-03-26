@@ -1,20 +1,18 @@
 // Package search provides semantic similarity search over pattern chunks.
 // Both the REST search endpoint and the MCP search_patterns tool use this service.
 // It coordinates between the embedding service (for query vectorization), the
-// chunk repository (for pgvector similarity search), and the agent repository
-// (for optional agent-scoped pre-filtering).
+// chunk repository (for pgvector similarity search), and graph repository
+// (for optional graph expansion).
 package search
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
-	agentrepo "github.com/twistingmercury/mnemonic/internal/repository/agent"
 	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
@@ -25,8 +23,7 @@ import (
 // Service handles semantic search over patterns.
 type Service interface {
 	// SearchPatterns generates a query embedding and performs vector similarity
-	// search. If AgentName is non-empty in opts, pre-filters to patterns
-	// associated with that agent.
+	// search.
 	SearchPatterns(ctx context.Context, opts SearchOptions) (*SearchResult, error)
 }
 
@@ -36,7 +33,6 @@ type SearchOptions struct {
 	Limit     int      // Max results (default 10, max 50)
 	Threshold float64  // Min similarity (default 0.5)
 	Tags      []string // Conjunctive tag filter
-	AgentName string   // Optional agent name filter
 	Language  string   // Optional: filter by pattern language
 	Domain    string   // Optional: filter by pattern domain
 }
@@ -90,7 +86,6 @@ const (
 type searchService struct {
 	embeddingSvc        openaisvc.EmbeddingService
 	patternRepo         patternrepo.Repository
-	agentRepo           agentrepo.Repository
 	chunkRepo           chunkrepo.Repository
 	graphRepo           graphrepo.Repository
 	logger              zerolog.Logger
@@ -104,7 +99,6 @@ type searchService struct {
 func New(
 	embeddingSvc openaisvc.EmbeddingService,
 	patternRepo patternrepo.Repository,
-	agentRepo agentrepo.Repository,
 	chunkRepo chunkrepo.Repository,
 	graphRepo graphrepo.Repository,
 	logger zerolog.Logger,
@@ -112,7 +106,6 @@ func New(
 	return &searchService{
 		embeddingSvc:        embeddingSvc,
 		patternRepo:         patternRepo,
-		agentRepo:           agentRepo,
 		chunkRepo:           chunkRepo,
 		graphRepo:           graphRepo,
 		logger:              logger,
@@ -132,41 +125,7 @@ func (s *searchService) SearchPatterns(ctx context.Context, opts SearchOptions) 
 		return nil, fmt.Errorf("%w: %v", service.ErrServiceUnavailable, err)
 	}
 
-	// 2. If agent name provided, resolve to pattern IDs for pre-filtering.
-	var patternIDs []uuid.UUID
-	if opts.AgentName != "" {
-		agent, agentErr := s.agentRepo.Get(ctx, opts.AgentName)
-		if agentErr != nil {
-			if errors.Is(agentErr, agentrepo.ErrNotFound) {
-				// Unknown agent: return empty results (not an error).
-				return &SearchResult{
-					Matches:          []*ChunkMatch{},
-					Query:            opts.Query,
-					TotalCandidates:  0,
-					SearchDurationMs: time.Since(start).Milliseconds(),
-				}, nil
-			}
-			return nil, fmt.Errorf("resolve agent: %w", agentErr)
-		}
-
-		var idsErr error
-		patternIDs, idsErr = s.patternRepo.GetPatternIDsByAgent(ctx, agent.ID)
-		if idsErr != nil {
-			return nil, fmt.Errorf("get agent patterns: %w", idsErr)
-		}
-
-		// No associated patterns: return empty results.
-		if len(patternIDs) == 0 {
-			return &SearchResult{
-				Matches:          []*ChunkMatch{},
-				Query:            opts.Query,
-				TotalCandidates:  0,
-				SearchDurationMs: time.Since(start).Milliseconds(),
-			}, nil
-		}
-	}
-
-	// 3. Perform chunk-based similarity search.
+	// 2. Perform chunk-based similarity search.
 
 	// Guard: chunkRepo must be configured before attempting vector search.
 	if s.chunkRepo == nil {
@@ -178,7 +137,6 @@ func (s *searchService) SearchPatterns(ctx context.Context, opts SearchOptions) 
 		MaxResults:    opts.Limit,
 		Language:      opts.Language,
 		Domain:        opts.Domain,
-		PatternIDs:    patternIDs,
 		Tags:          opts.Tags,
 	}
 

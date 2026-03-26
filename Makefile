@@ -2,7 +2,7 @@
 
 default: help
 
-mnemonic: ## Run the build.sh script to build the mnemonic server
+build: ## Run the build.sh script to build the mnemonic server
 	@printf "Starting full build of mnemonicn...\n"
 	@LOCAL=1 ./src/build/build.sh
 

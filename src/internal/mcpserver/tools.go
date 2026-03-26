@@ -4,7 +4,7 @@ import "github.com/modelcontextprotocol/go-sdk/mcp"
 
 var searchPatternsTool = &mcp.Tool{
 	Name:        "search_patterns",
-	Description: "Semantic search over the team knowledge graph. Returns patterns ranked by vector similarity. Only enriched patterns appear in results.",
+	Description: "Semantic search over the team knowledge graph. Returns patterns ranked by vector similarity, with optional tag/language/domain filters.",
 }
 
 var findRelatedPatternsTool = &mcp.Tool{

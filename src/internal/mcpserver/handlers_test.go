@@ -127,7 +127,7 @@ func TestHandleSearchPatterns_NoResults(t *testing.T) {
 	deps.AssertExpectations(t)
 }
 
-func TestHandleSearchPatterns_WithAgentFilter(t *testing.T) {
+func TestHandleSearchPatterns_WithoutAgentFilter(t *testing.T) {
 	t.Parallel()
 
 	deps := new(mockToolDeps)
@@ -143,17 +143,15 @@ func TestHandleSearchPatterns_WithAgentFilter(t *testing.T) {
 		Query:     "testing",
 		Limit:     10,
 		Threshold: 0.5,
-		AgentName: "go-engineer",
 	}).Return(searchResult, nil)
 
 	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
 		Query: "testing",
-		Agent: "go-engineer",
 	})
 
 	require.NoError(t, err)
 	text := extractTextContent(t, result)
-	assert.Contains(t, text, "filtered by agent: go-engineer")
+	assert.Contains(t, text, "Found 1 sections across 1 patterns matching 'testing':")
 	deps.AssertExpectations(t)
 }
 

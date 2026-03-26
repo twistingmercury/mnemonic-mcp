@@ -39,7 +39,7 @@ func TestFormatSearchResults_WithResults(t *testing.T) {
 		},
 	}
 
-	md := formatSearchResults(result, "")
+	md := formatSearchResults(result)
 
 	// 2 sections from 2 distinct patterns.
 	assert.Contains(t, md, "Found 2 sections across 2 patterns matching 'error handling':")
@@ -51,7 +51,7 @@ func TestFormatSearchResults_WithResults(t *testing.T) {
 	assert.NotContains(t, md, "filtered by agent")
 }
 
-func TestFormatSearchResults_WithAgentFilter(t *testing.T) {
+func TestFormatSearchResults_HeaderFormat(t *testing.T) {
 	t.Parallel()
 
 	result := &searchsvc.SearchResult{
@@ -66,10 +66,10 @@ func TestFormatSearchResults_WithAgentFilter(t *testing.T) {
 		},
 	}
 
-	md := formatSearchResults(result, "go-engineer")
+	md := formatSearchResults(result)
 
 	// 1 section from 1 distinct pattern.
-	assert.Contains(t, md, "Found 1 sections across 1 patterns matching 'testing' (filtered by agent: go-engineer):")
+	assert.Contains(t, md, "Found 1 sections across 1 patterns matching 'testing':")
 }
 
 func TestFormatSearchResults_Empty(t *testing.T) {
@@ -80,7 +80,7 @@ func TestFormatSearchResults_Empty(t *testing.T) {
 		Matches: []*searchsvc.ChunkMatch{},
 	}
 
-	md := formatSearchResults(result, "")
+	md := formatSearchResults(result)
 
 	assert.Equal(t, "No patterns found matching 'nonexistent'.", md)
 }
@@ -100,7 +100,7 @@ func TestFormatSearchResults_NoTags(t *testing.T) {
 		},
 	}
 
-	md := formatSearchResults(result, "")
+	md := formatSearchResults(result)
 
 	assert.Contains(t, md, "## no-tags (75% match)")
 	assert.NotContains(t, md, "**Tags:**")
@@ -123,7 +123,7 @@ func TestFormatSearchResults_MultipleChunksSamePattern(t *testing.T) {
 		},
 	}
 
-	md := formatSearchResults(result, "")
+	md := formatSearchResults(result)
 
 	assert.Contains(t, md, "Found 3 sections across 2 patterns matching 'error handling':")
 }
@@ -149,7 +149,7 @@ func TestFormatSearchResults_SimilarityRounding(t *testing.T) {
 		},
 	}
 
-	md := formatSearchResults(result, "")
+	md := formatSearchResults(result)
 
 	// 0.925 rounds to 93, 0.994 rounds to 99.
 	assert.Contains(t, md, "93% match")
@@ -184,7 +184,7 @@ func TestFormatSearchResults_WithGraphMatches(t *testing.T) {
 		},
 	}
 
-	md := formatSearchResults(result, "")
+	md := formatSearchResults(result)
 
 	// Vector section present.
 	assert.Contains(t, md, "## go-error-handling (92% match)")
@@ -213,7 +213,7 @@ func TestFormatSearchResults_NilGraphMatches(t *testing.T) {
 		GraphMatches: nil,
 	}
 
-	md := formatSearchResults(result, "")
+	md := formatSearchResults(result)
 
 	assert.Contains(t, md, "## go-error-handling (92% match)")
 	assert.NotContains(t, md, "Related Patterns (via graph)")
@@ -235,7 +235,7 @@ func TestFormatSearchResults_EmptyGraphMatches(t *testing.T) {
 		GraphMatches: []*searchsvc.GraphMatch{},
 	}
 
-	md := formatSearchResults(result, "")
+	md := formatSearchResults(result)
 
 	assert.Contains(t, md, "## go-error-handling (92% match)")
 	assert.NotContains(t, md, "Related Patterns (via graph)")
