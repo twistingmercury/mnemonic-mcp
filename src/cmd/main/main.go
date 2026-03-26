@@ -22,7 +22,7 @@ var healthFlag = pflag.Bool("health", false, "Get the current health of the serv
 
 // @title Mnemonic API
 // @version 1.0
-// @description REST API for the Mnemonic agent-pattern-skill management service
+// @description Operations API for the Mnemonic MCP search service
 // @host localhost:8080
 // @BasePath /v1/api
 // @schemes http

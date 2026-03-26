@@ -21,7 +21,6 @@ import (
 	"github.com/twistingmercury/mnemonic/internal/health"
 	"github.com/twistingmercury/mnemonic/internal/mcpserver"
 	"github.com/twistingmercury/mnemonic/internal/middleware"
-	agentrepo "github.com/twistingmercury/mnemonic/internal/repository/agent"
 	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
@@ -161,7 +160,6 @@ func wireDependencies(
 	logger zerolog.Logger,
 ) (mcpserver.ToolDependencies, error) {
 	// Repositories.
-	agentRepo := agentrepo.NewRepository(pgPool)
 	patternRepo := patternrepo.NewRepository(pgPool)
 	graphRepo := graphrepo.NewRepository(neo4jDriver, cfg.Database.Neo4j.Database)
 	chunkRepo := chunkrepo.NewRepository(pgPool)
@@ -170,8 +168,8 @@ func wireDependencies(
 	embeddingSvc := openaisvc.NewEmbeddingService(cfg.OpenAI)
 
 	// Domain services used by MCP tools.
-	searchSvc := searchsvc.New(embeddingSvc, patternRepo, agentRepo, chunkRepo, graphRepo, logger)
-	patternSvc := patternsvc.New(patternRepo, nil, graphRepo, agentRepo, pgPool, chunkRepo, logger)
+	searchSvc := searchsvc.New(embeddingSvc, patternRepo, chunkRepo, graphRepo, logger)
+	patternSvc := patternsvc.New(patternRepo, nil, graphRepo, nil, pgPool, chunkRepo, logger)
 
 	// MCP facade.
 	toolDeps := mcpserver.NewToolDependencies(searchSvc, patternSvc)
