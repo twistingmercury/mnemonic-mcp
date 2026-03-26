@@ -17,17 +17,14 @@ import (
 
 	"github.com/twistingmercury/mnemonic/internal/config"
 	"github.com/twistingmercury/mnemonic/internal/database"
-	"github.com/twistingmercury/mnemonic/internal/enricher"
 	"github.com/twistingmercury/mnemonic/internal/handlers/operations"
 	"github.com/twistingmercury/mnemonic/internal/health"
 	"github.com/twistingmercury/mnemonic/internal/mcpserver"
 	"github.com/twistingmercury/mnemonic/internal/middleware"
 	agentrepo "github.com/twistingmercury/mnemonic/internal/repository/agent"
 	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
-	enrichmentjobrepo "github.com/twistingmercury/mnemonic/internal/repository/enrichmentjob"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
-	enrichmentsvc "github.com/twistingmercury/mnemonic/internal/service/enrichment"
 	openaisvc "github.com/twistingmercury/mnemonic/internal/service/openai"
 	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
@@ -36,9 +33,9 @@ import (
 )
 
 // ListenAndServe starts the mnemonic server. It initializes telemetry,
-// establishes database connections, wires all dependencies, and runs the
-// Admin API, MCP server, and enrichment worker concurrently. It blocks until
-// a shutdown signal is received or a component returns a fatal error.
+// establishes database connections, wires dependencies for MCP search tools,
+// and runs the operations HTTP server plus MCP server. It blocks until a
+// shutdown signal is received or a component returns a fatal error.
 func ListenAndServe(cfg *config.MnemonicConfig) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -79,23 +76,19 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 		return fmt.Errorf("failed to initialize health checks: %w", err)
 	}
 
-	// Wire all dependencies.
-	toolDeps, enrichWorker, err := wireDependencies(pgPool, neo4jDriver, cfg, logger)
+	// Wire MCP dependencies.
+	toolDeps, err := wireDependencies(pgPool, neo4jDriver, cfg, logger)
 	if err != nil {
 		return fmt.Errorf("failed to wire dependencies: %w", err)
 	}
 
-	// Create request metrics middleware.
+	// Build operations HTTP server.
 	requestMetrics, err := middleware.NewRequestMetrics(tel.Meter("mnemonic/http"))
 	if err != nil {
 		return fmt.Errorf("failed to create request metrics: %w", err)
 	}
-
-	// Build the Admin API router.
 	router := setupRouter(tel, requestMetrics)
 	operations.SetupHandlers(router, health.Descriptors())
-
-	// Build the Admin API HTTP server.
 	adminServer := CreateHTTPServer(router, cfg)
 
 	// Build the MCP HTTP server.
@@ -103,25 +96,14 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	mcpHandler := mcpserver.NewMCPHTTPHandler(mcpSrv)
 	mcpHTTPServer := mcpserver.NewMCPHTTPServer(cfg.MCP, cfg.Server.Host, mcpHandler)
 
-	// Run all components concurrently.
 	g, gCtx := errgroup.WithContext(ctx)
-
 	g.Go(func() error {
-		return runHTTPServer(gCtx, adminServer, cfg, logger, "admin_api")
+		return runHTTPServer(gCtx, adminServer, cfg, logger, "operations")
 	})
-
 	g.Go(func() error {
 		return runMCPServer(gCtx, mcpHTTPServer, logger)
 	})
 
-	g.Go(func() error {
-		logger.Info().
-			Int("worker_count", cfg.Enrichment.WorkerCount).
-			Msg("starting enrichment worker")
-		return enrichWorker.Run(gCtx)
-	})
-
-	// Wait for shutdown signal or component failure.
 	if err := g.Wait(); err != nil {
 		return err
 	}
@@ -170,47 +152,34 @@ func closeDatabases(pgPool *pgxpool.Pool, neo4jDriver neo4j.DriverWithContext, l
 	}
 }
 
-// wireDependencies creates all repositories, services, and the enrichment
-// worker. Returns MCP ToolDependencies and the enrichment Worker.
+// wireDependencies creates the repositories and read-side services required by
+// the MCP search tools and returns MCP ToolDependencies.
 func wireDependencies(
 	pgPool *pgxpool.Pool,
 	neo4jDriver neo4j.DriverWithContext,
 	cfg *config.MnemonicConfig,
 	logger zerolog.Logger,
-) (mcpserver.ToolDependencies, *enricher.Worker, error) {
+) (mcpserver.ToolDependencies, error) {
 	// Repositories.
 	agentRepo := agentrepo.NewRepository(pgPool)
 	patternRepo := patternrepo.NewRepository(pgPool)
-	enrichmentJobRepo := enrichmentjobrepo.NewRepository(pgPool)
 	graphRepo := graphrepo.NewRepository(neo4jDriver, cfg.Database.Neo4j.Database)
 	chunkRepo := chunkrepo.NewRepository(pgPool)
 
 	// External services.
 	embeddingSvc := openaisvc.NewEmbeddingService(cfg.OpenAI)
-	extractionSvc := openaisvc.NewExtractionService(cfg.OpenAI)
 
-	// Domain services.
+	// Domain services used by MCP tools.
 	searchSvc := searchsvc.New(embeddingSvc, patternRepo, agentRepo, chunkRepo, graphRepo, logger)
-	patternSvc := patternsvc.New(patternRepo, enrichmentJobRepo, graphRepo, agentRepo, pgPool, chunkRepo, logger)
-	enrichmentSvc, err := enrichmentsvc.New(
-		enrichmentJobRepo, patternRepo, agentRepo, graphRepo,
-		embeddingSvc, extractionSvc,
-		cfg.Enrichment, chunkRepo, logger,
-	)
-	if err != nil {
-		return nil, nil, fmt.Errorf("wire enrichment service: %w", err)
-	}
+	patternSvc := patternsvc.New(patternRepo, nil, graphRepo, agentRepo, pgPool, chunkRepo, logger)
 
 	// MCP facade.
 	toolDeps := mcpserver.NewToolDependencies(searchSvc, patternSvc)
 
-	// Enrichment worker.
-	enrichWorker := enricher.New(enrichmentSvc, cfg.Enrichment, logger)
-
-	return toolDeps, enrichWorker, nil
+	return toolDeps, nil
 }
 
-// runHTTPServer starts the admin API HTTP server and gracefully shuts it down
+// runHTTPServer starts the operations HTTP server and gracefully shuts it down
 // when the context is cancelled.
 func runHTTPServer(ctx context.Context, srv *http.Server, cfg *config.MnemonicConfig, logger zerolog.Logger, name string) error {
 	errCh := make(chan error, 1)
@@ -289,10 +258,7 @@ const mcpShutdownTimeout = 5 * time.Second
 
 // setupRouter creates and configures the Gin router with middleware.
 func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMetrics) *gin.Engine {
-	// Use gin.New() instead of gin.Default() to avoid duplicate logging
 	router := gin.New()
-
-	// Recovery middleware (keep this)
 	router.Use(gin.Recovery())
 
 	// Correlation ID middleware: echo X-Request-ID from request to response.
@@ -303,26 +269,18 @@ func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMet
 		c.Next()
 	})
 
-	// Use exported DefaultSkipPaths from middleware package
 	skipPaths := middleware.DefaultSkipPaths
-
-	// Tracing middleware using otelgin
 	router.Use(middleware.TracingMiddlewareWithSkipPaths("mnemonic", skipPaths))
-
-	// otelx logging middleware with trace correlation
 	router.Use(otelxgin.LoggingMiddleware(tel.Otelx(),
 		otelxgin.WithSkipPaths("/health", "/metrics"),
 		otelxgin.WithRequestHeaders("X-Request-ID", "X-Correlation-ID"),
 	))
-
-	// Request metrics middleware
 	router.Use(requestMetrics.MiddlewareWithSkipPaths(skipPaths))
 
 	return router
 }
 
-// CreateHTTPServer creates a new http.Server configured with settings from
-// the provided configuration.
+// CreateHTTPServer creates an operations http.Server from config.
 func CreateHTTPServer(r *gin.Engine, cfg *config.MnemonicConfig) *http.Server {
 	return &http.Server{
 		Addr:           cfg.Server.Address(),
