@@ -14,7 +14,7 @@ For local development, use the Docker Compose configuration in the parent direct
 
 ```bash
 # From the mnemonic directory
-cd /Users/doublej/dev/ace/src/mnemonic
+cd src
 
 # Copy environment template
 cp .env.example .env

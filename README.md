@@ -73,11 +73,11 @@ make start          # start local dev stack
 
 ```bash
 # Unit tests
-cd src/mnemonic
+cd src
 go test ./...
 
 # Integration tests (requires Docker)
-cd src/mnemonic/internal/repository/tests
+cd src/internal/repository/tests
 ./run-agent-integration-tests.sh
 ./run-pattern-integration-tests.sh
 

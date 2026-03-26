@@ -6,22 +6,22 @@ on:
       - main
       - develop
     paths:
-      - "src/mnemonic/internal/**"
-      - "src/mnemonic/cmd/**"
-      - "src/mnemonic/go.mod"
-      - "src/mnemonic/go.sum"
-      - "src/mnemonic/build/**"
+      - "src/internal/**"
+      - "src/cmd/**"
+      - "src/go.mod"
+      - "src/go.sum"
+      - "src/build/**"
       - ".github/workflows/mnemonic-ci.yaml"
   pull_request:
     branches:
       - main
       - develop
     paths:
-      - "src/mnemonic/internal/**"
-      - "src/mnemonic/cmd/**"
-      - "src/mnemonic/go.mod"
-      - "src/mnemonic/go.sum"
-      - "src/mnemonic/build/**"
+      - "src/internal/**"
+      - "src/cmd/**"
+      - "src/go.mod"
+      - "src/go.sum"
+      - "src/build/**"
       - ".github/workflows/mnemonic-ci.yaml"
   workflow_dispatch:
 
@@ -34,7 +34,7 @@ jobs:
       packages: write
     defaults:
       run:
-        working-directory: src/mnemonic
+        working-directory: src
 
     steps:
       - name: Checkout code

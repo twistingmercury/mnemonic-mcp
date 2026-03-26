@@ -74,7 +74,7 @@ docs/scripts/
 # Go artifacts
 
 **/coverage.out
-src/mnemonic/docs/swagger/
+src/docs/swagger/
 
 **/rlm_state/
 **/rlm_state/*
