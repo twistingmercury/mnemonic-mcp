@@ -169,7 +169,7 @@ func wireDependencies(
 
 	// Domain services used by MCP tools.
 	searchSvc := searchsvc.New(embeddingSvc, patternRepo, chunkRepo, graphRepo, logger)
-	patternSvc := patternsvc.New(patternRepo, nil, graphRepo, nil, pgPool, chunkRepo, logger)
+	patternSvc := patternsvc.New(patternRepo, nil, graphRepo, pgPool, chunkRepo, logger)
 
 	// MCP facade.
 	toolDeps := mcpserver.NewToolDependencies(searchSvc, patternSvc)

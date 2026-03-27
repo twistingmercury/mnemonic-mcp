@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	agentrepo "github.com/twistingmercury/mnemonic/internal/repository/agent"
 	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	"github.com/twistingmercury/mnemonic/internal/repository/pattern"
@@ -100,27 +99,6 @@ func (m *mockPatternRepo) FindSimilar(ctx context.Context, embedding []float32, 
 	return args.Get(0).([]*pattern.Match), args.Error(1)
 }
 
-func (m *mockPatternRepo) SetAgentAssociations(ctx context.Context, patternID uuid.UUID, associations []pattern.AgentAssociation) error {
-	args := m.Called(ctx, patternID, associations)
-	return args.Error(0)
-}
-
-func (m *mockPatternRepo) GetAgentAssociations(ctx context.Context, patternID uuid.UUID) ([]pattern.AgentAssociation, error) {
-	args := m.Called(ctx, patternID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]pattern.AgentAssociation), args.Error(1)
-}
-
-func (m *mockPatternRepo) GetPatternIDsByAgent(ctx context.Context, agentID uuid.UUID) ([]uuid.UUID, error) {
-	args := m.Called(ctx, agentID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]uuid.UUID), args.Error(1)
-}
-
 func (m *mockPatternRepo) Exists(ctx context.Context, id uuid.UUID) (bool, error) {
 	args := m.Called(ctx, id)
 	return args.Bool(0), args.Error(1)
@@ -132,69 +110,6 @@ func (m *mockPatternRepo) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*pat
 		return v.([]*pattern.Pattern), args.Error(1)
 	}
 	return nil, args.Error(1)
-}
-
-// --- Mock: agentrepo.Repository ---
-
-type mockAgentRepo struct {
-	mock.Mock
-}
-
-func (m *mockAgentRepo) Create(ctx context.Context, agent *agentrepo.Agent) error {
-	args := m.Called(ctx, agent)
-	return args.Error(0)
-}
-
-func (m *mockAgentRepo) Get(ctx context.Context, name string) (*agentrepo.Agent, error) {
-	args := m.Called(ctx, name)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*agentrepo.Agent), args.Error(1)
-}
-
-func (m *mockAgentRepo) GetByID(ctx context.Context, id uuid.UUID) (*agentrepo.Agent, error) {
-	args := m.Called(ctx, id)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*agentrepo.Agent), args.Error(1)
-}
-
-func (m *mockAgentRepo) Update(ctx context.Context, agent *agentrepo.Agent) error {
-	args := m.Called(ctx, agent)
-	return args.Error(0)
-}
-
-func (m *mockAgentRepo) Delete(ctx context.Context, name string) error {
-	args := m.Called(ctx, name)
-	return args.Error(0)
-}
-
-func (m *mockAgentRepo) DeleteByID(ctx context.Context, id uuid.UUID) error {
-	args := m.Called(ctx, id)
-	return args.Error(0)
-}
-
-func (m *mockAgentRepo) List(ctx context.Context, opts repository.ListOptions) ([]*agentrepo.Agent, int64, error) {
-	args := m.Called(ctx, opts)
-	if args.Get(0) == nil {
-		return nil, args.Get(1).(int64), args.Error(2)
-	}
-	return args.Get(0).([]*agentrepo.Agent), args.Get(1).(int64), args.Error(2)
-}
-
-func (m *mockAgentRepo) Exists(ctx context.Context, name string) (bool, error) {
-	args := m.Called(ctx, name)
-	return args.Bool(0), args.Error(1)
-}
-
-func (m *mockAgentRepo) GetManifest(ctx context.Context) ([]agentrepo.ManifestEntry, error) {
-	args := m.Called(ctx)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]agentrepo.ManifestEntry), args.Error(1)
 }
 
 // --- Mock: chunkrepo.Repository ---
@@ -263,14 +178,6 @@ type mockGraphRepo struct {
 	mock.Mock
 }
 
-func (m *mockGraphRepo) SyncAgent(ctx context.Context, agentName string) error {
-	return m.Called(ctx, agentName).Error(0)
-}
-
-func (m *mockGraphRepo) DeleteAgent(ctx context.Context, agentName string) error {
-	return m.Called(ctx, agentName).Error(0)
-}
-
 func (m *mockGraphRepo) SyncPattern(ctx context.Context, p *graphrepo.Pattern) error {
 	return m.Called(ctx, p).Error(0)
 }
@@ -281,10 +188,6 @@ func (m *mockGraphRepo) DeletePattern(ctx context.Context, patternID uuid.UUID) 
 
 func (m *mockGraphRepo) SyncConcepts(ctx context.Context, patternID uuid.UUID, concepts []graphrepo.Concept) error {
 	return m.Called(ctx, patternID, concepts).Error(0)
-}
-
-func (m *mockGraphRepo) SetPatternAgentRelevance(ctx context.Context, patternID uuid.UUID, associations []graphrepo.AgentAssociation) error {
-	return m.Called(ctx, patternID, associations).Error(0)
 }
 
 func (m *mockGraphRepo) ComputeRelatedToEdges(ctx context.Context, patternID uuid.UUID, minSimilarity float64) error {
@@ -307,14 +210,6 @@ func (m *mockGraphRepo) FindRelatedPatterns(ctx context.Context, patternID uuid.
 	return nil, args.Error(1)
 }
 
-func (m *mockGraphRepo) FindPatternsByAgent(ctx context.Context, agentName string, limit int) ([]graphrepo.PatternRelevance, error) {
-	args := m.Called(ctx, agentName, limit)
-	if v := args.Get(0); v != nil {
-		return v.([]graphrepo.PatternRelevance), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
-
 func (m *mockGraphRepo) CleanupOrphanedConcepts(ctx context.Context) (int64, error) {
 	args := m.Called(ctx)
 	return args.Get(0).(int64), args.Error(1)
@@ -328,12 +223,12 @@ func (m *mockGraphRepo) HealthCheck(ctx context.Context) error {
 
 var testEmbedding = []float32{0.1, 0.2, 0.3}
 
-func newTestService(embSvc *mockEmbeddingService, patternRepo *mockPatternRepo, agentRepo *mockAgentRepo, chunkRepo *mockChunkRepo) search.Service {
+func newTestService(embSvc *mockEmbeddingService, patternRepo *mockPatternRepo, chunkRepo *mockChunkRepo) search.Service {
 	logger := zerolog.Nop()
 	return search.New(embSvc, patternRepo, chunkRepo, nil, logger)
 }
 
-func newTestServiceWithGraph(embSvc *mockEmbeddingService, patternRepo *mockPatternRepo, agentRepo *mockAgentRepo, chunkRepo *mockChunkRepo, graphRepo *mockGraphRepo) search.Service {
+func newTestServiceWithGraph(embSvc *mockEmbeddingService, patternRepo *mockPatternRepo, chunkRepo *mockChunkRepo, graphRepo *mockGraphRepo) search.Service {
 	logger := zerolog.Nop()
 	return search.New(embSvc, patternRepo, chunkRepo, graphRepo, logger)
 }
@@ -360,9 +255,8 @@ func TestSearchPatterns_HappyPath(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, agentRepo, chunkRepo)
+	svc := newTestService(embSvc, patternRepo, chunkRepo)
 
 	id1 := uuid.New()
 	id2 := uuid.New()
@@ -394,7 +288,6 @@ func TestSearchPatterns_HappyPath(t *testing.T) {
 
 	embSvc.AssertExpectations(t)
 	chunkRepo.AssertExpectations(t)
-	agentRepo.AssertNotCalled(t, "Get")
 }
 
 func TestSearchPatterns_PassesLanguageAndDomainFilters(t *testing.T) {
@@ -402,9 +295,8 @@ func TestSearchPatterns_PassesLanguageAndDomainFilters(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, agentRepo, chunkRepo)
+	svc := newTestService(embSvc, patternRepo, chunkRepo)
 
 	patternID := uuid.New()
 
@@ -432,7 +324,6 @@ func TestSearchPatterns_PassesLanguageAndDomainFilters(t *testing.T) {
 	embSvc.AssertExpectations(t)
 	chunkRepo.AssertExpectations(t)
 	patternRepo.AssertNotCalled(t, "GetPatternIDsByAgent")
-	agentRepo.AssertNotCalled(t, "Get")
 }
 
 func TestSearchPatterns_PassesTagsLanguageDomainTogether(t *testing.T) {
@@ -440,9 +331,8 @@ func TestSearchPatterns_PassesTagsLanguageDomainTogether(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, agentRepo, chunkRepo)
+	svc := newTestService(embSvc, patternRepo, chunkRepo)
 
 	embSvc.On("Embed", mock.Anything, "platform patterns").Return(testEmbedding, nil)
 	chunkRepo.On("FindSimilar", mock.Anything, testEmbedding, chunkrepo.SimilarityOptions{
@@ -470,7 +360,6 @@ func TestSearchPatterns_PassesTagsLanguageDomainTogether(t *testing.T) {
 
 	chunkRepo.AssertExpectations(t)
 	patternRepo.AssertNotCalled(t, "GetPatternIDsByAgent")
-	agentRepo.AssertNotCalled(t, "Get")
 }
 
 func TestSearchPatterns_DoesNotUseLegacyPatternIDPrefilter(t *testing.T) {
@@ -478,9 +367,8 @@ func TestSearchPatterns_DoesNotUseLegacyPatternIDPrefilter(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, agentRepo, chunkRepo)
+	svc := newTestService(embSvc, patternRepo, chunkRepo)
 
 	patternID := uuid.New()
 	embSvc.On("Embed", mock.Anything, "legacy prefilter check").Return(testEmbedding, nil)
@@ -504,7 +392,6 @@ func TestSearchPatterns_DoesNotUseLegacyPatternIDPrefilter(t *testing.T) {
 
 	chunkRepo.AssertExpectations(t)
 	patternRepo.AssertNotCalled(t, "GetPatternIDsByAgent")
-	agentRepo.AssertNotCalled(t, "Get")
 }
 
 func TestSearchPatterns_EmbeddingFailure(t *testing.T) {
@@ -512,9 +399,8 @@ func TestSearchPatterns_EmbeddingFailure(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, agentRepo, chunkRepo)
+	svc := newTestService(embSvc, patternRepo, chunkRepo)
 
 	embSvc.On("Embed", mock.Anything, "some query").Return(nil, openaisvc.ErrEmbeddingFailed)
 
@@ -536,9 +422,8 @@ func TestSearchPatterns_NoMatchingPatterns(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, agentRepo, chunkRepo)
+	svc := newTestService(embSvc, patternRepo, chunkRepo)
 
 	embSvc.On("Embed", mock.Anything, "obscure topic").Return(testEmbedding, nil)
 	chunkRepo.On("FindSimilar", mock.Anything, testEmbedding, chunkrepo.SimilarityOptions{
@@ -564,9 +449,8 @@ func TestSearchPatterns_ContextCancellation(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, agentRepo, chunkRepo)
+	svc := newTestService(embSvc, patternRepo, chunkRepo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately.
@@ -589,9 +473,8 @@ func TestSearchPatterns_WithTags(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, agentRepo, chunkRepo)
+	svc := newTestService(embSvc, patternRepo, chunkRepo)
 
 	id1 := uuid.New()
 
@@ -624,9 +507,8 @@ func TestSearchPatterns_FindSimilarError(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, agentRepo, chunkRepo)
+	svc := newTestService(embSvc, patternRepo, chunkRepo)
 
 	embSvc.On("Embed", mock.Anything, "some query").Return(testEmbedding, nil)
 	chunkRepo.On("FindSimilar", mock.Anything, testEmbedding, mock.Anything).
@@ -648,9 +530,8 @@ func TestSearchPatterns_NoAgentRepoCallsOnSearch(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, agentRepo, chunkRepo)
+	svc := newTestService(embSvc, patternRepo, chunkRepo)
 
 	id := uuid.New()
 	embSvc.On("Embed", mock.Anything, "no agent lookups").Return(testEmbedding, nil)
@@ -668,7 +549,6 @@ func TestSearchPatterns_NoAgentRepoCallsOnSearch(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Len(t, result.Matches, 1)
-	agentRepo.AssertNotCalled(t, "Get")
 	patternRepo.AssertNotCalled(t, "GetPatternIDsByAgent")
 }
 
@@ -677,9 +557,8 @@ func TestSearchPatterns_NoPatternIDLookupOnSearch(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, agentRepo, chunkRepo)
+	svc := newTestService(embSvc, patternRepo, chunkRepo)
 
 	id := uuid.New()
 	embSvc.On("Embed", mock.Anything, "pattern id lookup removed").Return(testEmbedding, nil)
@@ -698,7 +577,6 @@ func TestSearchPatterns_NoPatternIDLookupOnSearch(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Len(t, result.Matches, 1)
 	patternRepo.AssertNotCalled(t, "GetPatternIDsByAgent")
-	agentRepo.AssertNotCalled(t, "Get")
 }
 
 func TestSearchPatterns_ChunkRepoNotConfigured(t *testing.T) {
@@ -729,10 +607,9 @@ func TestSearchPatterns_GraphExpansion_HappyPath(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
 	graphRepo := new(mockGraphRepo)
-	svc := newTestServiceWithGraph(embSvc, patternRepo, agentRepo, chunkRepo, graphRepo)
+	svc := newTestServiceWithGraph(embSvc, patternRepo, chunkRepo, graphRepo)
 
 	id1 := uuid.New()
 	id2 := uuid.New()
@@ -788,9 +665,8 @@ func TestSearchPatterns_GraphExpansion_NilGraphRepo(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, agentRepo, chunkRepo) // graphRepo = nil
+	svc := newTestService(embSvc, patternRepo, chunkRepo) // graphRepo = nil
 
 	id1 := uuid.New()
 
@@ -816,10 +692,9 @@ func TestSearchPatterns_GraphExpansion_GraphFailure(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
 	graphRepo := new(mockGraphRepo)
-	svc := newTestServiceWithGraph(embSvc, patternRepo, agentRepo, chunkRepo, graphRepo)
+	svc := newTestServiceWithGraph(embSvc, patternRepo, chunkRepo, graphRepo)
 
 	id1 := uuid.New()
 
@@ -846,10 +721,9 @@ func TestSearchPatterns_GraphExpansion_DeduplicateAgainstVector(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
 	graphRepo := new(mockGraphRepo)
-	svc := newTestServiceWithGraph(embSvc, patternRepo, agentRepo, chunkRepo, graphRepo)
+	svc := newTestServiceWithGraph(embSvc, patternRepo, chunkRepo, graphRepo)
 
 	id1 := uuid.New()
 	id2 := uuid.New() // Also returned by graph
@@ -884,10 +758,9 @@ func TestSearchPatterns_GraphExpansion_CrossSeedDedup(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
 	graphRepo := new(mockGraphRepo)
-	svc := newTestServiceWithGraph(embSvc, patternRepo, agentRepo, chunkRepo, graphRepo)
+	svc := newTestServiceWithGraph(embSvc, patternRepo, chunkRepo, graphRepo)
 
 	id1 := uuid.New()
 	id2 := uuid.New()
@@ -929,10 +802,9 @@ func TestSearchPatterns_GraphExpansion_LanguageFiltering(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
 	graphRepo := new(mockGraphRepo)
-	svc := newTestServiceWithGraph(embSvc, patternRepo, agentRepo, chunkRepo, graphRepo)
+	svc := newTestServiceWithGraph(embSvc, patternRepo, chunkRepo, graphRepo)
 
 	id1 := uuid.New()
 	goID := uuid.New()
@@ -980,10 +852,9 @@ func TestSearchPatterns_GraphExpansion_LanguageFilter_Empty(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
 	graphRepo := new(mockGraphRepo)
-	svc := newTestServiceWithGraph(embSvc, patternRepo, agentRepo, chunkRepo, graphRepo)
+	svc := newTestServiceWithGraph(embSvc, patternRepo, chunkRepo, graphRepo)
 
 	id1 := uuid.New()
 	goID := uuid.New()
@@ -1020,10 +891,9 @@ func TestSearchPatterns_GraphExpansion_EmptyVectorResults(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
 	graphRepo := new(mockGraphRepo)
-	svc := newTestServiceWithGraph(embSvc, patternRepo, agentRepo, chunkRepo, graphRepo)
+	svc := newTestServiceWithGraph(embSvc, patternRepo, chunkRepo, graphRepo)
 
 	embSvc.On("Embed", mock.Anything, "obscure query").Return(testEmbedding, nil)
 	chunkRepo.On("FindSimilar", mock.Anything, testEmbedding, mock.Anything).Return([]*chunkrepo.Match{}, nil)
@@ -1047,10 +917,9 @@ func TestSearchPatterns_GraphExpansion_Cap(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
 	graphRepo := new(mockGraphRepo)
-	svc := newTestServiceWithGraph(embSvc, patternRepo, agentRepo, chunkRepo, graphRepo)
+	svc := newTestServiceWithGraph(embSvc, patternRepo, chunkRepo, graphRepo)
 
 	id1 := uuid.New()
 
@@ -1099,10 +968,9 @@ func TestSearchPatterns_GraphExpansion_GetByIDsFailure(t *testing.T) {
 
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
-	agentRepo := new(mockAgentRepo)
 	chunkRepo := new(mockChunkRepo)
 	graphRepo := new(mockGraphRepo)
-	svc := newTestServiceWithGraph(embSvc, patternRepo, agentRepo, chunkRepo, graphRepo)
+	svc := newTestServiceWithGraph(embSvc, patternRepo, chunkRepo, graphRepo)
 
 	id1 := uuid.New()
 	graphID1 := uuid.New()

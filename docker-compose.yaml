@@ -43,7 +43,7 @@ services:
 
   dev_mcp:
     image: ghcr.io/twistingmercury/mnemonic:latest-dev
-    pull_policy: always
+    pull_policy: never
     restart: unless-stopped
     ports:
       - "8081:8081"
@@ -92,7 +92,7 @@ services:
 
   dev_api:
     image: ghcr.io/twistingmercury/mnemonic-api:latest-dev
-    pull_policy: always
+    pull_policy: never
     restart: unless-stopped
     ports:
       - "8080:8080"
