@@ -73,7 +73,7 @@ services:
 
   mnemonic_api:
     image: ghcr.io/twistingmercury/mnemonic-api:latest-dev
-    pull_policy: always
+    pull_policy: never
     environment:
       MNEMONIC_DATABASE_POSTGRES_HOST: postgres
       MNEMONIC_DATABASE_POSTGRES_PASSWORD: mnemonic_dev
