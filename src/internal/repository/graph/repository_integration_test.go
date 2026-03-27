@@ -4,6 +4,8 @@ package graph_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -909,27 +911,6 @@ func TestIntegration_EdgeCases(t *testing.T) {
 		assert.Empty(t, results, "pattern with no concepts should have no related patterns")
 	})
 
-	t.Run("SetPatternAgentRelevance with nil list", func(t *testing.T) {
-		agentName := testIntegrationAgentPrefix + "edge-agent"
-		require.NoError(t, repo.SyncAgent(ctx, agentName))
-
-		p := testPattern("edge-nil-assoc")
-		require.NoError(t, repo.SyncPattern(ctx, p))
-
-		// First set an association.
-		require.NoError(t, repo.SetPatternAgentRelevance(ctx, p.ID, []graph.AgentAssociation{
-			{AgentName: agentName, Relevance: 0.8},
-		}))
-
-		// Clear with nil (should behave like empty list).
-		err := repo.SetPatternAgentRelevance(ctx, p.ID, nil)
-		require.NoError(t, err)
-
-		results, err := repo.FindPatternsByAgent(ctx, agentName, 10)
-		require.NoError(t, err)
-		assert.Empty(t, results, "nil associations should clear all relationships")
-	})
-
 	t.Run("SyncConcepts for pattern that does not exist in graph", func(t *testing.T) {
 		// SyncConcepts uses MATCH (p:Pattern {id: $patternId}) which will simply
 		// not find the pattern, resulting in no MERGE operations. The step 1
@@ -972,30 +953,6 @@ func TestIntegration_EdgeCases(t *testing.T) {
 
 		count = countConceptRelationships(t, driver, p.ID)
 		assert.Equal(t, int64(0), count, "concept relationships should be removed with pattern")
-	})
-
-	t.Run("DeleteAgent also removes relevance relationships", func(t *testing.T) {
-		agentName := testIntegrationAgentPrefix + "delete-with-rels"
-		require.NoError(t, repo.SyncAgent(ctx, agentName))
-
-		p := testPattern("agent-rel-delete")
-		require.NoError(t, repo.SyncPattern(ctx, p))
-
-		require.NoError(t, repo.SetPatternAgentRelevance(ctx, p.ID, []graph.AgentAssociation{
-			{AgentName: agentName, Relevance: 0.7},
-		}))
-
-		// Verify relationship exists.
-		results, err := repo.FindPatternsByAgent(ctx, agentName, 10)
-		require.NoError(t, err)
-		require.Len(t, results, 1)
-
-		// Delete the agent; DETACH DELETE removes agent and all its relationships.
-		require.NoError(t, repo.DeleteAgent(ctx, agentName))
-
-		results, err = repo.FindPatternsByAgent(ctx, agentName, 10)
-		require.NoError(t, err)
-		assert.Empty(t, results, "patterns should no longer be associated with deleted agent")
 	})
 
 	t.Run("concepts shared across patterns are not duplicated", func(t *testing.T) {

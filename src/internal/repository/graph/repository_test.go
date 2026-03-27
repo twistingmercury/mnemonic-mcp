@@ -1310,4 +1310,3 @@ func TestRepository_Validation_FindRelatedPatterns(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "patternID must not be nil UUID")
 }
-
