@@ -70,6 +70,8 @@ port is not published to the host; host port 8080 routes to `dev_api`. The stack
 does not include `mnemonic-enricher`, so queued content will not become
 searchable unless that service is run separately.
 
+To run the add the mcp server to Claude: `claude mcp add --transport http --scope user mnemonic http://localhost:8081/mcp`
+
 ## Key Considerations
 
 - **This repo**: Read-only MCP search and operational endpoints; administration
