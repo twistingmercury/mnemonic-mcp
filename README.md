@@ -85,7 +85,7 @@ To run the add the mcp server to Claude: `claude mcp add --transport http --scop
 
 ### Quick Start
 
-Requires Go 1.27.1+, Docker 27+, and Docker Compose 2.32+.
+Requires Go 1.27.2+, Docker 27+, and Docker Compose 2.32+.
 
 ```bash
 git clone https://github.com/twistingmercury/mnemonic-mcp.git
