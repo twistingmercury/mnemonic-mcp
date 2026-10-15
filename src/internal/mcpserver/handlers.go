@@ -46,7 +46,7 @@ func handleSearchPatterns(deps ToolDependencies, logger zerolog.Logger, defaultT
 			return nil, nil, fmt.Errorf("%w: threshold must be between 0.0 and 1.0, got %f", ErrInvalidInput, threshold)
 		}
 
-		logger.Info().
+		withTrace(ctx, logger).Info().
 			Str("tool", "search_patterns").
 			Str("query_preview", truncate(input.Query, 100)).
 			Msg("mcp tool invoked")
@@ -89,7 +89,7 @@ func handleFindRelatedPatterns(deps ToolDependencies, logger zerolog.Logger) mcp
 			return nil, nil, fmt.Errorf("%w: limit must be between 1 and %d, got %d", ErrInvalidInput, maxRelatedLimit, limit)
 		}
 
-		logger.Info().
+		withTrace(ctx, logger).Info().
 			Str("tool", "find_related_patterns").
 			Str("pattern_id", patternID.String()).
 			Msg("mcp tool invoked")
@@ -125,7 +125,7 @@ func handleGetPattern(deps ToolDependencies, logger zerolog.Logger) mcp.ToolHand
 			return nil, nil, fmt.Errorf("%w: invalid UUID %q", ErrInvalidInput, input.ID)
 		}
 
-		logger.Info().
+		withTrace(ctx, logger).Info().
 			Str("tool", "get_pattern").
 			Str("pattern_id", id.String()).
 			Msg("mcp tool invoked")

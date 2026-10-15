@@ -11,10 +11,10 @@ import (
 type Registry struct {
 	Patterns *Pattern
 	Database *Database
+	Tools    *Tools
 }
 
 // NewRegistry creates all metric instruments using the provided meter.
-// It initializes pattern and database metrics.
 func NewRegistry(meter metric.Meter) (*Registry, error) {
 	patterns, err := NewPattern(meter)
 	if err != nil {
@@ -26,8 +26,14 @@ func NewRegistry(meter metric.Meter) (*Registry, error) {
 		return nil, fmt.Errorf("database metrics: %w", err)
 	}
 
+	tools, err := NewTools(meter)
+	if err != nil {
+		return nil, fmt.Errorf("tool metrics: %w", err)
+	}
+
 	return &Registry{
 		Patterns: patterns,
 		Database: database,
+		Tools:    tools,
 	}, nil
 }

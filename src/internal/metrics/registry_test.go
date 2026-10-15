@@ -19,4 +19,5 @@ func TestNewRegistry(t *testing.T) {
 	assert.NotNil(t, registry)
 	assert.NotNil(t, registry.Patterns)
 	assert.NotNil(t, registry.Database)
+	assert.NotNil(t, registry.Tools)
 }
