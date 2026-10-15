@@ -3,7 +3,7 @@
 [![Mnemonic MCP CI](https://github.com/twistingmercury/mnemonic-mcp/actions/workflows/mnemonic-ci.yaml/badge.svg)](https://github.com/twistingmercury/mnemonic-mcp/actions/workflows/mnemonic-ci.yaml)
 
 > **Maturity Level**: Emerging — MCP search server functional, Admin REST API in a separate service (`mnemonic-api`)
-> **Version**: v0.3.2
+> **Version**: v0.4.0
 >
 > - **Emerging**: Prototype, not production-ready, expect breaking changes
 > - **Basic**: Production-ready but actively evolving, expect minor version changes
@@ -137,7 +137,7 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/).
 Version is determined from git tags:
 
 ```bash
-git describe --tags --always
+git describe --tags --abbrev=0
 ```
 
 See [CHANGELOG.md](CHANGELOG.md) for development progress.
