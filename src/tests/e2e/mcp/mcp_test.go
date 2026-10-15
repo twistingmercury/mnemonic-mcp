@@ -196,11 +196,7 @@ func TestMCPSearchPatterns_ThresholdTooHigh_ReturnsError(t *testing.T) {
 func TestMCPSearchPatterns_ValidQuery_ReturnsResponse(t *testing.T) {
 	client := helpers.NewMCPClient(t)
 	resp := client.CallTool(t, "search_patterns", map[string]any{"query": "dependency injection"})
-	// Server may return an error (embedding service unavailable) or a success with no results.
-	// Either is acceptable — we only assert that the call completes without a transport failure.
-	if resp.Error == nil && resp.Result == nil {
-		t.Fatal("expected either a JSON-RPC error or a result, got neither")
-	}
+	helpers.AssertMCPSuccess(t, resp)
 }
 
 // Section 8: Protocol correctness
@@ -251,10 +247,8 @@ func TestMCPEndpoint_MalformedJSON_DoesNotPanic(t *testing.T) {
 
 // TestGraphEnhancedSearch_UnenrichedPattern_NoGraphSection creates an unenriched
 // pattern via the API and searches for it via MCP. Because the pattern has no
-// embeddings or graph nodes, the response either succeeds with vector-only results
-// (no "Related Patterns (via graph)" section) or returns a tool-level error
-// (embedding service unavailable). Either outcome is valid — the test validates
-// graceful degradation.
+// embeddings or graph nodes, the response must succeed without a
+// "Related Patterns (via graph)" section.
 func TestGraphEnhancedSearch_UnenrichedPattern_NoGraphSection(t *testing.T) {
 	apiClient := helpers.NewTestClient(t)
 	pattern := helpers.CreateTestPattern(t, apiClient)
@@ -263,19 +257,6 @@ func TestGraphEnhancedSearch_UnenrichedPattern_NoGraphSection(t *testing.T) {
 	resp := mcpClient.CallTool(t, "search_patterns", map[string]any{
 		"query": pattern.Name,
 	})
-
-	// A JSON-RPC protocol error is unexpected — the call itself should reach the server.
-	if resp.Error != nil && resp.Result == nil {
-		t.Logf("JSON-RPC error (embedding service likely unavailable): code=%d message=%s",
-			resp.Error.Code, resp.Error.Message)
-		return
-	}
-
-	// Tool-level errors (isError=true) are acceptable when the embedding service is down.
-	if resp.Result != nil && resp.Result.IsError {
-		t.Log("tool-level error returned (embedding service likely unavailable) — skipping format assertion")
-		return
-	}
 
 	// Success path: the response must not contain a graph section for unenriched patterns.
 	result := helpers.AssertMCPSuccess(t, resp)
@@ -298,18 +279,6 @@ func TestGraphEnhancedSearch_ResponseFormat_ContainsExpectedSections(t *testing.
 		"query": "dependency injection",
 	})
 
-	// Either a result or a tool-level error is acceptable when the embedding service
-	// may be unavailable in the test environment.
-	if resp.Error != nil && resp.Result == nil {
-		t.Logf("JSON-RPC error (embedding service likely unavailable): code=%d message=%s",
-			resp.Error.Code, resp.Error.Message)
-		return
-	}
-	if resp.Result != nil && resp.Result.IsError {
-		t.Log("tool-level error returned (embedding service likely unavailable) — skipping format assertion")
-		return
-	}
-
 	result := helpers.AssertMCPSuccess(t, resp)
 	if len(result.Content) == 0 {
 		t.Log("empty content returned — no format assertions to make")
@@ -317,6 +286,9 @@ func TestGraphEnhancedSearch_ResponseFormat_ContainsExpectedSections(t *testing.
 	}
 
 	text := result.Content[0].Text
+	if strings.HasPrefix(text, "No patterns found matching") {
+		return // nothing is enriched in this suite, so an empty result is expected
+	}
 
 	// The header of a successful result must advertise the match count.
 	if !strings.Contains(text, "Found") || !strings.Contains(text, "matching") {
@@ -347,16 +319,6 @@ func TestGraphEnhancedSearch_NoDuplicatePatterns(t *testing.T) {
 	resp := mcpClient.CallTool(t, "search_patterns", map[string]any{
 		"query": pattern.Name,
 	})
-
-	if resp.Error != nil && resp.Result == nil {
-		t.Logf("JSON-RPC error (embedding service likely unavailable): code=%d message=%s",
-			resp.Error.Code, resp.Error.Message)
-		return
-	}
-	if resp.Result != nil && resp.Result.IsError {
-		t.Log("tool-level error returned (embedding service likely unavailable) — skipping duplicate check")
-		return
-	}
 
 	result := helpers.AssertMCPSuccess(t, resp)
 	if len(result.Content) == 0 {
@@ -396,16 +358,6 @@ func TestGraphEnhancedSearch_VectorOnlyWhenNoGraphData(t *testing.T) {
 	resp := mcpClient.CallTool(t, "search_patterns", map[string]any{
 		"query": pattern.Name,
 	})
-
-	if resp.Error != nil && resp.Result == nil {
-		t.Logf("JSON-RPC error (embedding service likely unavailable): code=%d message=%s",
-			resp.Error.Code, resp.Error.Message)
-		return
-	}
-	if resp.Result != nil && resp.Result.IsError {
-		t.Log("tool-level error returned (embedding service likely unavailable) — skipping vector-only assertion")
-		return
-	}
 
 	result := helpers.AssertMCPSuccess(t, resp)
 	if len(result.Content) == 0 {

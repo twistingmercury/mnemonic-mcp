@@ -98,7 +98,9 @@ make tests-unit
 `make build` builds `ghcr.io/twistingmercury/mnemonic` with the current version
 and `latest` tags, then runs the end-to-end suite. The suite also requires the
 `ghcr.io/twistingmercury/mnemonic-api:latest-dev` image to be available to
-Docker.
+Docker. It points `openai.base_url` (`MNEMONIC_OPENAI_BASE_URL`, default
+`https://api.openai.com/v1`) at a local stub in `src/tests/openai-stub`, so no
+E2E test calls OpenAI.
 
 The local Compose stack is a separate workflow. Before `make start`, provide
 `MNEMONIC_OPENAI_API_KEY` and ensure these development images already exist

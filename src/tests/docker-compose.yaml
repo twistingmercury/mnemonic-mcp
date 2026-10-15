@@ -33,6 +33,12 @@ services:
     networks:
       - mnemonic-network
 
+  openai_stub:
+    build:
+      context: ./openai-stub
+    networks:
+      - mnemonic-network
+
   mnemonic_mcp:
     image: ghcr.io/twistingmercury/mnemonic:latest
     environment:
@@ -42,6 +48,7 @@ services:
       MNEMONIC_DATABASE_NEO4J_URI: bolt://neo4j:7687
       MNEMONIC_DATABASE_NEO4J_PASSWORD: mnemonic_dev
       MNEMONIC_OPENAI_API_KEY: sk-test-dummy
+      MNEMONIC_OPENAI_BASE_URL: http://openai_stub:8090/v1
       MNEMONIC_MCP_PORT: 8081
       MNEMONIC_LOGGING_LEVEL: error
     depends_on:
@@ -49,6 +56,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      openai_stub:
+        condition: service_started
     healthcheck:
       test: ["CMD", "/mnemonic", "--health"]
       interval: 2s
