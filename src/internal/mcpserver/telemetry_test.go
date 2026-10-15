@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -93,12 +94,24 @@ func TestToolCallTelemetry(t *testing.T) {
 		"find_related_patterns/unavailable": 1,
 	}, got)
 
-	// Traces: each tool span is a child of an /mcp HTTP server span.
-	spans := recorder.Ended()
+	// Traces: each tool span is a child of an /mcp HTTP server span. otelhttp
+	// ends that span after the handler returns, which can be after the client
+	// has read the reply, so wait until every tool span's parent has ended.
+	var spans []sdktrace.ReadOnlySpan
 	byID := map[string]sdktrace.ReadOnlySpan{}
-	for _, s := range spans {
-		byID[s.SpanContext().SpanID().String()] = s
-	}
+	require.Eventually(t, func() bool {
+		spans = recorder.Ended()
+		clear(byID)
+		for _, s := range spans {
+			byID[s.SpanContext().SpanID().String()] = s
+		}
+		for _, s := range spans {
+			if _, ok := byID[s.Parent().SpanID().String()]; s.Parent().IsValid() && !ok {
+				return false
+			}
+		}
+		return true
+	}, 2*time.Second, 5*time.Millisecond)
 	status := map[string]codes.Code{}
 	for _, s := range spans {
 		if s.Name() != "tools/call search_patterns" && s.Name() != "tools/call find_related_patterns" {
