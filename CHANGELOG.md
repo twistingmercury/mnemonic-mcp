@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- An `openai.base_url` setting (`MNEMONIC_OPENAI_BASE_URL`, default `https://api.openai.com/v1`) used by the embedding client and the `/health` model check. The E2E suite points it at a local OpenAI stub, so the search tests now require a successful result instead of accepting an embedding error.
 - Tracing for the `/mcp` endpoint. Each request gets an otelhttp server span (continuing any incoming W3C trace context) and each tool call a `tools/call <tool>` span beneath it, with child spans for PostgreSQL queries (otelpgx), Neo4j operations and OpenAI embedding calls (otelhttp). Retried embedding calls add an `openai.embed.retry` span event.
 - `mnemonic.mcp.tool_calls` (by `tool` and `outcome`: ok, invalid_input, not_found, unavailable) and `mnemonic.mcp.tool_duration`, plus the standard `http.server.*` metrics for `/mcp`.
 - PostgreSQL client metrics from otelpgx: `db.client.operation.duration` per operation and `pgxpool.*` pool statistics.
