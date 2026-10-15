@@ -7,10 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Tracing for the `/mcp` endpoint. Each request gets an otelhttp server span (continuing any incoming W3C trace context) and each tool call a `tools/call <tool>` span beneath it, with child spans for PostgreSQL queries (otelpgx), Neo4j operations and OpenAI embedding calls (otelhttp). Retried embedding calls add an `openai.embed.retry` span event.
+- `mnemonic.mcp.tool_calls` (by `tool` and `outcome`: ok, invalid_input, not_found, unavailable) and `mnemonic.mcp.tool_duration`, plus the standard `http.server.*` metrics for `/mcp`.
+- PostgreSQL client metrics from otelpgx: `db.client.operation.duration` per operation and `pgxpool.*` pool statistics.
+- `mnemonic.db.query_latency` and `mnemonic.db.query_errors` are now recorded for every Neo4j operation, and `mnemonic.patterns.query_latency` and `mnemonic.patterns.returned` for every vector search. Previously these instruments were created but never recorded.
+- Tool-call log lines carry `trace_id` and `span_id`.
+
 ### Changed
 
 - Updated Go modules and Docker build images to Go 1.27.2.
 - Upgraded `golang.org/x/net` to v0.60.0 to clear five govulncheck findings in v0.59.0.
+- Custom latency histograms record fractional milliseconds. Previously durations were truncated to whole milliseconds, so sub-millisecond calls recorded 0.
+
+### Removed
+
+- The unused connection pool gauges, replaced by the otelpgx pool statistics.
 
 ## [0.3.2] - 2026-09-09
 

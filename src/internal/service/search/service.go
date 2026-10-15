@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"github.com/twistingmercury/mnemonic/internal/metrics"
 	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
@@ -88,6 +89,7 @@ type searchService struct {
 	patternRepo         patternrepo.Repository
 	chunkRepo           chunkrepo.Repository
 	graphRepo           graphrepo.Repository
+	metrics             *metrics.Pattern
 	logger              zerolog.Logger
 	graphSeedCount      int
 	graphResultsPerSeed int
@@ -96,11 +98,13 @@ type searchService struct {
 
 // New creates a new search Service backed by the given dependencies.
 // graphRepo may be nil; graph-enhanced search will be skipped when absent.
+// patternMetrics may be nil, in which case vector search is not recorded.
 func New(
 	embeddingSvc openaisvc.EmbeddingService,
 	patternRepo patternrepo.Repository,
 	chunkRepo chunkrepo.Repository,
 	graphRepo graphrepo.Repository,
+	patternMetrics *metrics.Pattern,
 	logger zerolog.Logger,
 ) Service {
 	return &searchService{
@@ -108,6 +112,7 @@ func New(
 		patternRepo:         patternRepo,
 		chunkRepo:           chunkRepo,
 		graphRepo:           graphRepo,
+		metrics:             patternMetrics,
 		logger:              logger,
 		graphSeedCount:      DefaultGraphSeedCount,
 		graphResultsPerSeed: DefaultGraphResultsPerSeed,
@@ -140,9 +145,13 @@ func (s *searchService) SearchPatterns(ctx context.Context, opts SearchOptions) 
 		Tags:          opts.Tags,
 	}
 
+	searchStart := time.Now()
 	rawMatches, err := s.chunkRepo.FindSimilar(ctx, embedding, simOpts)
 	if err != nil {
 		return nil, fmt.Errorf("find similar chunks: %w", err)
+	}
+	if s.metrics != nil {
+		s.metrics.RecordQuery(ctx, "pgvector", time.Since(searchStart), len(rawMatches))
 	}
 
 	matches := make([]*ChunkMatch, len(rawMatches))

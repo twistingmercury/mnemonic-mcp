@@ -20,6 +20,7 @@ import (
 	"github.com/twistingmercury/mnemonic/internal/handlers/operations"
 	"github.com/twistingmercury/mnemonic/internal/health"
 	"github.com/twistingmercury/mnemonic/internal/mcpserver"
+	"github.com/twistingmercury/mnemonic/internal/metrics"
 	"github.com/twistingmercury/mnemonic/internal/middleware"
 	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
@@ -77,7 +78,7 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	}
 
 	// Wire MCP dependencies.
-	toolDeps, err := wireDependencies(pgPool, neo4jDriver, cfg, logger)
+	toolDeps, err := wireDependencies(pgPool, neo4jDriver, cfg, logger, tel.MetricsRegistry())
 	if err != nil {
 		return fmt.Errorf("failed to wire dependencies: %w", err)
 	}
@@ -92,7 +93,7 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	adminServer := CreateHTTPServer(router, cfg)
 
 	// Build the MCP HTTP server.
-	mcpSrv := mcpserver.NewMCPServer(toolDeps, logger, cfg.MCP)
+	mcpSrv := mcpserver.NewMCPServer(toolDeps, logger, cfg.MCP, tel.MetricsRegistry().Tools)
 	mcpHandler := mcpserver.NewMCPHTTPHandler(mcpSrv)
 	mcpHTTPServer := mcpserver.NewMCPHTTPServer(cfg.MCP, cfg.Server.Host, mcpHandler)
 
@@ -159,17 +160,18 @@ func wireDependencies(
 	neo4jDriver neo4j.DriverWithContext,
 	cfg *config.MnemonicConfig,
 	logger zerolog.Logger,
+	registry *metrics.Registry,
 ) (mcpserver.ToolDependencies, error) {
 	// Repositories.
 	patternRepo := patternrepo.NewRepository(pgPool)
-	graphRepo := graphrepo.NewRepository(neo4jDriver, cfg.Database.Neo4j.Database)
+	graphRepo := graphrepo.NewRepository(neo4jDriver, cfg.Database.Neo4j.Database, registry.Database)
 	chunkRepo := chunkrepo.NewRepository(pgPool)
 
 	// External services.
 	embeddingSvc := openaisvc.NewEmbeddingService(cfg.OpenAI)
 
 	// Domain services used by MCP tools.
-	searchSvc := searchsvc.New(embeddingSvc, patternRepo, chunkRepo, graphRepo, logger)
+	searchSvc := searchsvc.New(embeddingSvc, patternRepo, chunkRepo, graphRepo, registry.Patterns, logger)
 	patternSvc := patternsvc.New(patternRepo, nil, graphRepo, pgPool, chunkRepo, logger)
 
 	// MCP facade.

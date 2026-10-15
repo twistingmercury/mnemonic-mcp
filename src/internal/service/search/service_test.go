@@ -225,12 +225,12 @@ var testEmbedding = []float32{0.1, 0.2, 0.3}
 
 func newTestService(embSvc *mockEmbeddingService, patternRepo *mockPatternRepo, chunkRepo *mockChunkRepo) search.Service {
 	logger := zerolog.Nop()
-	return search.New(embSvc, patternRepo, chunkRepo, nil, logger)
+	return search.New(embSvc, patternRepo, chunkRepo, nil, nil, logger)
 }
 
 func newTestServiceWithGraph(embSvc *mockEmbeddingService, patternRepo *mockPatternRepo, chunkRepo *mockChunkRepo, graphRepo *mockGraphRepo) search.Service {
 	logger := zerolog.Nop()
-	return search.New(embSvc, patternRepo, chunkRepo, graphRepo, logger)
+	return search.New(embSvc, patternRepo, chunkRepo, graphRepo, nil, logger)
 }
 
 func testChunkMatch(patternID uuid.UUID, patternName string, similarity float64) *chunkrepo.Match {
@@ -585,7 +585,7 @@ func TestSearchPatterns_ChunkRepoNotConfigured(t *testing.T) {
 	embSvc := new(mockEmbeddingService)
 	patternRepo := new(mockPatternRepo)
 	// Pass nil chunkRepo explicitly.
-	svc := search.New(embSvc, patternRepo, nil, nil, zerolog.Nop())
+	svc := search.New(embSvc, patternRepo, nil, nil, nil, zerolog.Nop())
 
 	embSvc.On("Embed", mock.Anything, "some query").Return(testEmbedding, nil)
 
