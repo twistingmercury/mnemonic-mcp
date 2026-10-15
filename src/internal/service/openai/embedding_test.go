@@ -171,3 +171,38 @@ func TestEmbed_EmptyDataResponse(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, openai.ErrEmbeddingFailed)
 }
+
+func TestEmbed_ClientErrorIsNotRetried(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusNotFound} {
+		var callCount atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			callCount.Add(1)
+			w.WriteHeader(code)
+		}))
+
+		_, err := openai.NewEmbeddingServiceForTest(testEmbeddingConfig(), srv.URL).Embed(context.Background(), "bad request")
+		srv.Close()
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, openai.ErrEmbeddingFailed)
+		assert.Equal(t, int32(1), callCount.Load(), "status %d must not be retried", code)
+	}
+}
+
+func TestEmbed_RateLimitIsRetried(t *testing.T) {
+	t.Parallel()
+
+	var callCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		callCount.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	_, err := openai.NewEmbeddingServiceForTest(testEmbeddingConfig(), srv.URL).Embed(context.Background(), "slow down")
+
+	require.Error(t, err)
+	assert.Equal(t, int32(4), callCount.Load())
+}

@@ -88,6 +88,13 @@ func (e *openaiEmbedding) Embed(ctx context.Context, text string) ([]float32, er
 		}
 		lastErr = err
 
+		// A 4xx other than 429 (bad key, bad model, bad input) will fail the
+		// same way again, so it is not retried.
+		var statusErr *apiStatusError
+		if errors.As(err, &statusErr) && !statusErr.retryable() {
+			break
+		}
+
 		// Sleep before retry, unless this was the last attempt.
 		if attempt < e.retries {
 			trace.SpanFromContext(ctx).AddEvent("openai.embed.retry", trace.WithAttributes(
@@ -137,7 +144,7 @@ func (e *openaiEmbedding) doEmbed(ctx context.Context, text string) ([]float32, 
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(respBody))
+		return nil, &apiStatusError{code: resp.StatusCode, body: string(respBody)}
 	}
 
 	var embResp embeddingResponse
@@ -150,4 +157,20 @@ func (e *openaiEmbedding) doEmbed(ctx context.Context, text string) ([]float32, 
 	}
 
 	return embResp.Data[0].Embedding, nil
+}
+
+// apiStatusError is a non-200 response from the embeddings API.
+type apiStatusError struct {
+	code int
+	body string
+}
+
+func (e *apiStatusError) Error() string {
+	return fmt.Sprintf("API returned status %d: %s", e.code, e.body)
+}
+
+// retryable reports whether another attempt could succeed: rate limiting and
+// server errors can, other client errors cannot.
+func (e *apiStatusError) retryable() bool {
+	return e.code == http.StatusTooManyRequests || e.code >= http.StatusInternalServerError
 }

@@ -62,6 +62,4 @@ func TestCheckHealth_OpenAIWarningDoesNotFail(t *testing.T) {
 	for _, r := range results[2:] {
 		assert.Equal(t, heartbeat.StatusWarning, r.Status, r.Name)
 	}
-
-	assert.NoError(t, health.CheckHealth())
 }

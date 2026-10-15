@@ -1,10 +1,5 @@
-// Package graph provides the Neo4j repository implementation for knowledge
-// graph operations. It manages pattern node synchronization, concept
-// extraction via MENTIONED_IN relationships, pattern similarity via
-// RELATED_TO relationships, and graph-based discovery queries.
-//
-// Documentation:
-//   - Architecture: docs/architecture/08-data-architecture.md (Neo4j Graph Model, Data Flow Patterns, Data Lifecycle Management)
-//   - Architecture: docs/architecture/07-observability-architecture.md (SLOs (Service Level Objectives))
-//   - Design: docs/design/data-storage.md (Repository Interfaces > GraphRepository)
+// Package graph provides the read-only Neo4j repository for the knowledge
+// graph: concepts linked to patterns via MENTIONED_IN, and pattern similarity
+// via pre-computed RELATED_TO edges. Each query gets a client span and, when
+// metrics are enabled, a latency and error recording.
 package graph

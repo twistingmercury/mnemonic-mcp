@@ -45,49 +45,20 @@ const (
 
 // Default values for OpenAI configuration
 const (
-	DefaultOpenAIEmbeddingModel       = "text-embedding-3-large"
-	DefaultOpenAIEmbeddingDimensions  = 2000
-	DefaultOpenAIExtractionModel      = "gpt-4o-mini"
-	DefaultOpenAIMaxRequestsPerMinute = 500
-	DefaultOpenAIRetryAttempts        = 3
-	DefaultOpenAIRetryDelay           = 1 * time.Second
-)
-
-// Default values for rate limiting configuration
-const (
-	DefaultRateLimitEnabled           = false
-	DefaultRateLimitRequestsPerSecond = 100
-	DefaultRateLimitBurstSize         = 200
-	DefaultRateLimitPerUserRPM        = 60
-	DefaultRateLimitPerUserBurst      = 10
-)
-
-// Default values for enrichment configuration
-const (
-	DefaultEnrichmentWorkerCount            = 2
-	DefaultEnrichmentPollInterval           = 5 * time.Second
-	DefaultEnrichmentMaxAttempts            = 3
-	DefaultEnrichmentRetryDelay             = 30 * time.Second
-	DefaultEnrichmentJobTimeout             = 5 * time.Minute
-	DefaultEnrichmentDrainTimeout           = 30 * time.Second
-	DefaultEnrichmentCompletedRetention     = 168 * time.Hour // 7 days
-	DefaultEnrichmentFailedRetention        = 720 * time.Hour // 30 days
-	DefaultEnrichmentRelatedToMinSimilarity = 0.3
+	DefaultOpenAIEmbeddingModel      = "text-embedding-3-large"
+	DefaultOpenAIEmbeddingDimensions = 2000
+	DefaultOpenAIRetryAttempts       = 3
+	DefaultOpenAIRetryDelay          = 1 * time.Second
 )
 
 // Default values for logging configuration
-const (
-	DefaultLoggingLevel         = "info"
-	DefaultLoggingFormat        = "json"
-	DefaultLoggingIncludeCaller = false
-)
+const DefaultLoggingLevel = "info"
 
 // Default values for observability configuration
 const (
 	DefaultMetricsEnabled      = true
 	DefaultMetricsPath         = "/metrics"
 	DefaultMetricsPort         = 9090
-	DefaultHealthEnabled       = true
 	DefaultHealthPath          = "/health"
 	DefaultTracingEnabled      = false
 	DefaultTracingSampleRate   = 0.1

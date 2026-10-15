@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -17,8 +16,6 @@ type MnemonicConfig struct {
 	MCP           MCPConfig           `mapstructure:"mcp"`
 	Database      DatabaseConfig      `mapstructure:"database"`
 	OpenAI        OpenAIConfig        `mapstructure:"openai"`
-	RateLimit     RateLimitConfig     `mapstructure:"rate_limit"`
-	Enrichment    EnrichmentConfig    `mapstructure:"enrichment"`
 	Logging       LoggingConfig       `mapstructure:"logging"`
 	Observability ObservabilityConfig `mapstructure:"observability"`
 }
@@ -81,53 +78,21 @@ type Neo4jConfig struct {
 
 // OpenAIConfig contains OpenAI API settings.
 type OpenAIConfig struct {
-	APIKey               string        `mapstructure:"api_key"` // #nosec G117 -- credentials loaded from config/env, not serialized
-	EmbeddingModel       string        `mapstructure:"embedding_model"`
-	EmbeddingDimensions  int           `mapstructure:"embedding_dimensions"`
-	ExtractionModel      string        `mapstructure:"extraction_model"`
-	MaxRequestsPerMinute int           `mapstructure:"max_requests_per_minute"`
-	RetryAttempts        int           `mapstructure:"retry_attempts"`
-	RetryDelay           time.Duration `mapstructure:"retry_delay"`
-}
-
-// RateLimitConfig contains rate limiting settings.
-type RateLimitConfig struct {
-	Enabled           bool             `mapstructure:"enabled"`
-	RequestsPerSecond int              `mapstructure:"requests_per_second"`
-	BurstSize         int              `mapstructure:"burst_size"`
-	PerUser           PerUserRateLimit `mapstructure:"per_user"`
-}
-
-// PerUserRateLimit contains per-user rate limiting settings.
-type PerUserRateLimit struct {
-	RequestsPerMinute int `mapstructure:"requests_per_minute"`
-	BurstSize         int `mapstructure:"burst_size"`
-}
-
-// EnrichmentConfig contains enrichment worker settings.
-type EnrichmentConfig struct {
-	WorkerCount            int           `mapstructure:"worker_count"`
-	PollInterval           time.Duration `mapstructure:"poll_interval"`
-	MaxAttempts            int           `mapstructure:"max_attempts"`
-	RetryDelay             time.Duration `mapstructure:"retry_delay"`
-	JobTimeout             time.Duration `mapstructure:"job_timeout"`
-	DrainTimeout           time.Duration `mapstructure:"drain_timeout"`
-	CompletedRetention     time.Duration `mapstructure:"completed_retention"`
-	FailedRetention        time.Duration `mapstructure:"failed_retention"`
-	RelatedToMinSimilarity float64       `mapstructure:"related_to_min_similarity"`
+	APIKey              string        `mapstructure:"api_key"` // #nosec G117 -- credentials loaded from config/env, not serialized
+	EmbeddingModel      string        `mapstructure:"embedding_model"`
+	EmbeddingDimensions int           `mapstructure:"embedding_dimensions"`
+	RetryAttempts       int           `mapstructure:"retry_attempts"`
+	RetryDelay          time.Duration `mapstructure:"retry_delay"`
 }
 
 // LoggingConfig contains logging settings.
 type LoggingConfig struct {
-	Level         string `mapstructure:"level"`
-	Format        string `mapstructure:"format"`
-	IncludeCaller bool   `mapstructure:"include_caller"`
+	Level string `mapstructure:"level"`
 }
 
 // ObservabilityConfig contains observability settings.
 type ObservabilityConfig struct {
 	Metrics MetricsConfig `mapstructure:"metrics"`
-	Health  HealthConfig  `mapstructure:"health"`
 	Tracing TracingConfig `mapstructure:"tracing"`
 }
 
@@ -136,12 +101,6 @@ type MetricsConfig struct {
 	Enabled bool   `mapstructure:"enabled"`
 	Path    string `mapstructure:"path"`
 	Port    int    `mapstructure:"port"`
-}
-
-// HealthConfig contains health check settings.
-type HealthConfig struct {
-	Enabled bool   `mapstructure:"enabled"`
-	Path    string `mapstructure:"path"`
 }
 
 // TracingConfig contains distributed tracing settings.
@@ -183,57 +142,26 @@ func (e ValidationErrors) Error() string {
 // 3. Environment variables (highest priority)
 //
 // The config file is discovered in the following order:
-// 1. --config flag (if provided)
-// 2. $MNEMONIC_CONFIG_FILE (if set)
-// 3. /etc/mnemonic/config.yaml (production)
-// 4. ./config.yaml (development)
+// 1. $MNEMONIC_CONFIG_FILE (if set; a read error is then fatal)
+// 2. /etc/mnemonic/config.yaml (production)
+// 3. ./config.yaml (development)
 func Load() (*MnemonicConfig, error) {
-	return LoadWithFlags(nil)
-}
-
-// LoadWithFlags loads configuration using the provided flagset.
-// Pass nil to use the default flags.
-func LoadWithFlags(flags *pflag.FlagSet) (*MnemonicConfig, error) {
 	v := viper.New()
-
-	// Set defaults first
 	SetDefaults(v)
 
-	// Determine config file path
-	configPath := findConfigFile(flags)
-	if configPath != "" {
+	explicitPath := os.Getenv(EnvConfigFile)
+	if configPath := findConfigFile(explicitPath); configPath != "" {
 		v.SetConfigFile(configPath)
-		if err := v.ReadInConfig(); err != nil {
-			// Only return error if the config file was explicitly specified
-			if isExplicitConfigPath(flags) {
-				return nil, fmt.Errorf("failed to read config file %s: %w", configPath, err)
-			}
-			// Otherwise, silently continue with defaults + env vars
+		if err := v.ReadInConfig(); err != nil && explicitPath != "" {
+			return nil, fmt.Errorf("failed to read config file %s: %w", configPath, err)
 		}
+		// A discovered (not explicit) file that fails to read is ignored.
 	}
 
-	// Set up environment variable binding
 	v.SetEnvPrefix(EnvPrefix)
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
-	// Unmarshal into config struct
-	cfg := &MnemonicConfig{}
-	if err := v.Unmarshal(cfg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
-	}
-
-	// Validate configuration
-	if errs := cfg.Validate(); len(errs) > 0 {
-		return nil, errs
-	}
-
-	return cfg, nil
-}
-
-// LoadFromViper loads configuration from an already-configured viper instance.
-// This is primarily useful for testing.
-func LoadFromViper(v *viper.Viper) (*MnemonicConfig, error) {
 	cfg := &MnemonicConfig{}
 	if err := v.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
@@ -290,88 +218,34 @@ func SetDefaults(v *viper.Viper) {
 	v.SetDefault("openai.api_key", "")
 	v.SetDefault("openai.embedding_model", DefaultOpenAIEmbeddingModel)
 	v.SetDefault("openai.embedding_dimensions", DefaultOpenAIEmbeddingDimensions)
-	v.SetDefault("openai.extraction_model", DefaultOpenAIExtractionModel)
-	v.SetDefault("openai.max_requests_per_minute", DefaultOpenAIMaxRequestsPerMinute)
 	v.SetDefault("openai.retry_attempts", DefaultOpenAIRetryAttempts)
 	v.SetDefault("openai.retry_delay", DefaultOpenAIRetryDelay)
 
-	// Rate limit defaults
-	v.SetDefault("rate_limit.enabled", DefaultRateLimitEnabled)
-	v.SetDefault("rate_limit.requests_per_second", DefaultRateLimitRequestsPerSecond)
-	v.SetDefault("rate_limit.burst_size", DefaultRateLimitBurstSize)
-	v.SetDefault("rate_limit.per_user.requests_per_minute", DefaultRateLimitPerUserRPM)
-	v.SetDefault("rate_limit.per_user.burst_size", DefaultRateLimitPerUserBurst)
-
-	// Enrichment defaults
-	v.SetDefault("enrichment.worker_count", DefaultEnrichmentWorkerCount)
-	v.SetDefault("enrichment.poll_interval", DefaultEnrichmentPollInterval)
-	v.SetDefault("enrichment.max_attempts", DefaultEnrichmentMaxAttempts)
-	v.SetDefault("enrichment.retry_delay", DefaultEnrichmentRetryDelay)
-	v.SetDefault("enrichment.job_timeout", DefaultEnrichmentJobTimeout)
-	v.SetDefault("enrichment.drain_timeout", DefaultEnrichmentDrainTimeout)
-	v.SetDefault("enrichment.completed_retention", DefaultEnrichmentCompletedRetention)
-	v.SetDefault("enrichment.failed_retention", DefaultEnrichmentFailedRetention)
-	v.SetDefault("enrichment.related_to_min_similarity", DefaultEnrichmentRelatedToMinSimilarity)
-
 	// Logging defaults
 	v.SetDefault("logging.level", DefaultLoggingLevel)
-	v.SetDefault("logging.format", DefaultLoggingFormat)
-	v.SetDefault("logging.include_caller", DefaultLoggingIncludeCaller)
 
 	// Observability defaults
 	v.SetDefault("observability.metrics.enabled", DefaultMetricsEnabled)
 	v.SetDefault("observability.metrics.path", DefaultMetricsPath)
 	v.SetDefault("observability.metrics.port", DefaultMetricsPort)
-	v.SetDefault("observability.health.enabled", DefaultHealthEnabled)
-	v.SetDefault("observability.health.path", DefaultHealthPath)
 	v.SetDefault("observability.tracing.enabled", DefaultTracingEnabled)
 	v.SetDefault("observability.tracing.endpoint", "")
 	v.SetDefault("observability.tracing.sample_rate", DefaultTracingSampleRate)
 	v.SetDefault("observability.tracing.otlp_insecure", DefaultTracingOTLPInsecure)
 }
 
-// findConfigFile determines which config file to use based on the discovery order.
-func findConfigFile(flags *pflag.FlagSet) string {
-	// 1. Check --config flag
-	if flags != nil {
-		if configFlag := flags.Lookup("config"); configFlag != nil && configFlag.Changed {
-			return configFlag.Value.String()
+// findConfigFile returns explicitPath when set, otherwise the first existing
+// well-known config file, or "" when there is none.
+func findConfigFile(explicitPath string) string {
+	if explicitPath != "" {
+		return explicitPath
+	}
+	for _, path := range []string{ProductionConfigPath, DevelopmentConfigPath} {
+		if _, err := os.Stat(path); err == nil {
+			return path
 		}
 	}
-
-	// 2. Check MNEMONIC_CONFIG_FILE environment variable
-	if envPath := os.Getenv(EnvConfigFile); envPath != "" {
-		return envPath
-	}
-
-	// 3. Check /etc/mnemonic/config.yaml (production)
-	if _, err := os.Stat(ProductionConfigPath); err == nil {
-		return ProductionConfigPath
-	}
-
-	// 4. Check ./config.yaml (development)
-	if _, err := os.Stat(DevelopmentConfigPath); err == nil {
-		return DevelopmentConfigPath
-	}
-
 	return ""
-}
-
-// isExplicitConfigPath returns true if a config path was explicitly provided.
-func isExplicitConfigPath(flags *pflag.FlagSet) bool {
-	// Check --config flag
-	if flags != nil {
-		if configFlag := flags.Lookup("config"); configFlag != nil && configFlag.Changed {
-			return true
-		}
-	}
-
-	// Check MNEMONIC_CONFIG_FILE environment variable
-	if os.Getenv(EnvConfigFile) != "" {
-		return true
-	}
-
-	return false
 }
 
 // Validate validates the configuration and returns any validation errors.
@@ -389,12 +263,6 @@ func (c *MnemonicConfig) Validate() ValidationErrors {
 
 	// OpenAI validation
 	errs = append(errs, c.OpenAI.validate()...)
-
-	// Rate limit validation
-	errs = append(errs, c.RateLimit.validate()...)
-
-	// Enrichment validation
-	errs = append(errs, c.Enrichment.validate()...)
 
 	// Logging validation
 	errs = append(errs, c.Logging.validate()...)
@@ -623,13 +491,6 @@ func (c *OpenAIConfig) validate() ValidationErrors {
 		})
 	}
 
-	if c.MaxRequestsPerMinute < 1 {
-		errs = append(errs, ValidationError{
-			Field:   "openai.max_requests_per_minute",
-			Message: "must be at least 1",
-		})
-	}
-
 	if c.RetryAttempts < 0 {
 		errs = append(errs, ValidationError{
 			Field:   "openai.retry_attempts",
@@ -641,111 +502,6 @@ func (c *OpenAIConfig) validate() ValidationErrors {
 		errs = append(errs, ValidationError{
 			Field:   "openai.retry_delay",
 			Message: "must be non-negative",
-		})
-	}
-
-	return errs
-}
-
-func (c *RateLimitConfig) validate() ValidationErrors {
-	var errs ValidationErrors
-
-	if c.Enabled {
-		if c.RequestsPerSecond < 1 {
-			errs = append(errs, ValidationError{
-				Field:   "rate_limit.requests_per_second",
-				Message: "must be at least 1 when rate limiting is enabled",
-			})
-		}
-
-		if c.BurstSize < 1 {
-			errs = append(errs, ValidationError{
-				Field:   "rate_limit.burst_size",
-				Message: "must be at least 1 when rate limiting is enabled",
-			})
-		}
-
-		if c.PerUser.RequestsPerMinute < 1 {
-			errs = append(errs, ValidationError{
-				Field:   "rate_limit.per_user.requests_per_minute",
-				Message: "must be at least 1 when rate limiting is enabled",
-			})
-		}
-
-		if c.PerUser.BurstSize < 1 {
-			errs = append(errs, ValidationError{
-				Field:   "rate_limit.per_user.burst_size",
-				Message: "must be at least 1 when rate limiting is enabled",
-			})
-		}
-	}
-
-	return errs
-}
-
-func (c *EnrichmentConfig) validate() ValidationErrors {
-	var errs ValidationErrors
-
-	if c.WorkerCount < 1 {
-		errs = append(errs, ValidationError{
-			Field:   "enrichment.worker_count",
-			Message: "must be at least 1",
-		})
-	}
-
-	if c.PollInterval <= 0 {
-		errs = append(errs, ValidationError{
-			Field:   "enrichment.poll_interval",
-			Message: "must be a positive duration",
-		})
-	}
-
-	if c.MaxAttempts < 1 {
-		errs = append(errs, ValidationError{
-			Field:   "enrichment.max_attempts",
-			Message: "must be at least 1",
-		})
-	}
-
-	if c.RetryDelay < 0 {
-		errs = append(errs, ValidationError{
-			Field:   "enrichment.retry_delay",
-			Message: "must be non-negative",
-		})
-	}
-
-	if c.JobTimeout <= 0 {
-		errs = append(errs, ValidationError{
-			Field:   "enrichment.job_timeout",
-			Message: "must be a positive duration",
-		})
-	}
-
-	if c.DrainTimeout <= 0 {
-		errs = append(errs, ValidationError{
-			Field:   "enrichment.drain_timeout",
-			Message: "must be a positive duration",
-		})
-	}
-
-	if c.CompletedRetention <= 0 {
-		errs = append(errs, ValidationError{
-			Field:   "enrichment.completed_retention",
-			Message: "must be a positive duration",
-		})
-	}
-
-	if c.FailedRetention <= 0 {
-		errs = append(errs, ValidationError{
-			Field:   "enrichment.failed_retention",
-			Message: "must be a positive duration",
-		})
-	}
-
-	if c.RelatedToMinSimilarity < 0 || c.RelatedToMinSimilarity > 1 {
-		errs = append(errs, ValidationError{
-			Field:   "enrichment.related_to_min_similarity",
-			Message: fmt.Sprintf("must be between 0 and 1, got %f", c.RelatedToMinSimilarity),
 		})
 	}
 
@@ -769,18 +525,6 @@ func (c *LoggingConfig) validate() ValidationErrors {
 		})
 	}
 
-	validFormats := map[string]bool{
-		"json": true,
-		"text": true,
-	}
-
-	if !validFormats[strings.ToLower(c.Format)] {
-		errs = append(errs, ValidationError{
-			Field:   "logging.format",
-			Message: fmt.Sprintf("must be one of: json, text; got %q", c.Format),
-		})
-	}
-
 	return errs
 }
 
@@ -800,16 +544,6 @@ func (c *ObservabilityConfig) validate() ValidationErrors {
 			errs = append(errs, ValidationError{
 				Field:   "observability.metrics.path",
 				Message: "required when metrics are enabled",
-			})
-		}
-	}
-
-	// Health validation
-	if c.Health.Enabled {
-		if c.Health.Path == "" {
-			errs = append(errs, ValidationError{
-				Field:   "observability.health.path",
-				Message: "required when health checks are enabled",
 			})
 		}
 	}
@@ -845,14 +579,6 @@ func (c *MCPConfig) Address(host string) string {
 	return fmt.Sprintf("%s:%d", host, c.Port)
 }
 
-// ConnectionString returns the PostgreSQL connection string.
-func (c *PostgresConfig) ConnectionString() string {
-	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		c.Host, c.Port, c.Username, c.Password, c.Database, c.SSLMode,
-	)
-}
-
 // DSN returns the PostgreSQL DSN for use with database/sql.
 // Username, password, and SSLMode are URL-encoded to handle special characters safely.
 func (c *PostgresConfig) DSN() string {
@@ -864,15 +590,6 @@ func (c *PostgresConfig) DSN() string {
 		RawQuery: fmt.Sprintf("sslmode=%s", url.QueryEscape(c.SSLMode)),
 	}
 	return u.String()
-}
-
-// SafeConnectionString returns the PostgreSQL connection string with the password masked.
-// Use this method for logging to prevent secret exposure.
-func (c *PostgresConfig) SafeConnectionString() string {
-	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=***** dbname=%s sslmode=%s",
-		c.Host, c.Port, c.Username, c.Database, c.SSLMode,
-	)
 }
 
 // SafeDSN returns the PostgreSQL DSN with the password masked.
@@ -893,11 +610,6 @@ func (c *PostgresConfig) SafeDSN() string {
 	encoded := u.User.String()
 	safe = strings.Replace(safe, encoded+"@", encoded+":*****@", 1)
 	return safe
-}
-
-// ConnectionURI returns the Neo4j URI for API consistency with PostgresConfig.
-func (c *Neo4jConfig) ConnectionURI() string {
-	return c.URI
 }
 
 // SafeURI returns the Neo4j URI with any embedded credentials masked for logging.

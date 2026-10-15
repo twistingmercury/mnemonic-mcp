@@ -25,17 +25,11 @@ func NewMCPServer(deps ToolDependencies, logger zerolog.Logger, mcpCfg config.MC
 	})
 
 	server.AddReceivingMiddleware(toolTelemetry(toolMetrics))
-	RegisterTools(server, deps, logger, mcpCfg)
-
-	return server
-}
-
-// RegisterTools registers all 3 pattern search tools on the MCP server.
-// The deps parameter provides access to services needed by tool handlers.
-func RegisterTools(server *mcp.Server, deps ToolDependencies, logger zerolog.Logger, mcpCfg config.MCPConfig) {
 	mcp.AddTool(server, searchPatternsTool, handleSearchPatterns(deps, logger, mcpCfg.DefaultSearchThreshold))
 	mcp.AddTool(server, findRelatedPatternsTool, handleFindRelatedPatterns(deps, logger))
 	mcp.AddTool(server, getPatternTool, handleGetPattern(deps, logger))
+
+	return server
 }
 
 // NewMCPHTTPHandler creates a StreamableHTTPHandler wrapping the MCP server.

@@ -20,10 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated Go modules and Docker build images to Go 1.27.2.
 - Upgraded `golang.org/x/net` to v0.60.0 to clear five govulncheck findings in v0.59.0.
 - Custom latency histograms record fractional milliseconds. Previously durations were truncated to whole milliseconds, so sub-millisecond calls recorded 0.
+- `find_related_patterns` reads the source pattern's name with one `SELECT name` run alongside the Neo4j query, instead of an existence check followed by a full `get_pattern` lookup (a PostgreSQL row read plus two more Neo4j queries).
+- `get_pattern` runs its two Neo4j queries (related patterns, concepts) concurrently and reads only the columns it shows.
+- `search_patterns` queries Neo4j for its graph-expansion seeds concurrently, and no longer loads chunk or pattern columns the response does not use (pattern `content` for graph candidates in particular).
+- OpenAI embedding calls are not retried after a 4xx response other than 429; those fail the same way on every attempt.
 
 ### Removed
 
 - The unused connection pool gauges, replaced by the otelpgx pool statistics.
+- Code carried over from the API and enricher that the MCP server never runs: the enricher, enrichment service, enrichment job repository, concept extraction client, pattern and chunk write paths, Neo4j write queries, and their tests.
+- Unused configuration: the `rate_limit` and `enrichment` sections, `logging.format`, `logging.include_caller`, `observability.health`, `openai.extraction_model` and `openai.max_requests_per_minute`. Setting them has no effect.
 
 ## [0.3.2] - 2026-09-09
 

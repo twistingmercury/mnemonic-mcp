@@ -6,98 +6,35 @@ import (
 	"github.com/google/uuid"
 )
 
-// Pattern represents a context pattern stored in the database.
+// Pattern holds the pattern columns the MCP tools read. Which fields are set
+// depends on the query: Get fills the fields get_pattern shows, GetByIDs fills
+// only the metadata used to filter graph-expanded search results.
 type Pattern struct {
 	// ID is the unique UUID identifier for the pattern.
-	ID uuid.UUID `db:"id"`
+	ID uuid.UUID
 
 	// Name is the unique human-readable name for the pattern (e.g., "go-error-handling").
-	Name string `db:"name"`
+	Name string
 
-	// Description is an optional description of when/how to use this pattern.
-	Description *string `db:"description"`
+	// Content is the pattern's markdown text. Set by Get only.
+	Content string
 
-	// Content is the actual context text that will be injected into prompts (up to 10KB).
-	Content string `db:"content"`
-
-	// Tags is a list of categorization tags (e.g., ["golang", "best-practices"]).
-	// Stored as JSONB in the database and unmarshaled during retrieval.
-	Tags []string `db:"-"`
-
-	// EntityType is the pattern category (e.g., "go-pattern", "e2e-testing").
-	EntityType string `db:"entity_type"`
-
-	// Language is the primary programming language (e.g., "go", "agnostic", "shell").
-	Language string `db:"language"`
-
-	// Domain is the technical domain (e.g., "backend", "api-design", "testing").
-	Domain string `db:"domain"`
-
-	// Version is the optional target version string (e.g., "Go 1.21+").
-	Version *string `db:"version"`
-
-	// RelatedPatterns is a list of related pattern entity names, stored as JSONB.
-	RelatedPatterns []string `db:"-"`
-
-	// EnrichmentStatus is the processing state: "pending", "enriched", or "failed".
-	EnrichmentStatus string `db:"enrichment_status"`
-
-	// EnrichmentError contains the error message if enrichment failed (nil otherwise).
-	EnrichmentError *string `db:"enrichment_error"`
-
-	// EnrichedAt is the timestamp when enrichment completed successfully (nil if pending or failed).
-	EnrichedAt *time.Time `db:"enriched_at"`
-
-	// CreatedAt is the timestamp when the pattern was created.
-	CreatedAt time.Time `db:"created_at"`
-
-	// UpdatedAt is the timestamp when the pattern was last modified.
-	UpdatedAt time.Time `db:"updated_at"`
-}
-
-// Filter defines filtering options for pattern queries.
-type Filter struct {
-	// Tags filters patterns that have any of these tags.
+	// Tags is a list of categorization tags (e.g., ["golang", "best-practices"]),
+	// stored as JSONB.
 	Tags []string
 
-	// EnrichmentStatus filters patterns by enrichment status.
-	EnrichmentStatus string
-
-	// SearchQuery performs full-text search in name/description.
-	SearchQuery string
-
-	// Language filters patterns by programming language.
+	// Language is the primary programming language (e.g., "go", "agnostic"). Set by GetByIDs only.
 	Language string
 
-	// Domain filters patterns by technical domain.
+	// Domain is the technical domain (e.g., "backend", "testing"). Set by GetByIDs only.
 	Domain string
 
-	// EntityType filters patterns by category.
-	EntityType string
-}
+	// EnrichmentStatus is the processing state: "pending", "enriched", or "failed". Set by Get only.
+	EnrichmentStatus string
 
-// SimilarityOptions defines options for similarity search.
-type SimilarityOptions struct {
-	// MinSimilarity is the minimum similarity threshold (0.0-1.0).
-	// Only patterns with similarity >= MinSimilarity are returned.
-	MinSimilarity float64
+	// EnrichmentError contains the error message if enrichment failed. Set by Get only.
+	EnrichmentError *string
 
-	// MaxResults is the maximum number of results to return.
-	MaxResults int
-
-	// Tags optionally filters results by tag.
-	Tags []string
-
-	// PatternIDs filters results to only these specific pattern IDs.
-	// When set, only patterns whose ID is in this list are considered.
-	PatternIDs []uuid.UUID
-}
-
-// Match represents a similarity search result.
-type Match struct {
-	// Pattern is the matched pattern.
-	Pattern *Pattern
-
-	// Similarity is the cosine similarity score (0.0-1.0, where 1.0 is identical).
-	Similarity float64
+	// EnrichedAt is when enrichment completed successfully. Set by Get only.
+	EnrichedAt *time.Time
 }

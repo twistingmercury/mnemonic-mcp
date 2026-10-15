@@ -41,43 +41,19 @@ func createTestConfig() *config.MnemonicConfig {
 			},
 		},
 		OpenAI: config.OpenAIConfig{
-			EmbeddingModel:       "text-embedding-3-small",
-			EmbeddingDimensions:  1536,
-			ExtractionModel:      "gpt-4o-mini",
-			MaxRequestsPerMinute: 500,
-			RetryAttempts:        3,
-			RetryDelay:           time.Second,
-		},
-		RateLimit: config.RateLimitConfig{
-			Enabled:           false,
-			RequestsPerSecond: 100,
-			BurstSize:         200,
-			PerUser: config.PerUserRateLimit{
-				RequestsPerMinute: 60,
-				BurstSize:         10,
-			},
-		},
-		Enrichment: config.EnrichmentConfig{
-			WorkerCount:  2,
-			PollInterval: 5 * time.Second,
-			MaxAttempts:  3,
-			RetryDelay:   30 * time.Second,
-			JobTimeout:   5 * time.Minute,
+			EmbeddingModel:      "text-embedding-3-small",
+			EmbeddingDimensions: 1536,
+			RetryAttempts:       3,
+			RetryDelay:          time.Second,
 		},
 		Logging: config.LoggingConfig{
-			Level:         "info",
-			Format:        "json",
-			IncludeCaller: false,
+			Level: "info",
 		},
 		Observability: config.ObservabilityConfig{
 			Metrics: config.MetricsConfig{
 				Enabled: false, // Disable for tests
 				Path:    "/metrics",
 				Port:    9090,
-			},
-			Health: config.HealthConfig{
-				Enabled: true,
-				Path:    "/health",
 			},
 			Tracing: config.TracingConfig{
 				Enabled:      false, // Disable for tests
@@ -102,10 +78,6 @@ func TestInitialize(t *testing.T) {
 	// Verify we can get a logger
 	logger := tel.Logger()
 	assert.NotNil(t, logger)
-
-	// Verify we can get a tracer
-	tracer := tel.Tracer("test")
-	assert.NotNil(t, tracer)
 
 	// Verify we can get a meter
 	meter := tel.Meter("test")
@@ -132,9 +104,8 @@ func TestInitializeWithMetricsEnabled(t *testing.T) {
 		_ = tel.Shutdown(ctx)
 	}()
 
-	// Verify meter provider is available
-	meterProvider := tel.MeterProvider()
-	assert.NotNil(t, meterProvider)
+	assert.NotNil(t, tel.Meter("test"))
+	assert.NotNil(t, tel.MetricsRegistry())
 }
 
 func TestInitializeWithTracingEnabled(t *testing.T) {
@@ -153,9 +124,7 @@ func TestInitializeWithTracingEnabled(t *testing.T) {
 		_ = tel.Shutdown(ctx)
 	}()
 
-	// Verify tracer provider is available
-	tracerProvider := tel.TracerProvider()
-	assert.NotNil(t, tracerProvider)
+	assert.NotNil(t, tel.Otelx().TracerProvider)
 }
 
 func TestShutdown(t *testing.T) {
