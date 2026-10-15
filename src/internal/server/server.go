@@ -28,7 +28,7 @@ import (
 	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
 	"github.com/twistingmercury/mnemonic/internal/telemetry"
-	otelxgin "github.com/twistingmercury/otelx/middleware/gin"
+	otelxgin "github.com/twistingmercury/otelx/middleware/gin/v2"
 )
 
 // ListenAndServe starts the mnemonic server. It initializes telemetry,
@@ -71,6 +71,7 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	if err := health.Initialize(health.Dependencies{
 		PGPool:      pgPool,
 		Neo4jDriver: neo4jDriver,
+		OpenAI:      cfg.OpenAI,
 	}); err != nil {
 		return fmt.Errorf("failed to initialize health checks: %w", err)
 	}
