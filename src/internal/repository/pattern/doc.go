@@ -1,9 +1,4 @@
-// Package pattern provides the PostgreSQL repository implementation for pattern
-// persistence. It supports CRUD operations, enrichment status management, and
-// agent associations. Semantic search is performed against pattern_chunks
-// embeddings via the chunk repository.
-//
-// Documentation:
-//   - Architecture: docs/architecture/04-data-architecture.md (Data Model Design > Patterns)
-//   - Design: docs/plans/2026-02-27-pattern-schema-chunks-design.md
+// Package pattern provides the read-only PostgreSQL repository for patterns.
+// Semantic search runs against pattern_chunks embeddings via the chunk
+// repository.
 package pattern

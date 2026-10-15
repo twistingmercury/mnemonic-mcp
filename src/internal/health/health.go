@@ -44,8 +44,7 @@ var (
 )
 
 // Initialize configures the health check dependency descriptors using the
-// provided database connections. It must be called before Descriptors or
-// CheckHealth are used.
+// provided database connections. It must be called before Descriptors is used.
 func Initialize(deps Dependencies) error {
 	if deps.PGPool == nil {
 		return errors.New("health: PostgreSQL pool is nil")
@@ -86,25 +85,6 @@ func Initialize(deps Dependencies) error {
 // heartbeat Handler. It must be called after Initialize.
 func Descriptors() []heartbeat.DependencyDescriptor {
 	return descriptors
-}
-
-// CheckHealth runs all dependency checks and returns a joined error for any
-// that are Critical. Warnings, such as OpenAI being unreachable, do not fail
-// the probe. This is intended for CLI health probes.
-func CheckHealth() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_, depResults := heartbeat.CheckDependencies(ctx, descriptors)
-
-	var errs error
-	for _, ds := range depResults {
-		if ds.Status == heartbeat.StatusCritical {
-			err := fmt.Errorf("failed to verify health for %s: %s", ds.Resource, ds.Message)
-			errs = errors.Join(errs, err)
-		}
-	}
-
-	return errs
 }
 
 // checkPostgreSQLHealth pings the PostgreSQL connection pool. heartbeat

@@ -178,7 +178,6 @@ func TestFormatSearchResults_WithGraphMatches(t *testing.T) {
 				PatternName:     "circuit-breaker",
 				Similarity:      0.78,
 				ConceptNames:    []string{"resilience", "fault-tolerance"},
-				SeedPatternID:   seedID,
 				SeedPatternName: "go-error-handling",
 			},
 		},

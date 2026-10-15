@@ -48,7 +48,7 @@ func TestToolCallTelemetry(t *testing.T) {
 	deps.On("SearchPatterns", mock.Anything, mock.Anything).Return(&searchsvc.SearchResult{}, nil)
 	deps.On("GetPatternWithGraph", mock.Anything, missing).Return(nil, nil, service.ErrNotFound)
 	deps.On("FindRelatedPatterns", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, errors.Join(service.ErrServiceUnavailable, errors.New("neo4j down")))
+		Return("", nil, errors.Join(service.ErrServiceUnavailable, errors.New("neo4j down")))
 
 	cfg := config.MCPConfig{DefaultSearchThreshold: 0.5}
 	srv := NewMCPHTTPServer(cfg, "localhost", NewMCPHTTPHandler(NewMCPServer(deps, noopLogger(), cfg, toolMetrics)))
@@ -119,7 +119,7 @@ func TestToolCallTelemetry(t *testing.T) {
 func TestToolOutcome(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, outcomeOK, toolOutcome(nil))
-	assert.Equal(t, outcomeInvalid, toolOutcome(mapServiceError(service.ErrInvalidInput)))
+	assert.Equal(t, outcomeInvalid, toolOutcome(ErrInvalidInput))
 	assert.Equal(t, outcomeNotFound, toolOutcome(mapServiceError(service.ErrNotFound)))
 	assert.Equal(t, outcomeUnavailable, toolOutcome(mapServiceError(errors.New("boom"))))
 }

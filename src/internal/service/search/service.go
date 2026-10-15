@@ -1,14 +1,14 @@
-// Package search provides semantic similarity search over pattern chunks.
-// Both the REST search endpoint and the MCP search_patterns tool use this service.
-// It coordinates between the embedding service (for query vectorization), the
-// chunk repository (for pgvector similarity search), and graph repository
-// (for optional graph expansion).
+// Package search provides the semantic similarity search behind the MCP
+// search_patterns tool. It coordinates the embedding service (query
+// vectorization), the chunk repository (pgvector similarity search) and the
+// graph repository (expansion through RELATED_TO edges).
 package search
 
 import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,13 +21,6 @@ import (
 	openaisvc "github.com/twistingmercury/mnemonic/internal/service/openai"
 )
 
-// Service handles semantic search over patterns.
-type Service interface {
-	// SearchPatterns generates a query embedding and performs vector similarity
-	// search.
-	SearchPatterns(ctx context.Context, opts SearchOptions) (*SearchResult, error)
-}
-
 // SearchOptions defines the parameters for a semantic search.
 type SearchOptions struct {
 	Query     string   // Natural language query text
@@ -39,18 +32,7 @@ type SearchOptions struct {
 }
 
 // ChunkMatch is a single semantic search hit from a pattern chunk.
-type ChunkMatch struct {
-	PatternID    uuid.UUID
-	PatternName  string
-	EntityType   string
-	Language     string
-	Domain       string
-	Tags         []string
-	SectionTitle string
-	ChunkIndex   int
-	Content      string
-	Similarity   float64
-}
+type ChunkMatch = chunkrepo.Match
 
 // GraphMatch is a pattern discovered via Neo4j graph traversal from a vector search seed.
 type GraphMatch struct {
@@ -58,18 +40,14 @@ type GraphMatch struct {
 	PatternName     string
 	Similarity      float64  // concept-overlap similarity from RELATED_TO edge
 	ConceptNames    []string // shared concept names from graph relationship
-	SeedPatternID   uuid.UUID
 	SeedPatternName string
 }
 
-// SearchResult wraps similarity search matches with metadata required by
-// the OpenAPI PatternSearchResponse schema.
+// SearchResult wraps similarity search matches with the original query.
 type SearchResult struct {
-	Matches          []*ChunkMatch
-	GraphMatches     []*GraphMatch // graph-expanded results (nil if unavailable)
-	Query            string        // Echo of the original query text
-	TotalCandidates  int           // Total chunk matches returned (after threshold filtering)
-	SearchDurationMs int64         // Wall-clock search time in milliseconds
+	Matches      []*ChunkMatch
+	GraphMatches []*GraphMatch // graph-expanded results (nil if unavailable)
+	Query        string        // Echo of the original query text
 }
 
 const (
@@ -83,21 +61,17 @@ const (
 	DefaultGraphMatchCap = 5
 )
 
-// searchService implements the Service interface.
-type searchService struct {
-	embeddingSvc        openaisvc.EmbeddingService
-	patternRepo         patternrepo.Repository
-	chunkRepo           chunkrepo.Repository
-	graphRepo           graphrepo.Repository
-	metrics             *metrics.Pattern
-	logger              zerolog.Logger
-	graphSeedCount      int
-	graphResultsPerSeed int
-	graphMatchCap       int
+// Service performs semantic search over pattern chunks with graph expansion.
+type Service struct {
+	embeddingSvc openaisvc.EmbeddingService
+	patternRepo  patternrepo.Repository
+	chunkRepo    chunkrepo.Repository
+	graphRepo    graphrepo.Repository
+	metrics      *metrics.Pattern
+	logger       zerolog.Logger
 }
 
 // New creates a new search Service backed by the given dependencies.
-// graphRepo may be nil; graph-enhanced search will be skipped when absent.
 // patternMetrics may be nil, in which case vector search is not recorded.
 func New(
 	embeddingSvc openaisvc.EmbeddingService,
@@ -106,78 +80,44 @@ func New(
 	graphRepo graphrepo.Repository,
 	patternMetrics *metrics.Pattern,
 	logger zerolog.Logger,
-) Service {
-	return &searchService{
-		embeddingSvc:        embeddingSvc,
-		patternRepo:         patternRepo,
-		chunkRepo:           chunkRepo,
-		graphRepo:           graphRepo,
-		metrics:             patternMetrics,
-		logger:              logger,
-		graphSeedCount:      DefaultGraphSeedCount,
-		graphResultsPerSeed: DefaultGraphResultsPerSeed,
-		graphMatchCap:       DefaultGraphMatchCap,
+) *Service {
+	return &Service{
+		embeddingSvc: embeddingSvc,
+		patternRepo:  patternRepo,
+		chunkRepo:    chunkRepo,
+		graphRepo:    graphRepo,
+		metrics:      patternMetrics,
+		logger:       logger,
 	}
 }
 
-// SearchPatterns generates a query embedding and performs vector similarity search.
-func (s *searchService) SearchPatterns(ctx context.Context, opts SearchOptions) (*SearchResult, error) {
-	start := time.Now()
-
-	// 1. Generate query embedding.
+// SearchPatterns generates a query embedding, performs vector similarity
+// search and expands the top results through the knowledge graph.
+func (s *Service) SearchPatterns(ctx context.Context, opts SearchOptions) (*SearchResult, error) {
 	embedding, err := s.embeddingSvc.Embed(ctx, opts.Query)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", service.ErrServiceUnavailable, err)
 	}
 
-	// 2. Perform chunk-based similarity search.
-
-	// Guard: chunkRepo must be configured before attempting vector search.
-	if s.chunkRepo == nil {
-		return nil, fmt.Errorf("%w: chunk repository not configured", service.ErrServiceUnavailable)
-	}
-
-	simOpts := chunkrepo.SimilarityOptions{
+	searchStart := time.Now()
+	matches, err := s.chunkRepo.FindSimilar(ctx, embedding, chunkrepo.SimilarityOptions{
 		MinSimilarity: opts.Threshold,
 		MaxResults:    opts.Limit,
 		Language:      opts.Language,
 		Domain:        opts.Domain,
 		Tags:          opts.Tags,
-	}
-
-	searchStart := time.Now()
-	rawMatches, err := s.chunkRepo.FindSimilar(ctx, embedding, simOpts)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("find similar chunks: %w", err)
 	}
 	if s.metrics != nil {
-		s.metrics.RecordQuery(ctx, "pgvector", time.Since(searchStart), len(rawMatches))
+		s.metrics.RecordQuery(ctx, "pgvector", time.Since(searchStart), len(matches))
 	}
-
-	matches := make([]*ChunkMatch, len(rawMatches))
-	for i, m := range rawMatches {
-		matches[i] = &ChunkMatch{
-			PatternID:    m.PatternID,
-			PatternName:  m.PatternName,
-			EntityType:   m.EntityType,
-			Language:     m.Language,
-			Domain:       m.Domain,
-			Tags:         m.Tags,
-			SectionTitle: m.SectionTitle,
-			ChunkIndex:   m.ChunkIndex,
-			Content:      m.Content,
-			Similarity:   m.Similarity,
-		}
-	}
-
-	graphMatches := s.expandViaGraph(ctx, matches, opts)
 
 	return &SearchResult{
-		Matches:          matches,
-		GraphMatches:     graphMatches,
-		Query:            opts.Query,
-		TotalCandidates:  len(matches),
-		SearchDurationMs: time.Since(start).Milliseconds(),
+		Matches:      matches,
+		GraphMatches: s.expandViaGraph(ctx, matches, opts),
+		Query:        opts.Query,
 	}, nil
 }
 
@@ -190,9 +130,8 @@ type seedPattern struct {
 
 // expandViaGraph performs graph-based expansion from the top vector seeds.
 // Returns nil (no error surfaced to caller) when graph is unavailable or fails.
-func (s *searchService) expandViaGraph(ctx context.Context, matches []*ChunkMatch, opts SearchOptions) []*GraphMatch {
-	// Guard: skip if graph repo not configured or no vector results to seed from.
-	if s.graphRepo == nil || len(matches) == 0 {
+func (s *Service) expandViaGraph(ctx context.Context, matches []*ChunkMatch, opts SearchOptions) []*GraphMatch {
+	if len(matches) == 0 {
 		return nil
 	}
 
@@ -216,25 +155,36 @@ func (s *searchService) expandViaGraph(ctx context.Context, matches []*ChunkMatc
 	sort.Slice(seeds, func(i, j int) bool {
 		return seeds[i].similarity > seeds[j].similarity
 	})
-	if len(seeds) > s.graphSeedCount {
-		seeds = seeds[:s.graphSeedCount]
+	if len(seeds) > DefaultGraphSeedCount {
+		seeds = seeds[:DefaultGraphSeedCount]
 	}
 
-	// Call graph repo for each seed; collect across all seeds with cross-seed dedup.
-	// Keep the entry with the highest Similarity when the same pattern appears from multiple seeds.
+	// Query the graph for every seed concurrently; a failed seed is logged and
+	// skipped.
+	perSeed := make([][]graphrepo.RelatedPattern, len(seeds))
+	var wg sync.WaitGroup
+	for i, seed := range seeds {
+		wg.Go(func() {
+			related, err := s.graphRepo.FindRelatedPatterns(ctx, seed.id, DefaultGraphResultsPerSeed)
+			if err != nil {
+				s.logger.Warn().Err(err).Str("seed_pattern_id", seed.id.String()).Msg("graph expansion failed for seed; continuing with remaining seeds")
+				return
+			}
+			perSeed[i] = related
+		})
+	}
+	wg.Wait()
+
+	// Collect across all seeds with cross-seed dedup, keeping the entry with
+	// the highest Similarity when the same pattern appears from multiple seeds.
 	type graphEntry struct {
 		related graphrepo.RelatedPattern
 		seed    seedPattern
 	}
 	best := make(map[uuid.UUID]graphEntry)
 
-	for _, seed := range seeds {
-		related, err := s.graphRepo.FindRelatedPatterns(ctx, seed.id, s.graphResultsPerSeed)
-		if err != nil {
-			s.logger.Warn().Err(err).Str("seed_pattern_id", seed.id.String()).Msg("graph expansion failed for seed; continuing with remaining seeds")
-			continue
-		}
-		for _, rp := range related {
+	for i, seed := range seeds {
+		for _, rp := range perSeed[i] {
 			if existing, ok := best[rp.ID]; !ok || rp.Similarity > existing.related.Similarity {
 				best[rp.ID] = graphEntry{related: rp, seed: seed}
 			}
@@ -242,13 +192,9 @@ func (s *searchService) expandViaGraph(ctx context.Context, matches []*ChunkMatc
 	}
 
 	// Exclude patterns already present in the vector result set.
-	vectorIDs := make(map[uuid.UUID]struct{}, len(bestSim))
-	for id := range bestSim {
-		vectorIDs[id] = struct{}{}
-	}
 	filtered := make([]graphEntry, 0, len(best))
 	for id, entry := range best {
-		if _, inVector := vectorIDs[id]; !inVector {
+		if _, inVector := bestSim[id]; !inVector {
 			filtered = append(filtered, entry)
 		}
 	}
@@ -296,7 +242,6 @@ func (s *searchService) expandViaGraph(ctx context.Context, matches []*ChunkMatc
 			PatternName:     p.Name,
 			Similarity:      entry.related.Similarity,
 			ConceptNames:    entry.related.ConceptNames,
-			SeedPatternID:   entry.seed.id,
 			SeedPatternName: entry.seed.name,
 		})
 	}
@@ -309,8 +254,8 @@ func (s *searchService) expandViaGraph(ctx context.Context, matches []*ChunkMatc
 	sort.Slice(graphMatches, func(i, j int) bool {
 		return graphMatches[i].Similarity > graphMatches[j].Similarity
 	})
-	if len(graphMatches) > s.graphMatchCap {
-		graphMatches = graphMatches[:s.graphMatchCap]
+	if len(graphMatches) > DefaultGraphMatchCap {
+		graphMatches = graphMatches[:DefaultGraphMatchCap]
 	}
 
 	return graphMatches

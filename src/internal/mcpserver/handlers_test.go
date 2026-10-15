@@ -33,12 +33,12 @@ func (m *mockToolDeps) SearchPatterns(ctx context.Context, opts searchsvc.Search
 	return args.Get(0).(*searchsvc.SearchResult), args.Error(1)
 }
 
-func (m *mockToolDeps) FindRelatedPatterns(ctx context.Context, patternID uuid.UUID, limit int) ([]patternsvc.RelatedPatternResult, error) {
+func (m *mockToolDeps) FindRelatedPatterns(ctx context.Context, patternID uuid.UUID, limit int) (string, []patternsvc.RelatedPatternResult, error) {
 	args := m.Called(ctx, patternID, limit)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
+	if args.Get(1) == nil {
+		return args.String(0), nil, args.Error(2)
 	}
-	return args.Get(0).([]patternsvc.RelatedPatternResult), args.Error(1)
+	return args.String(0), args.Get(1).([]patternsvc.RelatedPatternResult), args.Error(2)
 }
 
 func (m *mockToolDeps) GetPatternWithGraph(ctx context.Context, id uuid.UUID) (*patternrepo.Pattern, *patternsvc.GraphContext, error) {
@@ -78,9 +78,7 @@ func TestHandleSearchPatterns_HappyPath(t *testing.T) {
 	handler := handleSearchPatterns(deps, noopLogger(), 0.5)
 
 	searchResult := &searchsvc.SearchResult{
-		Query:            "error handling",
-		TotalCandidates:  2,
-		SearchDurationMs: 42,
+		Query: "error handling",
 		Matches: []*searchsvc.ChunkMatch{
 			{PatternID: uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), PatternName: "go-error-handling", Tags: []string{"go", "errors"}, Content: "Error handling content", Similarity: 0.92},
 			{PatternID: uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), PatternName: "retry-logic", Tags: []string{"go", "resilience"}, Content: "Retry logic content", Similarity: 0.85},
@@ -369,13 +367,8 @@ func TestHandleFindRelatedPatterns_HappyPath(t *testing.T) {
 			SharedConcepts: []string{"error handling", "retry logic"},
 		},
 	}
-	sourcePattern := &patternrepo.Pattern{
-		ID:   patternID,
-		Name: "source-pattern",
-	}
 
-	deps.On("FindRelatedPatterns", mock.Anything, patternID, 5).Return(relatedResults, nil)
-	deps.On("GetPatternWithGraph", mock.Anything, patternID).Return(sourcePattern, nil, nil)
+	deps.On("FindRelatedPatterns", mock.Anything, patternID, 5).Return("source-pattern", relatedResults, nil)
 
 	result, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
 		PatternID: patternID.String(),
@@ -398,7 +391,7 @@ func TestHandleFindRelatedPatterns_NotFound(t *testing.T) {
 	patternID := uuid.New()
 
 	deps.On("FindRelatedPatterns", mock.Anything, patternID, 5).
-		Return(nil, errors.Join(service.ErrNotFound, errors.New("pattern not found")))
+		Return("", nil, errors.Join(service.ErrNotFound, errors.New("pattern not found")))
 
 	_, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
 		PatternID: patternID.String(),
@@ -416,14 +409,9 @@ func TestHandleFindRelatedPatterns_EmptyResults(t *testing.T) {
 	handler := handleFindRelatedPatterns(deps, noopLogger())
 
 	patternID := uuid.New()
-	sourcePattern := &patternrepo.Pattern{
-		ID:   patternID,
-		Name: "lonely-pattern",
-	}
 
 	deps.On("FindRelatedPatterns", mock.Anything, patternID, 5).
-		Return([]patternsvc.RelatedPatternResult{}, nil)
-	deps.On("GetPatternWithGraph", mock.Anything, patternID).Return(sourcePattern, nil, nil)
+		Return("lonely-pattern", []patternsvc.RelatedPatternResult{}, nil)
 
 	result, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
 		PatternID: patternID.String(),
@@ -474,14 +462,9 @@ func TestHandleFindRelatedPatterns_CustomLimit(t *testing.T) {
 	handler := handleFindRelatedPatterns(deps, noopLogger())
 
 	patternID := uuid.New()
-	sourcePattern := &patternrepo.Pattern{
-		ID:   patternID,
-		Name: "test-pattern",
-	}
 
 	deps.On("FindRelatedPatterns", mock.Anything, patternID, 10).
-		Return([]patternsvc.RelatedPatternResult{}, nil)
-	deps.On("GetPatternWithGraph", mock.Anything, patternID).Return(sourcePattern, nil, nil)
+		Return("test-pattern", []patternsvc.RelatedPatternResult{}, nil)
 
 	limit := 10
 	result, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
@@ -494,27 +477,22 @@ func TestHandleFindRelatedPatterns_CustomLimit(t *testing.T) {
 	deps.AssertExpectations(t)
 }
 
-func TestHandleFindRelatedPatterns_NameLookupFallsBackToUUID(t *testing.T) {
+func TestHandleFindRelatedPatterns_ServiceUnavailable(t *testing.T) {
 	t.Parallel()
 
 	deps := new(mockToolDeps)
 	handler := handleFindRelatedPatterns(deps, noopLogger())
 
 	patternID := uuid.New()
-
 	deps.On("FindRelatedPatterns", mock.Anything, patternID, 5).
-		Return([]patternsvc.RelatedPatternResult{}, nil)
-	// Name lookup fails -- handler should fall back to UUID.
-	deps.On("GetPatternWithGraph", mock.Anything, patternID).
-		Return(nil, nil, errors.New("lookup failed"))
+		Return("", nil, errors.New("neo4j down"))
 
-	result, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
+	_, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
 		PatternID: patternID.String(),
 	})
 
-	require.NoError(t, err)
-	text := extractTextContent(t, result)
-	assert.Contains(t, text, patternID.String())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrServiceUnavailable)
 	deps.AssertExpectations(t)
 }
 
@@ -666,13 +644,6 @@ func TestMapServiceError_NotFound(t *testing.T) {
 
 	err := mapServiceError(errors.Join(service.ErrNotFound, errors.New("pattern 123")))
 	assert.ErrorIs(t, err, ErrPatternNotFound)
-}
-
-func TestMapServiceError_InvalidInput(t *testing.T) {
-	t.Parallel()
-
-	err := mapServiceError(errors.Join(service.ErrInvalidInput, errors.New("bad data")))
-	assert.ErrorIs(t, err, ErrInvalidInput)
 }
 
 func TestMapServiceError_ServiceUnavailable(t *testing.T) {

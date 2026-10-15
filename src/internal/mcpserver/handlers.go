@@ -94,18 +94,9 @@ func handleFindRelatedPatterns(deps ToolDependencies, logger zerolog.Logger) mcp
 			Str("pattern_id", patternID.String()).
 			Msg("mcp tool invoked")
 
-		results, err := deps.FindRelatedPatterns(ctx, patternID, limit)
+		sourceName, results, err := deps.FindRelatedPatterns(ctx, patternID, limit)
 		if err != nil {
 			return nil, nil, mapServiceError(err)
-		}
-
-		// Retrieve the source pattern name for the response header.
-		// The source name comes from GetPatternWithGraph since it returns the
-		// full pattern. If this fails, fall back to the UUID string.
-		sourceName := patternID.String()
-		p, _, lookupErr := deps.GetPatternWithGraph(ctx, patternID)
-		if lookupErr == nil && p != nil {
-			sourceName = p.Name
 		}
 
 		markdown := formatRelatedPatterns(sourceName, results)
@@ -142,18 +133,13 @@ func handleGetPattern(deps ToolDependencies, logger zerolog.Logger) mcp.ToolHand
 	}
 }
 
-// mapServiceError translates service-layer errors to MCP-layer sentinel errors.
+// mapServiceError translates service-layer errors to MCP-layer sentinel
+// errors: unknown patterns are not found, everything else is unavailable.
 func mapServiceError(err error) error {
-	switch {
-	case errors.Is(err, service.ErrNotFound):
+	if errors.Is(err, service.ErrNotFound) {
 		return fmt.Errorf("%w: %v", ErrPatternNotFound, err)
-	case errors.Is(err, service.ErrInvalidInput):
-		return fmt.Errorf("%w: %v", ErrInvalidInput, err)
-	case errors.Is(err, service.ErrServiceUnavailable):
-		return fmt.Errorf("%w: %v", ErrServiceUnavailable, err)
-	default:
-		return fmt.Errorf("%w: %v", ErrServiceUnavailable, err)
 	}
+	return fmt.Errorf("%w: %v", ErrServiceUnavailable, err)
 }
 
 // truncate shortens a string to maxLen characters, appending "..." if truncated.

@@ -56,44 +56,6 @@ func TestPatternRecordQuery(t *testing.T) {
 	assert.True(t, foundPatternsReturned, "patterns returned metric should be recorded")
 }
 
-func TestPatternRecordQueryLatency(t *testing.T) {
-	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	meter := provider.Meter("test")
-
-	pm, err := metrics.NewPattern(meter)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	pm.RecordQueryLatency(ctx, "postgres", 50*time.Millisecond)
-	pm.RecordQueryLatency(ctx, "postgres", 100*time.Millisecond)
-
-	var data metricdata.ResourceMetrics
-	err = reader.Collect(ctx, &data)
-	require.NoError(t, err)
-
-	assert.NotEmpty(t, data.ScopeMetrics)
-}
-
-func TestPatternRecordPatternsReturned(t *testing.T) {
-	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	meter := provider.Meter("test")
-
-	pm, err := metrics.NewPattern(meter)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	pm.RecordPatternsReturned(ctx, "neo4j", 15)
-	pm.RecordPatternsReturned(ctx, "neo4j", 0)
-
-	var data metricdata.ResourceMetrics
-	err = reader.Collect(ctx, &data)
-	require.NoError(t, err)
-
-	assert.NotEmpty(t, data.ScopeMetrics)
-}
-
 func TestPatternWithDifferentDatabases(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))

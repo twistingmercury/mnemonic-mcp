@@ -1,6 +1,6 @@
 // Package config provides configuration loading, validation, and access for
 // Mnemonic. It uses Viper for multi-source configuration with environment
-// variable and flag overrides, applying a strict precedence order: compiled
+// variable overrides, applying a strict precedence order: compiled
 // defaults, configuration file, then environment variables.
 //
 // Documentation:

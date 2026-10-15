@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,40 +61,16 @@ func TestDefaultValues(t *testing.T) {
 	// OpenAI defaults
 	assert.Equal(t, config.DefaultOpenAIEmbeddingModel, cfg.OpenAI.EmbeddingModel)
 	assert.Equal(t, config.DefaultOpenAIEmbeddingDimensions, cfg.OpenAI.EmbeddingDimensions)
-	assert.Equal(t, config.DefaultOpenAIExtractionModel, cfg.OpenAI.ExtractionModel)
-	assert.Equal(t, config.DefaultOpenAIMaxRequestsPerMinute, cfg.OpenAI.MaxRequestsPerMinute)
 	assert.Equal(t, config.DefaultOpenAIRetryAttempts, cfg.OpenAI.RetryAttempts)
 	assert.Equal(t, config.DefaultOpenAIRetryDelay, cfg.OpenAI.RetryDelay)
 
-	// Rate limit defaults
-	assert.Equal(t, config.DefaultRateLimitEnabled, cfg.RateLimit.Enabled)
-	assert.Equal(t, config.DefaultRateLimitRequestsPerSecond, cfg.RateLimit.RequestsPerSecond)
-	assert.Equal(t, config.DefaultRateLimitBurstSize, cfg.RateLimit.BurstSize)
-	assert.Equal(t, config.DefaultRateLimitPerUserRPM, cfg.RateLimit.PerUser.RequestsPerMinute)
-	assert.Equal(t, config.DefaultRateLimitPerUserBurst, cfg.RateLimit.PerUser.BurstSize)
-
-	// Enrichment defaults
-	assert.Equal(t, config.DefaultEnrichmentWorkerCount, cfg.Enrichment.WorkerCount)
-	assert.Equal(t, config.DefaultEnrichmentPollInterval, cfg.Enrichment.PollInterval)
-	assert.Equal(t, config.DefaultEnrichmentMaxAttempts, cfg.Enrichment.MaxAttempts)
-	assert.Equal(t, config.DefaultEnrichmentRetryDelay, cfg.Enrichment.RetryDelay)
-	assert.Equal(t, config.DefaultEnrichmentJobTimeout, cfg.Enrichment.JobTimeout)
-	assert.Equal(t, config.DefaultEnrichmentDrainTimeout, cfg.Enrichment.DrainTimeout)
-	assert.Equal(t, config.DefaultEnrichmentCompletedRetention, cfg.Enrichment.CompletedRetention)
-	assert.Equal(t, config.DefaultEnrichmentFailedRetention, cfg.Enrichment.FailedRetention)
-	assert.Equal(t, config.DefaultEnrichmentRelatedToMinSimilarity, cfg.Enrichment.RelatedToMinSimilarity)
-
 	// Logging defaults
 	assert.Equal(t, config.DefaultLoggingLevel, cfg.Logging.Level)
-	assert.Equal(t, config.DefaultLoggingFormat, cfg.Logging.Format)
-	assert.Equal(t, config.DefaultLoggingIncludeCaller, cfg.Logging.IncludeCaller)
 
 	// Observability defaults
 	assert.Equal(t, config.DefaultMetricsEnabled, cfg.Observability.Metrics.Enabled)
 	assert.Equal(t, config.DefaultMetricsPath, cfg.Observability.Metrics.Path)
 	assert.Equal(t, config.DefaultMetricsPort, cfg.Observability.Metrics.Port)
-	assert.Equal(t, config.DefaultHealthEnabled, cfg.Observability.Health.Enabled)
-	assert.Equal(t, config.DefaultHealthPath, cfg.Observability.Health.Path)
 	assert.Equal(t, config.DefaultTracingEnabled, cfg.Observability.Tracing.Enabled)
 	assert.Equal(t, config.DefaultTracingSampleRate, cfg.Observability.Tracing.SampleRate)
 	assert.Equal(t, config.DefaultTracingOTLPInsecure, cfg.Observability.Tracing.OTLPInsecure)
@@ -139,20 +114,14 @@ openai:
 
 logging:
   level: debug
-  format: text
-  include_caller: true
 `
 
 	err := os.WriteFile(configPath, []byte(configContent), 0644)
 	require.NoError(t, err)
 
-	v := viper.New()
-	config.SetDefaults(v)
-	v.SetConfigFile(configPath)
-	err = v.ReadInConfig()
-	require.NoError(t, err)
+	t.Setenv(config.EnvConfigFile, configPath)
 
-	cfg, err := config.LoadFromViper(v)
+	cfg, err := config.Load()
 	require.NoError(t, err)
 
 	// Verify file values override defaults
@@ -179,8 +148,6 @@ logging:
 	assert.Equal(t, 1536, cfg.OpenAI.EmbeddingDimensions)
 
 	assert.Equal(t, "debug", cfg.Logging.Level)
-	assert.Equal(t, "text", cfg.Logging.Format)
-	assert.True(t, cfg.Logging.IncludeCaller)
 }
 
 // TestEnvironmentVariableOverrides verifies that environment variables override file values.
@@ -203,7 +170,9 @@ database:
 
 logging:
   level: info
-  format: json
+
+mcp:
+  default_search_threshold: 0.7
 `
 
 	err := os.WriteFile(configPath, []byte(configContent), 0644)
@@ -215,18 +184,9 @@ logging:
 	t.Setenv("MNEMONIC_DATABASE_POSTGRES_PASSWORD", "envpassword")
 	t.Setenv("MNEMONIC_LOGGING_LEVEL", "error")
 
-	v := viper.New()
-	config.SetDefaults(v)
-	v.SetConfigFile(configPath)
-	err = v.ReadInConfig()
-	require.NoError(t, err)
+	t.Setenv(config.EnvConfigFile, configPath)
 
-	// Set up environment binding
-	v.SetEnvPrefix("MNEMONIC")
-	v.SetEnvKeyReplacer(replaceUnderscores())
-	v.AutomaticEnv()
-
-	cfg, err := config.LoadFromViper(v)
+	cfg, err := config.Load()
 	require.NoError(t, err)
 
 	// Verify environment variables override file values
@@ -237,7 +197,7 @@ logging:
 
 	// Verify file values are retained when no env override
 	assert.Equal(t, "pghost", cfg.Database.Postgres.Host)
-	assert.Equal(t, "json", cfg.Logging.Format)
+	assert.InDelta(t, 0.7, cfg.MCP.DefaultSearchThreshold, 1e-9)
 }
 
 // TestEnvironmentVariableNaming verifies correct environment variable naming conventions.
@@ -281,11 +241,11 @@ func TestEnvironmentVariableNaming(t *testing.T) {
 			},
 		},
 		{
-			name:   "rate_limit.per_user.requests_per_minute",
-			envVar: "MNEMONIC_RATE_LIMIT_PER_USER_REQUESTS_PER_MINUTE",
-			value:  "120",
+			name:   "mcp.default_search_threshold",
+			envVar: "MNEMONIC_MCP_DEFAULT_SEARCH_THRESHOLD",
+			value:  "0.25",
 			check: func(t *testing.T, cfg *config.MnemonicConfig) {
-				assert.Equal(t, 120, cfg.RateLimit.PerUser.RequestsPerMinute)
+				assert.Equal(t, 0.25, cfg.MCP.DefaultSearchThreshold)
 			},
 		},
 		{
@@ -311,13 +271,7 @@ func TestEnvironmentVariableNaming(t *testing.T) {
 			clearMnemonicEnvVars(t)
 			t.Setenv(tt.envVar, tt.value)
 
-			v := viper.New()
-			config.SetDefaults(v)
-			v.SetEnvPrefix("MNEMONIC")
-			v.SetEnvKeyReplacer(replaceUnderscores())
-			v.AutomaticEnv()
-
-			cfg, err := config.LoadFromViper(v)
+			cfg, err := config.Load()
 			require.NoError(t, err)
 			tt.check(t, cfg)
 		})
@@ -605,13 +559,6 @@ func TestValidation_OpenAIConfig(t *testing.T) {
 			expectError: "openai.embedding_dimensions",
 		},
 		{
-			name: "invalid max_requests_per_minute",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.OpenAI.MaxRequestsPerMinute = 0
-			},
-			expectError: "openai.max_requests_per_minute",
-		},
-		{
 			name: "negative retry_attempts",
 			modify: func(cfg *config.MnemonicConfig) {
 				cfg.OpenAI.RetryAttempts = -1
@@ -624,183 +571,6 @@ func TestValidation_OpenAIConfig(t *testing.T) {
 				cfg.OpenAI.RetryDelay = -1 * time.Second
 			},
 			expectError: "openai.retry_delay",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := validConfig()
-			tt.modify(cfg)
-			errs := cfg.Validate()
-			require.NotEmpty(t, errs, "expected validation errors")
-			assert.Contains(t, errs.Error(), tt.expectError)
-		})
-	}
-}
-
-// TestValidation_RateLimitConfig tests rate limit configuration validation.
-func TestValidation_RateLimitConfig(t *testing.T) {
-	tests := []struct {
-		name        string
-		modify      func(cfg *config.MnemonicConfig)
-		expectError string
-	}{
-		{
-			name: "enabled with zero requests_per_second",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.RateLimit.Enabled = true
-				cfg.RateLimit.RequestsPerSecond = 0
-			},
-			expectError: "rate_limit.requests_per_second",
-		},
-		{
-			name: "enabled with zero burst_size",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.RateLimit.Enabled = true
-				cfg.RateLimit.BurstSize = 0
-			},
-			expectError: "rate_limit.burst_size",
-		},
-		{
-			name: "enabled with zero per_user.requests_per_minute",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.RateLimit.Enabled = true
-				cfg.RateLimit.PerUser.RequestsPerMinute = 0
-			},
-			expectError: "rate_limit.per_user.requests_per_minute",
-		},
-		{
-			name: "enabled with zero per_user.burst_size",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.RateLimit.Enabled = true
-				cfg.RateLimit.PerUser.BurstSize = 0
-			},
-			expectError: "rate_limit.per_user.burst_size",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := validConfig()
-			tt.modify(cfg)
-			errs := cfg.Validate()
-			require.NotEmpty(t, errs, "expected validation errors")
-			assert.Contains(t, errs.Error(), tt.expectError)
-		})
-	}
-}
-
-// TestValidation_RateLimitDisabled verifies no validation errors when rate limiting is disabled.
-func TestValidation_RateLimitDisabled(t *testing.T) {
-	cfg := validConfig()
-	cfg.RateLimit.Enabled = false
-	cfg.RateLimit.RequestsPerSecond = 0 // Invalid when enabled, but OK when disabled
-	cfg.RateLimit.BurstSize = 0
-
-	errs := cfg.Validate()
-	// Should not have rate limit errors when disabled
-	for _, err := range errs {
-		assert.NotContains(t, err.Field, "rate_limit")
-	}
-}
-
-// TestValidation_EnrichmentConfig tests enrichment configuration validation.
-func TestValidation_EnrichmentConfig(t *testing.T) {
-	tests := []struct {
-		name        string
-		modify      func(cfg *config.MnemonicConfig)
-		expectError string
-	}{
-		{
-			name: "zero worker_count",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Enrichment.WorkerCount = 0
-			},
-			expectError: "enrichment.worker_count",
-		},
-		{
-			name: "zero poll_interval",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Enrichment.PollInterval = 0
-			},
-			expectError: "enrichment.poll_interval",
-		},
-		{
-			name: "zero max_attempts",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Enrichment.MaxAttempts = 0
-			},
-			expectError: "enrichment.max_attempts",
-		},
-		{
-			name: "negative retry_delay",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Enrichment.RetryDelay = -1 * time.Second
-			},
-			expectError: "enrichment.retry_delay",
-		},
-		{
-			name: "zero job_timeout",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Enrichment.JobTimeout = 0
-			},
-			expectError: "enrichment.job_timeout",
-		},
-		{
-			name: "zero drain_timeout",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Enrichment.DrainTimeout = 0
-			},
-			expectError: "enrichment.drain_timeout",
-		},
-		{
-			name: "negative drain_timeout",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Enrichment.DrainTimeout = -1 * time.Second
-			},
-			expectError: "enrichment.drain_timeout",
-		},
-		{
-			name: "zero completed_retention",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Enrichment.CompletedRetention = 0
-			},
-			expectError: "enrichment.completed_retention",
-		},
-		{
-			name: "negative completed_retention",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Enrichment.CompletedRetention = -1 * time.Hour
-			},
-			expectError: "enrichment.completed_retention",
-		},
-		{
-			name: "zero failed_retention",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Enrichment.FailedRetention = 0
-			},
-			expectError: "enrichment.failed_retention",
-		},
-		{
-			name: "negative failed_retention",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Enrichment.FailedRetention = -1 * time.Hour
-			},
-			expectError: "enrichment.failed_retention",
-		},
-		{
-			name: "negative related_to_min_similarity",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Enrichment.RelatedToMinSimilarity = -0.1
-			},
-			expectError: "enrichment.related_to_min_similarity",
-		},
-		{
-			name: "related_to_min_similarity over 1",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Enrichment.RelatedToMinSimilarity = 1.5
-			},
-			expectError: "enrichment.related_to_min_similarity",
 		},
 	}
 
@@ -828,13 +598,6 @@ func TestValidation_LoggingConfig(t *testing.T) {
 				cfg.Logging.Level = "invalid"
 			},
 			expectError: "logging.level",
-		},
-		{
-			name: "invalid log format",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Logging.Format = "invalid"
-			},
-			expectError: "logging.format",
 		},
 	}
 
@@ -865,22 +628,6 @@ func TestValidation_LoggingLevels(t *testing.T) {
 	}
 }
 
-// TestValidation_LoggingFormats tests all valid log formats.
-func TestValidation_LoggingFormats(t *testing.T) {
-	validFormats := []string{"json", "text", "JSON", "TEXT"}
-
-	for _, format := range validFormats {
-		t.Run(format, func(t *testing.T) {
-			cfg := validConfig()
-			cfg.Logging.Format = format
-			errs := cfg.Validate()
-			for _, err := range errs {
-				assert.NotEqual(t, "logging.format", err.Field)
-			}
-		})
-	}
-}
-
 // TestValidation_ObservabilityConfig tests observability configuration validation.
 func TestValidation_ObservabilityConfig(t *testing.T) {
 	tests := []struct {
@@ -903,14 +650,6 @@ func TestValidation_ObservabilityConfig(t *testing.T) {
 				cfg.Observability.Metrics.Path = ""
 			},
 			expectError: "observability.metrics.path",
-		},
-		{
-			name: "health enabled with empty path",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Observability.Health.Enabled = true
-				cfg.Observability.Health.Path = ""
-			},
-			expectError: "observability.health.path",
 		},
 		{
 			name: "tracing enabled with empty endpoint",
@@ -1073,21 +812,6 @@ func TestServerAddress(t *testing.T) {
 	}
 }
 
-// TestPostgresConnectionString tests the ConnectionString() helper method.
-func TestPostgresConnectionString(t *testing.T) {
-	cfg := &config.PostgresConfig{
-		Host:     "localhost",
-		Port:     5432,
-		Database: "testdb",
-		Username: "testuser",
-		Password: "testpass",
-		SSLMode:  "require",
-	}
-
-	expected := "host=localhost port=5432 user=testuser password=testpass dbname=testdb sslmode=require"
-	assert.Equal(t, expected, cfg.ConnectionString())
-}
-
 // TestPostgresDSN tests the DSN() helper method.
 func TestPostgresDSN(t *testing.T) {
 	tests := []struct {
@@ -1144,23 +868,6 @@ func TestPostgresDSN(t *testing.T) {
 	}
 }
 
-// TestPostgresSafeConnectionString tests the SafeConnectionString() helper method.
-func TestPostgresSafeConnectionString(t *testing.T) {
-	cfg := &config.PostgresConfig{
-		Host:     "localhost",
-		Port:     5432,
-		Database: "testdb",
-		Username: "testuser",
-		Password: "supersecretpassword",
-		SSLMode:  "require",
-	}
-
-	result := cfg.SafeConnectionString()
-	expected := "host=localhost port=5432 user=testuser password=***** dbname=testdb sslmode=require"
-	assert.Equal(t, expected, result)
-	assert.NotContains(t, result, "supersecretpassword")
-}
-
 // TestPostgresSafeDSN tests the SafeDSN() helper method.
 func TestPostgresSafeDSN(t *testing.T) {
 	tests := []struct {
@@ -1191,40 +898,6 @@ func TestPostgresSafeDSN(t *testing.T) {
 			result := tt.cfg.SafeDSN()
 			assert.Equal(t, tt.expected, result)
 			assert.NotContains(t, result, tt.cfg.Password)
-		})
-	}
-}
-
-// TestNeo4jConnectionURI tests the ConnectionURI() helper method.
-func TestNeo4jConnectionURI(t *testing.T) {
-	tests := []struct {
-		name     string
-		uri      string
-		expected string
-	}{
-		{
-			name:     "bolt scheme",
-			uri:      "bolt://localhost:7687",
-			expected: "bolt://localhost:7687",
-		},
-		{
-			name:     "neo4j scheme",
-			uri:      "neo4j://neo4j-cluster:7687",
-			expected: "neo4j://neo4j-cluster:7687",
-		},
-		{
-			name:     "bolt+s scheme",
-			uri:      "bolt+s://secure-host:7687",
-			expected: "bolt+s://secure-host:7687",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Neo4jConfig{
-				URI: tt.uri,
-			}
-			assert.Equal(t, tt.expected, cfg.ConnectionURI())
 		})
 	}
 }
@@ -1350,43 +1023,6 @@ func TestNeo4jCredentials(t *testing.T) {
 	}
 }
 
-// TestConfigFileFlagOverride tests that --config flag takes precedence.
-func TestConfigFileFlagOverride(t *testing.T) {
-	clearMnemonicEnvVars(t)
-
-	// Create multiple config files
-	tmpDir := t.TempDir()
-	envConfigPath := filepath.Join(tmpDir, "env-config.yaml")
-	flagConfigPath := filepath.Join(tmpDir, "flag-config.yaml")
-
-	envConfig := `
-server:
-  port: 9001
-`
-	flagConfig := `
-server:
-  port: 9002
-`
-
-	err := os.WriteFile(envConfigPath, []byte(envConfig), 0644)
-	require.NoError(t, err)
-	err = os.WriteFile(flagConfigPath, []byte(flagConfig), 0644)
-	require.NoError(t, err)
-
-	// Set environment variable
-	t.Setenv(config.EnvConfigFile, envConfigPath)
-
-	// Create flagset with --config
-	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	configFlag := flags.String("config", "", "config file")
-	err = flags.Set("config", flagConfigPath)
-	require.NoError(t, err)
-
-	// Verify flag was marked as changed
-	assert.True(t, flags.Lookup("config").Changed)
-	assert.Equal(t, flagConfigPath, *configFlag)
-}
-
 // TestBooleanEnvironmentVariables tests boolean parsing from env vars.
 func TestBooleanEnvironmentVariables(t *testing.T) {
 	tests := []struct {
@@ -1405,18 +1041,12 @@ func TestBooleanEnvironmentVariables(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			clearMnemonicEnvVars(t)
-			// Use logging.include_caller which has no validation dependencies
-			t.Setenv("MNEMONIC_LOGGING_INCLUDE_CALLER", tt.value)
+			// otlp_insecure has no validation dependencies while tracing is off.
+			t.Setenv("MNEMONIC_OBSERVABILITY_TRACING_OTLP_INSECURE", tt.value)
 
-			v := viper.New()
-			config.SetDefaults(v)
-			v.SetEnvPrefix("MNEMONIC")
-			v.SetEnvKeyReplacer(replaceUnderscores())
-			v.AutomaticEnv()
-
-			cfg, err := config.LoadFromViper(v)
+			cfg, err := config.Load()
 			require.NoError(t, err)
-			assert.Equal(t, tt.expected, cfg.Logging.IncludeCaller)
+			assert.Equal(t, tt.expected, cfg.Observability.Tracing.OTLPInsecure)
 		})
 	}
 }
@@ -1439,13 +1069,7 @@ func TestDurationEnvironmentVariables(t *testing.T) {
 			clearMnemonicEnvVars(t)
 			t.Setenv("MNEMONIC_SERVER_READ_TIMEOUT", tt.value)
 
-			v := viper.New()
-			config.SetDefaults(v)
-			v.SetEnvPrefix("MNEMONIC")
-			v.SetEnvKeyReplacer(replaceUnderscores())
-			v.AutomaticEnv()
-
-			cfg, err := config.LoadFromViper(v)
+			cfg, err := config.Load()
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, cfg.Server.ReadTimeout)
 		})
@@ -1500,11 +1124,6 @@ func clearMnemonicEnvVars(t *testing.T) {
 	}
 }
 
-// strings helper for env key replacement
-func replaceUnderscores() *strings.Replacer {
-	return strings.NewReplacer(".", "_")
-}
-
 // validConfig returns a fully valid configuration for testing.
 func validConfig() *config.MnemonicConfig {
 	return &config.MnemonicConfig{
@@ -1550,48 +1169,20 @@ func validConfig() *config.MnemonicConfig {
 			},
 		},
 		OpenAI: config.OpenAIConfig{
-			APIKey:               "",
-			EmbeddingModel:       "text-embedding-3-small",
-			EmbeddingDimensions:  1536,
-			ExtractionModel:      "gpt-4o-mini",
-			MaxRequestsPerMinute: 500,
-			RetryAttempts:        3,
-			RetryDelay:           1 * time.Second,
-		},
-		RateLimit: config.RateLimitConfig{
-			Enabled:           false,
-			RequestsPerSecond: 100,
-			BurstSize:         200,
-			PerUser: config.PerUserRateLimit{
-				RequestsPerMinute: 60,
-				BurstSize:         10,
-			},
-		},
-		Enrichment: config.EnrichmentConfig{
-			WorkerCount:            2,
-			PollInterval:           5 * time.Second,
-			MaxAttempts:            3,
-			RetryDelay:             30 * time.Second,
-			JobTimeout:             5 * time.Minute,
-			DrainTimeout:           30 * time.Second,
-			CompletedRetention:     168 * time.Hour,
-			FailedRetention:        720 * time.Hour,
-			RelatedToMinSimilarity: 0.3,
+			APIKey:              "",
+			EmbeddingModel:      "text-embedding-3-small",
+			EmbeddingDimensions: 1536,
+			RetryAttempts:       3,
+			RetryDelay:          1 * time.Second,
 		},
 		Logging: config.LoggingConfig{
-			Level:         "info",
-			Format:        "json",
-			IncludeCaller: false,
+			Level: "info",
 		},
 		Observability: config.ObservabilityConfig{
 			Metrics: config.MetricsConfig{
 				Enabled: true,
 				Path:    "/metrics",
 				Port:    9090,
-			},
-			Health: config.HealthConfig{
-				Enabled: true,
-				Path:    "/health",
 			},
 			Tracing: config.TracingConfig{
 				Enabled:      false,
@@ -1601,4 +1192,15 @@ func validConfig() *config.MnemonicConfig {
 			},
 		},
 	}
+}
+
+// TestLoad_ExplicitConfigFileMustBeReadable verifies that a config file named
+// by MNEMONIC_CONFIG_FILE fails loading when it cannot be read.
+func TestLoad_ExplicitConfigFileMustBeReadable(t *testing.T) {
+	clearMnemonicEnvVars(t)
+	t.Setenv(config.EnvConfigFile, filepath.Join(t.TempDir(), "missing.yaml"))
+
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read config file")
 }

@@ -78,10 +78,7 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	}
 
 	// Wire MCP dependencies.
-	toolDeps, err := wireDependencies(pgPool, neo4jDriver, cfg, logger, tel.MetricsRegistry())
-	if err != nil {
-		return fmt.Errorf("failed to wire dependencies: %w", err)
-	}
+	toolDeps := wireDependencies(pgPool, neo4jDriver, cfg, logger, tel.MetricsRegistry())
 
 	// Build operations HTTP server.
 	requestMetrics, err := middleware.NewRequestMetrics(tel.Meter("mnemonic/http"))
@@ -90,7 +87,7 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	}
 	router := setupRouter(tel, requestMetrics)
 	operations.SetupHandlers(router, health.Descriptors())
-	adminServer := CreateHTTPServer(router, cfg)
+	adminServer := newHTTPServer(router, cfg)
 
 	// Build the MCP HTTP server.
 	mcpSrv := mcpserver.NewMCPServer(toolDeps, logger, cfg.MCP, tel.MetricsRegistry().Tools)
@@ -161,23 +158,16 @@ func wireDependencies(
 	cfg *config.MnemonicConfig,
 	logger zerolog.Logger,
 	registry *metrics.Registry,
-) (mcpserver.ToolDependencies, error) {
-	// Repositories.
+) mcpserver.ToolDependencies {
 	patternRepo := patternrepo.NewRepository(pgPool)
 	graphRepo := graphrepo.NewRepository(neo4jDriver, cfg.Database.Neo4j.Database, registry.Database)
 	chunkRepo := chunkrepo.NewRepository(pgPool)
-
-	// External services.
 	embeddingSvc := openaisvc.NewEmbeddingService(cfg.OpenAI)
 
-	// Domain services used by MCP tools.
 	searchSvc := searchsvc.New(embeddingSvc, patternRepo, chunkRepo, graphRepo, registry.Patterns, logger)
-	patternSvc := patternsvc.New(patternRepo, nil, graphRepo, pgPool, chunkRepo, logger)
+	patternSvc := patternsvc.New(patternRepo, graphRepo, logger)
 
-	// MCP facade.
-	toolDeps := mcpserver.NewToolDependencies(searchSvc, patternSvc)
-
-	return toolDeps, nil
+	return mcpserver.NewToolDependencies(searchSvc, patternSvc)
 }
 
 // runHTTPServer starts the operations HTTP server and gracefully shuts it down
@@ -281,8 +271,8 @@ func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMet
 	return router
 }
 
-// CreateHTTPServer creates an operations http.Server from config.
-func CreateHTTPServer(r *gin.Engine, cfg *config.MnemonicConfig) *http.Server {
+// newHTTPServer creates the operations http.Server from config.
+func newHTTPServer(r *gin.Engine, cfg *config.MnemonicConfig) *http.Server {
 	return &http.Server{
 		Addr:           cfg.Server.Address(),
 		Handler:        r,

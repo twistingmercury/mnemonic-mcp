@@ -16,8 +16,6 @@ import (
 	"github.com/twistingmercury/mnemonic/internal/service"
 	openaisvc "github.com/twistingmercury/mnemonic/internal/service/openai"
 	"github.com/twistingmercury/mnemonic/internal/service/search"
-
-	repository "github.com/twistingmercury/mnemonic/internal/repository"
 )
 
 // --- Mock: openaisvc.EmbeddingService ---
@@ -40,68 +38,17 @@ type mockPatternRepo struct {
 	mock.Mock
 }
 
-func (m *mockPatternRepo) Create(ctx context.Context, p *pattern.Pattern) error {
-	args := m.Called(ctx, p)
-	return args.Error(0)
-}
-
 func (m *mockPatternRepo) Get(ctx context.Context, id uuid.UUID) (*pattern.Pattern, error) {
 	args := m.Called(ctx, id)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
+	if v := args.Get(0); v != nil {
+		return v.(*pattern.Pattern), args.Error(1)
 	}
-	return args.Get(0).(*pattern.Pattern), args.Error(1)
+	return nil, args.Error(1)
 }
 
-func (m *mockPatternRepo) GetByName(ctx context.Context, name string) (*pattern.Pattern, error) {
-	args := m.Called(ctx, name)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*pattern.Pattern), args.Error(1)
-}
-
-func (m *mockPatternRepo) Update(ctx context.Context, p *pattern.Pattern) error {
-	args := m.Called(ctx, p)
-	return args.Error(0)
-}
-
-func (m *mockPatternRepo) Delete(ctx context.Context, id uuid.UUID) error {
+func (m *mockPatternRepo) GetName(ctx context.Context, id uuid.UUID) (string, error) {
 	args := m.Called(ctx, id)
-	return args.Error(0)
-}
-
-func (m *mockPatternRepo) List(ctx context.Context, filter pattern.Filter, opts repository.ListOptions) ([]*pattern.Pattern, int64, error) {
-	args := m.Called(ctx, filter, opts)
-	if args.Get(0) == nil {
-		return nil, args.Get(1).(int64), args.Error(2)
-	}
-	return args.Get(0).([]*pattern.Pattern), args.Get(1).(int64), args.Error(2)
-}
-
-func (m *mockPatternRepo) UpdateEmbedding(ctx context.Context, id uuid.UUID, embedding []float32) error {
-	args := m.Called(ctx, id, embedding)
-	return args.Error(0)
-}
-
-func (m *mockPatternRepo) UpdateEnrichmentStatus(ctx context.Context, id uuid.UUID, status string, errMsg *string) error {
-	args := m.Called(ctx, id, status, errMsg)
-	return args.Error(0)
-}
-
-// FindSimilar is required by pattern.Repository but is not called by the search
-// service (which uses chunkRepo.FindSimilar instead).
-func (m *mockPatternRepo) FindSimilar(ctx context.Context, embedding []float32, opts pattern.SimilarityOptions) ([]*pattern.Match, error) {
-	args := m.Called(ctx, embedding, opts)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]*pattern.Match), args.Error(1)
-}
-
-func (m *mockPatternRepo) Exists(ctx context.Context, id uuid.UUID) (bool, error) {
-	args := m.Called(ctx, id)
-	return args.Bool(0), args.Error(1)
+	return args.String(0), args.Error(1)
 }
 
 func (m *mockPatternRepo) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*pattern.Pattern, error) {
@@ -118,80 +65,18 @@ type mockChunkRepo struct {
 	mock.Mock
 }
 
-func (m *mockChunkRepo) Create(ctx context.Context, c *chunkrepo.Chunk) error {
-	return m.Called(ctx, c).Error(0)
-}
-
-func (m *mockChunkRepo) CreateBatch(ctx context.Context, chunks []*chunkrepo.Chunk) error {
-	return m.Called(ctx, chunks).Error(0)
-}
-
-func (m *mockChunkRepo) Get(ctx context.Context, id uuid.UUID) (*chunkrepo.Chunk, error) {
-	args := m.Called(ctx, id)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*chunkrepo.Chunk), args.Error(1)
-}
-
-func (m *mockChunkRepo) ListByPatternID(ctx context.Context, patternID uuid.UUID) ([]*chunkrepo.Chunk, error) {
-	args := m.Called(ctx, patternID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]*chunkrepo.Chunk), args.Error(1)
-}
-
-func (m *mockChunkRepo) DeleteByPatternID(ctx context.Context, patternID uuid.UUID) error {
-	return m.Called(ctx, patternID).Error(0)
-}
-
-func (m *mockChunkRepo) UpdateEmbedding(ctx context.Context, id uuid.UUID, embedding []float32) error {
-	return m.Called(ctx, id, embedding).Error(0)
-}
-
-func (m *mockChunkRepo) UpdateEnrichmentStatus(ctx context.Context, id uuid.UUID, status string, errMsg *string) error {
-	return m.Called(ctx, id, status, errMsg).Error(0)
-}
-
 func (m *mockChunkRepo) FindSimilar(ctx context.Context, embedding []float32, opts chunkrepo.SimilarityOptions) ([]*chunkrepo.Match, error) {
 	args := m.Called(ctx, embedding, opts)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
+	if v := args.Get(0); v != nil {
+		return v.([]*chunkrepo.Match), args.Error(1)
 	}
-	return args.Get(0).([]*chunkrepo.Match), args.Error(1)
-}
-
-func (m *mockChunkRepo) AllEnrichedForPattern(ctx context.Context, patternID uuid.UUID) (bool, error) {
-	args := m.Called(ctx, patternID)
-	return args.Bool(0), args.Error(1)
-}
-
-func (m *mockChunkRepo) AnyFailedForPattern(ctx context.Context, patternID uuid.UUID) (bool, error) {
-	args := m.Called(ctx, patternID)
-	return args.Bool(0), args.Error(1)
+	return nil, args.Error(1)
 }
 
 // --- Mock: graphrepo.Repository ---
 
 type mockGraphRepo struct {
 	mock.Mock
-}
-
-func (m *mockGraphRepo) SyncPattern(ctx context.Context, p *graphrepo.Pattern) error {
-	return m.Called(ctx, p).Error(0)
-}
-
-func (m *mockGraphRepo) DeletePattern(ctx context.Context, patternID uuid.UUID) error {
-	return m.Called(ctx, patternID).Error(0)
-}
-
-func (m *mockGraphRepo) SyncConcepts(ctx context.Context, patternID uuid.UUID, concepts []graphrepo.Concept) error {
-	return m.Called(ctx, patternID, concepts).Error(0)
-}
-
-func (m *mockGraphRepo) ComputeRelatedToEdges(ctx context.Context, patternID uuid.UUID, minSimilarity float64) error {
-	return m.Called(ctx, patternID, minSimilarity).Error(0)
 }
 
 func (m *mockGraphRepo) GetPatternConcepts(ctx context.Context, patternID uuid.UUID) ([]graphrepo.Concept, error) {
@@ -210,25 +95,20 @@ func (m *mockGraphRepo) FindRelatedPatterns(ctx context.Context, patternID uuid.
 	return nil, args.Error(1)
 }
 
-func (m *mockGraphRepo) CleanupOrphanedConcepts(ctx context.Context) (int64, error) {
-	args := m.Called(ctx)
-	return args.Get(0).(int64), args.Error(1)
-}
-
-func (m *mockGraphRepo) HealthCheck(ctx context.Context) error {
-	return m.Called(ctx).Error(0)
-}
-
 // --- Helpers ---
 
 var testEmbedding = []float32{0.1, 0.2, 0.3}
 
-func newTestService(embSvc *mockEmbeddingService, patternRepo *mockPatternRepo, chunkRepo *mockChunkRepo) search.Service {
-	logger := zerolog.Nop()
-	return search.New(embSvc, patternRepo, chunkRepo, nil, nil, logger)
+// newTestService creates a Service whose graph repository finds no related
+// patterns, for tests that only exercise vector search.
+func newTestService(embSvc *mockEmbeddingService, patternRepo *mockPatternRepo, chunkRepo *mockChunkRepo) *search.Service {
+	graphRepo := new(mockGraphRepo)
+	graphRepo.On("FindRelatedPatterns", mock.Anything, mock.Anything, mock.Anything).
+		Return([]graphrepo.RelatedPattern{}, nil).Maybe()
+	return newTestServiceWithGraph(embSvc, patternRepo, chunkRepo, graphRepo)
 }
 
-func newTestServiceWithGraph(embSvc *mockEmbeddingService, patternRepo *mockPatternRepo, chunkRepo *mockChunkRepo, graphRepo *mockGraphRepo) search.Service {
+func newTestServiceWithGraph(embSvc *mockEmbeddingService, patternRepo *mockPatternRepo, chunkRepo *mockChunkRepo, graphRepo *mockGraphRepo) *search.Service {
 	logger := zerolog.Nop()
 	return search.New(embSvc, patternRepo, chunkRepo, graphRepo, nil, logger)
 }
@@ -237,12 +117,8 @@ func testChunkMatch(patternID uuid.UUID, patternName string, similarity float64)
 	return &chunkrepo.Match{
 		PatternID:    patternID,
 		PatternName:  patternName,
-		EntityType:   "go-pattern",
-		Language:     "go",
-		Domain:       "backend",
 		Tags:         []string{"go", "testing"},
 		SectionTitle: "Overview",
-		ChunkIndex:   0,
 		Content:      "test content for " + patternName,
 		Similarity:   similarity,
 	}
@@ -280,8 +156,6 @@ func TestSearchPatterns_HappyPath(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Equal(t, "error handling in Go", result.Query)
 	assert.Len(t, result.Matches, 2)
-	assert.Equal(t, 2, result.TotalCandidates)
-	assert.Greater(t, result.SearchDurationMs, int64(-1))
 	assert.Equal(t, id1, result.Matches[0].PatternID)
 	assert.Equal(t, "go-error-handling", result.Matches[0].PatternName)
 	assert.InDelta(t, 0.92, result.Matches[0].Similarity, 0.001)
@@ -323,7 +197,6 @@ func TestSearchPatterns_PassesLanguageAndDomainFilters(t *testing.T) {
 
 	embSvc.AssertExpectations(t)
 	chunkRepo.AssertExpectations(t)
-	patternRepo.AssertNotCalled(t, "GetPatternIDsByAgent")
 }
 
 func TestSearchPatterns_PassesTagsLanguageDomainTogether(t *testing.T) {
@@ -356,42 +229,8 @@ func TestSearchPatterns_PassesTagsLanguageDomainTogether(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Empty(t, result.Matches)
 	assert.Equal(t, "platform patterns", result.Query)
-	assert.Equal(t, 0, result.TotalCandidates)
 
 	chunkRepo.AssertExpectations(t)
-	patternRepo.AssertNotCalled(t, "GetPatternIDsByAgent")
-}
-
-func TestSearchPatterns_DoesNotUseLegacyPatternIDPrefilter(t *testing.T) {
-	t.Parallel()
-
-	embSvc := new(mockEmbeddingService)
-	patternRepo := new(mockPatternRepo)
-	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, chunkRepo)
-
-	patternID := uuid.New()
-	embSvc.On("Embed", mock.Anything, "legacy prefilter check").Return(testEmbedding, nil)
-	chunkRepo.On("FindSimilar", mock.Anything, testEmbedding, chunkrepo.SimilarityOptions{
-		MinSimilarity: 0.7,
-		MaxResults:    10,
-		// PatternIDs should remain empty for MCP search.
-		PatternIDs: nil,
-	}).Return([]*chunkrepo.Match{testChunkMatch(patternID, "no-prefilter", 0.8)}, nil)
-
-	result, err := svc.SearchPatterns(context.Background(), search.SearchOptions{
-		Query:     "legacy prefilter check",
-		Limit:     10,
-		Threshold: 0.7,
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Len(t, result.Matches, 1)
-	assert.Equal(t, "no-prefilter", result.Matches[0].PatternName)
-
-	chunkRepo.AssertExpectations(t)
-	patternRepo.AssertNotCalled(t, "GetPatternIDsByAgent")
 }
 
 func TestSearchPatterns_EmbeddingFailure(t *testing.T) {
@@ -441,7 +280,6 @@ func TestSearchPatterns_NoMatchingPatterns(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Empty(t, result.Matches)
 	assert.Equal(t, "obscure topic", result.Query)
-	assert.Equal(t, 0, result.TotalCandidates)
 }
 
 func TestSearchPatterns_ContextCancellation(t *testing.T) {
@@ -525,81 +363,6 @@ func TestSearchPatterns_FindSimilarError(t *testing.T) {
 	assert.Contains(t, err.Error(), "find similar chunks")
 }
 
-func TestSearchPatterns_NoAgentRepoCallsOnSearch(t *testing.T) {
-	t.Parallel()
-
-	embSvc := new(mockEmbeddingService)
-	patternRepo := new(mockPatternRepo)
-	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, chunkRepo)
-
-	id := uuid.New()
-	embSvc.On("Embed", mock.Anything, "no agent lookups").Return(testEmbedding, nil)
-	chunkRepo.On("FindSimilar", mock.Anything, testEmbedding, chunkrepo.SimilarityOptions{
-		MinSimilarity: 0.7,
-		MaxResults:    10,
-	}).Return([]*chunkrepo.Match{testChunkMatch(id, "no-agent-lookup", 0.83)}, nil)
-
-	result, err := svc.SearchPatterns(context.Background(), search.SearchOptions{
-		Query:     "no agent lookups",
-		Limit:     10,
-		Threshold: 0.7,
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Len(t, result.Matches, 1)
-	patternRepo.AssertNotCalled(t, "GetPatternIDsByAgent")
-}
-
-func TestSearchPatterns_NoPatternIDLookupOnSearch(t *testing.T) {
-	t.Parallel()
-
-	embSvc := new(mockEmbeddingService)
-	patternRepo := new(mockPatternRepo)
-	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, chunkRepo)
-
-	id := uuid.New()
-	embSvc.On("Embed", mock.Anything, "pattern id lookup removed").Return(testEmbedding, nil)
-	chunkRepo.On("FindSimilar", mock.Anything, testEmbedding, chunkrepo.SimilarityOptions{
-		MinSimilarity: 0.7,
-		MaxResults:    10,
-	}).Return([]*chunkrepo.Match{testChunkMatch(id, "lookup-removed", 0.79)}, nil)
-
-	result, err := svc.SearchPatterns(context.Background(), search.SearchOptions{
-		Query:     "pattern id lookup removed",
-		Limit:     10,
-		Threshold: 0.7,
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Len(t, result.Matches, 1)
-	patternRepo.AssertNotCalled(t, "GetPatternIDsByAgent")
-}
-
-func TestSearchPatterns_ChunkRepoNotConfigured(t *testing.T) {
-	t.Parallel()
-
-	embSvc := new(mockEmbeddingService)
-	patternRepo := new(mockPatternRepo)
-	// Pass nil chunkRepo explicitly.
-	svc := search.New(embSvc, patternRepo, nil, nil, nil, zerolog.Nop())
-
-	embSvc.On("Embed", mock.Anything, "some query").Return(testEmbedding, nil)
-
-	result, err := svc.SearchPatterns(context.Background(), search.SearchOptions{
-		Query:     "some query",
-		Limit:     10,
-		Threshold: 0.7,
-	})
-
-	assert.Nil(t, result)
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, service.ErrServiceUnavailable))
-}
-
 // ---------- Graph Expansion Tests ----------
 
 func TestSearchPatterns_GraphExpansion_HappyPath(t *testing.T) {
@@ -656,35 +419,7 @@ func TestSearchPatterns_GraphExpansion_HappyPath(t *testing.T) {
 	assert.Equal(t, "graph-pattern-1", gm1.PatternName)
 	assert.InDelta(t, 0.75, gm1.Similarity, 0.001)
 	assert.Equal(t, []string{"error", "context"}, gm1.ConceptNames)
-	assert.Equal(t, id1, gm1.SeedPatternID)
 	assert.Equal(t, "pattern-a", gm1.SeedPatternName)
-}
-
-func TestSearchPatterns_GraphExpansion_NilGraphRepo(t *testing.T) {
-	t.Parallel()
-
-	embSvc := new(mockEmbeddingService)
-	patternRepo := new(mockPatternRepo)
-	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, chunkRepo) // graphRepo = nil
-
-	id1 := uuid.New()
-
-	embSvc.On("Embed", mock.Anything, "some query").Return(testEmbedding, nil)
-	chunkRepo.On("FindSimilar", mock.Anything, testEmbedding, mock.Anything).Return([]*chunkrepo.Match{
-		testChunkMatch(id1, "pattern-a", 0.92),
-	}, nil)
-
-	result, err := svc.SearchPatterns(context.Background(), search.SearchOptions{
-		Query:     "some query",
-		Limit:     10,
-		Threshold: 0.7,
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Len(t, result.Matches, 1)
-	assert.Nil(t, result.GraphMatches, "GraphMatches should be nil when graphRepo is nil")
 }
 
 func TestSearchPatterns_GraphExpansion_GraphFailure(t *testing.T) {
