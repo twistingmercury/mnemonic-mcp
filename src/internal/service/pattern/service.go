@@ -5,7 +5,6 @@ package pattern
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -14,7 +13,6 @@ import (
 
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
-	"github.com/twistingmercury/mnemonic/internal/service"
 )
 
 // graphContextRelatedLimit caps the related patterns get_pattern shows.
@@ -60,13 +58,11 @@ func New(patternRepo patternrepo.Repository, graphRepo graphrepo.Repository, log
 // GetPatternWithGraph retrieves a pattern and, if it is enriched, its graph
 // context (related patterns and concepts, fetched concurrently). Neo4j
 // failures degrade gracefully, returning (pattern, nil, nil).
-// Returns service.ErrNotFound if the pattern does not exist.
+// Returns an error wrapping patternrepo.ErrNotFound if the pattern does not
+// exist.
 func (s *Service) GetPatternWithGraph(ctx context.Context, id uuid.UUID) (*patternrepo.Pattern, *GraphContext, error) {
 	pattern, err := s.patternRepo.Get(ctx, id)
 	if err != nil {
-		if errors.Is(err, patternrepo.ErrNotFound) {
-			return nil, nil, fmt.Errorf("%w: pattern %s", service.ErrNotFound, id)
-		}
 		return nil, nil, fmt.Errorf("get pattern with graph: %w", err)
 	}
 
@@ -88,7 +84,8 @@ func (s *Service) GetPatternWithGraph(ctx context.Context, id uuid.UUID) (*patte
 
 // FindRelatedPatterns returns the source pattern's name and the patterns
 // related to it via the knowledge graph. The name lookup and the graph query
-// run concurrently. Returns service.ErrNotFound if the pattern does not exist.
+// run concurrently. Returns an error wrapping patternrepo.ErrNotFound if the
+// pattern does not exist.
 func (s *Service) FindRelatedPatterns(ctx context.Context, patternID uuid.UUID, limit int) (string, []RelatedPatternResult, error) {
 	var (
 		name    string
@@ -99,9 +96,6 @@ func (s *Service) FindRelatedPatterns(ctx context.Context, patternID uuid.UUID, 
 	g.Go(func() error {
 		var err error
 		name, err = s.patternRepo.GetName(gCtx, patternID)
-		if errors.Is(err, patternrepo.ErrNotFound) {
-			return fmt.Errorf("%w: pattern %s", service.ErrNotFound, patternID)
-		}
 		return err
 	})
 	g.Go(func() error {

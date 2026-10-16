@@ -18,7 +18,6 @@ import (
 	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
-	"github.com/twistingmercury/mnemonic/internal/service"
 	openaisvc "github.com/twistingmercury/mnemonic/internal/service/openai"
 )
 
@@ -96,7 +95,7 @@ func New(
 func (s *Service) SearchPatterns(ctx context.Context, opts SearchOptions) (*SearchResult, error) {
 	embedding, err := s.embeddingSvc.Embed(ctx, opts.Query)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", service.ErrServiceUnavailable, err)
+		return nil, fmt.Errorf("embed query: %w", err)
 	}
 
 	searchStart := time.Now()

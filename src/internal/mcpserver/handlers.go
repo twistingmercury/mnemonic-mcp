@@ -9,7 +9,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/rs/zerolog"
 
-	"github.com/twistingmercury/mnemonic/internal/service"
+	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
 )
 
@@ -136,7 +136,7 @@ func handleGetPattern(deps ToolDependencies, logger zerolog.Logger) mcp.ToolHand
 // mapServiceError translates service-layer errors to MCP-layer sentinel
 // errors: unknown patterns are not found, everything else is unavailable.
 func mapServiceError(err error) error {
-	if errors.Is(err, service.ErrNotFound) {
+	if errors.Is(err, patternrepo.ErrNotFound) {
 		return fmt.Errorf("%w: %v", ErrPatternNotFound, err)
 	}
 	return fmt.Errorf("%w: %v", ErrServiceUnavailable, err)

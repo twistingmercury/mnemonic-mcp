@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
-	"github.com/twistingmercury/mnemonic/internal/service"
 	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
 )
@@ -160,7 +159,7 @@ func TestHandleSearchPatterns_ServiceUnavailable(t *testing.T) {
 	handler := handleSearchPatterns(deps, noopLogger(), 0.5)
 
 	deps.On("SearchPatterns", mock.Anything, mock.Anything).
-		Return(nil, errors.Join(service.ErrServiceUnavailable, errors.New("embedding failed")))
+		Return(nil, errors.New("embedding failed"))
 
 	_, _, err := handler(context.Background(), nil, SearchPatternsInput{
 		Query: "anything",
@@ -391,7 +390,7 @@ func TestHandleFindRelatedPatterns_NotFound(t *testing.T) {
 	patternID := uuid.New()
 
 	deps.On("FindRelatedPatterns", mock.Anything, patternID, 5).
-		Return("", nil, errors.Join(service.ErrNotFound, errors.New("pattern not found")))
+		Return("", nil, errors.Join(patternrepo.ErrNotFound, errors.New("pattern not found")))
 
 	_, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
 		PatternID: patternID.String(),
@@ -611,7 +610,7 @@ func TestHandleGetPattern_NotFound(t *testing.T) {
 	patternID := uuid.New()
 
 	deps.On("GetPatternWithGraph", mock.Anything, patternID).
-		Return(nil, nil, errors.Join(service.ErrNotFound, errors.New("pattern not found")))
+		Return(nil, nil, errors.Join(patternrepo.ErrNotFound, errors.New("pattern not found")))
 
 	_, _, err := handler(context.Background(), nil, GetPatternInput{
 		ID: patternID.String(),
@@ -642,15 +641,8 @@ func TestHandleGetPattern_InvalidUUID(t *testing.T) {
 func TestMapServiceError_NotFound(t *testing.T) {
 	t.Parallel()
 
-	err := mapServiceError(errors.Join(service.ErrNotFound, errors.New("pattern 123")))
+	err := mapServiceError(errors.Join(patternrepo.ErrNotFound, errors.New("pattern 123")))
 	assert.ErrorIs(t, err, ErrPatternNotFound)
-}
-
-func TestMapServiceError_ServiceUnavailable(t *testing.T) {
-	t.Parallel()
-
-	err := mapServiceError(errors.Join(service.ErrServiceUnavailable, errors.New("postgres down")))
-	assert.ErrorIs(t, err, ErrServiceUnavailable)
 }
 
 func TestMapServiceError_UnknownError(t *testing.T) {

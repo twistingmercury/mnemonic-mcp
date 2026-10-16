@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
-	"github.com/twistingmercury/mnemonic/internal/service"
 	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
 )
 
@@ -169,7 +168,7 @@ func TestGetPatternWithGraph(t *testing.T) {
 
 		pattern, graphCtx, err := svc.GetPatternWithGraph(context.Background(), testPatternID)
 
-		assert.ErrorIs(t, err, service.ErrNotFound)
+		assert.ErrorIs(t, err, patternrepo.ErrNotFound)
 		assert.Nil(t, pattern)
 		assert.Nil(t, graphCtx)
 	})
@@ -187,7 +186,7 @@ func TestGetPatternWithGraph(t *testing.T) {
 		_, _, err := svc.GetPatternWithGraph(context.Background(), testPatternID)
 
 		assert.ErrorIs(t, err, dbErr)
-		assert.NotErrorIs(t, err, service.ErrNotFound)
+		assert.NotErrorIs(t, err, patternrepo.ErrNotFound)
 	})
 
 	for _, failing := range []string{"FindRelatedPatterns", "GetPatternConcepts"} {
@@ -268,7 +267,7 @@ func TestFindRelatedPatterns(t *testing.T) {
 
 		assert.Empty(t, name)
 		assert.Nil(t, results)
-		assert.ErrorIs(t, err, service.ErrNotFound)
+		assert.ErrorIs(t, err, patternrepo.ErrNotFound)
 	})
 
 	t.Run("neo4j failure is returned", func(t *testing.T) {

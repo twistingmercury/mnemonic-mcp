@@ -25,7 +25,7 @@ import (
 
 	"github.com/twistingmercury/mnemonic/internal/config"
 	"github.com/twistingmercury/mnemonic/internal/metrics"
-	"github.com/twistingmercury/mnemonic/internal/service"
+	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
 )
 
@@ -72,9 +72,9 @@ func TestToolCallTelemetry(t *testing.T) {
 	missing := uuid.New()
 	deps := new(mockToolDeps)
 	deps.On("SearchPatterns", mock.Anything, mock.Anything).Return(&searchsvc.SearchResult{}, nil)
-	deps.On("GetPatternWithGraph", mock.Anything, missing).Return(nil, nil, service.ErrNotFound)
+	deps.On("GetPatternWithGraph", mock.Anything, missing).Return(nil, nil, patternrepo.ErrNotFound)
 	deps.On("FindRelatedPatterns", mock.Anything, mock.Anything, mock.Anything).
-		Return("", nil, errors.Join(service.ErrServiceUnavailable, errors.New("neo4j down")))
+		Return("", nil, errors.New("neo4j down"))
 
 	cfg := config.MCPConfig{DefaultSearchThreshold: 0.5}
 	srv := NewMCPHTTPServer(cfg, "localhost", NewMCPHTTPHandler(NewMCPServer(deps, noopLogger(), cfg, toolMetrics)))
@@ -163,7 +163,7 @@ func TestToolOutcome(t *testing.T) {
 	assert.Equal(t, outcomeOK, toolOutcome(nil))
 	assert.Equal(t, outcomeInvalid, toolOutcome(ErrInvalidInput))
 	assert.Equal(t, outcomeInvalid, toolOutcome(errors.New(`validating "arguments": validating root: required: missing properties: ["query"]`)))
-	assert.Equal(t, outcomeNotFound, toolOutcome(mapServiceError(service.ErrNotFound)))
+	assert.Equal(t, outcomeNotFound, toolOutcome(mapServiceError(patternrepo.ErrNotFound)))
 	assert.Equal(t, outcomeUnavailable, toolOutcome(mapServiceError(errors.New("boom"))))
 }
 

@@ -16,7 +16,6 @@ import (
 	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	"github.com/twistingmercury/mnemonic/internal/repository/pattern"
-	"github.com/twistingmercury/mnemonic/internal/service"
 	openaisvc "github.com/twistingmercury/mnemonic/internal/service/openai"
 	"github.com/twistingmercury/mnemonic/internal/service/search"
 )
@@ -258,7 +257,7 @@ func TestSearchPatterns_EmbeddingFailure(t *testing.T) {
 
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, service.ErrServiceUnavailable), "expected service.ErrServiceUnavailable, got: %v", err)
+	assert.ErrorIs(t, err, openaisvc.ErrEmbeddingFailed)
 
 	chunkRepo.AssertNotCalled(t, "FindSimilar")
 }
@@ -310,7 +309,7 @@ func TestSearchPatterns_ContextCancellation(t *testing.T) {
 
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, service.ErrServiceUnavailable), "expected service.ErrServiceUnavailable, got: %v", err)
+	assert.ErrorIs(t, err, context.Canceled)
 }
 
 func TestSearchPatterns_WithTags(t *testing.T) {
