@@ -3,7 +3,10 @@ package mcpserver
 import (
 	"context"
 	"errors"
+	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,19 +29,41 @@ import (
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
 )
 
-// TestToolCallTelemetry drives real tool calls over Streamable HTTP and checks
-// the HTTP span, the tool span beneath it, and the tool metrics. It swaps the
-// global tracer provider, so it must not run in parallel.
-func TestToolCallTelemetry(t *testing.T) {
-	recorder := tracetest.NewSpanRecorder()
-	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
-	prevTP, prevProp := otel.GetTracerProvider(), otel.GetTextMapPropagator()
-	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.TraceContext{})
-	t.Cleanup(func() {
-		otel.SetTracerProvider(prevTP)
-		otel.SetTextMapPropagator(prevProp)
+// The package tracer binds to the first global provider set, so every test
+// shares one provider and swaps the recorder its spans go to.
+var (
+	tracingOnce  sync.Once
+	spanRecorder atomic.Pointer[tracetest.SpanRecorder]
+)
+
+// swapProcessor forwards ended spans to the current test's recorder.
+type swapProcessor struct{ sdktrace.SpanProcessor }
+
+func (swapProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
+	if r := spanRecorder.Load(); r != nil {
+		r.OnEnd(s)
+	}
+}
+
+// recordSpans routes spans to a fresh recorder for this test and sets the
+// W3C trace context propagator. Tests that use it must not run in parallel.
+func recordSpans(t *testing.T) *tracetest.SpanRecorder {
+	t.Helper()
+	tracingOnce.Do(func() {
+		otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(swapProcessor{tracetest.NewSpanRecorder()})))
+		otel.SetTextMapPropagator(propagation.TraceContext{})
 	})
+	recorder := tracetest.NewSpanRecorder()
+	spanRecorder.Store(recorder)
+	t.Cleanup(func() { spanRecorder.Store(nil) })
+	return recorder
+}
+
+// TestToolCallTelemetry drives real tool calls over Streamable HTTP and checks
+// the HTTP span, the tool span beneath it, and the tool metrics. It must not
+// run in parallel.
+func TestToolCallTelemetry(t *testing.T) {
+	recorder := recordSpans(t)
 
 	reader := sdkmetric.NewManualReader()
 	toolMetrics, err := metrics.NewTools(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("test"))
@@ -135,4 +160,48 @@ func TestToolOutcome(t *testing.T) {
 	assert.Equal(t, outcomeInvalid, toolOutcome(ErrInvalidInput))
 	assert.Equal(t, outcomeNotFound, toolOutcome(mapServiceError(service.ErrNotFound)))
 	assert.Equal(t, outcomeUnavailable, toolOutcome(mapServiceError(errors.New("boom"))))
+}
+
+// TestToolCallTraceFromMeta checks that a traceparent in the request's _meta
+// parents the tool span, with a link back to the /mcp HTTP span, and that the
+// HTTP span carries the MCP method and protocol version. It must not run in
+// parallel.
+func TestToolCallTraceFromMeta(t *testing.T) {
+	recorder := recordSpans(t)
+
+	url := newTestEndpoint(t)
+	const clientTrace = "4bf92f3577b34da6a3ce929d0e0e4736"
+	meta := modernMeta()
+	meta["traceparent"] = "00-" + clientTrace + "-00f067aa0ba902b7-01"
+	status, _ := post(t, url,
+		map[string]string{"MCP-Protocol-Version": protocolVersion, "Mcp-Method": "tools/call", "Mcp-Name": "search_patterns"},
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{
+			"name": "search_patterns", "arguments": map[string]any{"query": "x"}, "_meta": meta,
+		}})
+	require.Equal(t, http.StatusOK, status)
+
+	var toolSpan, httpSpan sdktrace.ReadOnlySpan
+	require.Eventually(t, func() bool {
+		for _, s := range recorder.Ended() {
+			switch s.Name() {
+			case "tools/call search_patterns":
+				toolSpan = s
+			case "POST /mcp":
+				httpSpan = s
+			}
+		}
+		return toolSpan != nil && httpSpan != nil
+	}, 2*time.Second, 5*time.Millisecond)
+
+	assert.Equal(t, clientTrace, toolSpan.SpanContext().TraceID().String())
+	assert.Equal(t, "00f067aa0ba902b7", toolSpan.Parent().SpanID().String())
+	require.Len(t, toolSpan.Links(), 1)
+	assert.Equal(t, httpSpan.SpanContext().SpanID(), toolSpan.Links()[0].SpanContext.SpanID())
+
+	attrs := map[string]string{}
+	for _, kv := range httpSpan.Attributes() {
+		attrs[string(kv.Key)] = kv.Value.Emit()
+	}
+	assert.Equal(t, "tools/call", attrs["mcp.method.name"])
+	assert.Equal(t, protocolVersion, attrs["mcp.protocol.version"])
 }

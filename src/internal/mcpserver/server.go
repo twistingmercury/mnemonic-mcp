@@ -1,16 +1,24 @@
 package mcpserver
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/twistingmercury/mnemonic/internal/config"
 	"github.com/twistingmercury/mnemonic/internal/metrics"
 	"github.com/twistingmercury/mnemonic/internal/version"
 )
+
+// toolListTTL is the cache hint sent on tools/list and server/discover. The
+// tool set only changes with a new release, so clients may cache it.
+const toolListTTL = time.Hour
 
 // NewMCPServer creates a configured MCP server with all 3 pattern search
 // tools registered. The returned server is ready to be wrapped in an HTTP
@@ -22,6 +30,13 @@ func NewMCPServer(deps ToolDependencies, logger zerolog.Logger, mcpCfg config.MC
 		Version: version.Version(),
 	}, &mcp.ServerOptions{
 		SchemaCache: mcp.NewSchemaCache(),
+		// Tools only: the deprecated logging capability is unused, and the
+		// tool list is fixed, so there are no list_changed notifications.
+		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
+		SetCacheable: func(_ context.Context, _ mcp.Request, c *mcp.Cacheable) {
+			c.TTLMs = int(toolListTTL.Milliseconds())
+			c.CacheScope = "public"
+		},
 	})
 
 	server.AddReceivingMiddleware(toolTelemetry(toolMetrics))
@@ -44,13 +59,15 @@ func NewMCPHTTPHandler(server *mcp.Server) *mcp.StreamableHTTPHandler {
 }
 
 // NewMCPHTTPServer creates the net/http.Server for the MCP endpoint. Requests
-// get an otelhttp server span (continuing any incoming W3C trace context) and
-// the standard http.server.* metrics.
+// get an otelhttp server span (continuing any incoming W3C trace context),
+// tagged with the MCP method and protocol version headers, and the standard
+// http.server.* metrics. Cross-origin browser requests are rejected with 403,
+// as the spec requires servers to validate Origin.
 // The caller is responsible for starting and stopping the server
 // (typically via errgroup).
 func NewMCPHTTPServer(mcpCfg config.MCPConfig, host string, mcpHandler http.Handler) *http.Server {
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", otelhttp.NewHandler(mcpHandler, "/mcp"))
+	mux.Handle("/mcp", otelhttp.NewHandler(withMCPHeaders(http.NewCrossOriginProtection().Handler(mcpHandler)), "/mcp"))
 
 	return &http.Server{
 		Addr:         mcpCfg.Address(host),
@@ -59,4 +76,19 @@ func NewMCPHTTPServer(mcpCfg config.MCPConfig, host string, mcpHandler http.Hand
 		WriteTimeout: mcpCfg.WriteTimeout,
 		IdleTimeout:  mcpCfg.IdleTimeout,
 	}
+}
+
+// withMCPHeaders copies the Mcp-Method and MCP-Protocol-Version request
+// headers onto the active HTTP server span.
+func withMCPHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		span := trace.SpanFromContext(r.Context())
+		if m := r.Header.Get("Mcp-Method"); m != "" {
+			span.SetAttributes(attribute.String("mcp.method.name", m))
+		}
+		if v := r.Header.Get("MCP-Protocol-Version"); v != "" {
+			span.SetAttributes(attribute.String("mcp.protocol.version", v))
+		}
+		next.ServeHTTP(w, r)
+	})
 }

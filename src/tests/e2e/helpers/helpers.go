@@ -216,8 +216,43 @@ func NewMCPClient(t *testing.T) *MCPClient {
 	}
 }
 
-// Post marshals body as JSON and POSTs it to /mcp, returning the raw response.
-func (c *MCPClient) Post(t *testing.T, body any) *http.Response {
+// ProtocolVersion is the MCP protocol version the client speaks.
+const ProtocolVersion = "2026-07-28"
+
+// Post sends req to /mcp as a 2026-07-28 request: the protocol version, client
+// info and capabilities go in params._meta, and the method (plus the tool name
+// for tools/call) is mirrored into the Mcp-Method and Mcp-Name headers.
+func (c *MCPClient) Post(t *testing.T, req JSONRPCRequest) *http.Response {
+	t.Helper()
+	params := map[string]any{}
+	if req.Params != nil {
+		raw, err := json.Marshal(req.Params)
+		if err != nil {
+			t.Fatalf("MCPClient: marshal params: %v", err)
+		}
+		if err := json.Unmarshal(raw, &params); err != nil {
+			t.Fatalf("MCPClient: params must be an object: %v", err)
+		}
+	}
+	params["_meta"] = map[string]any{
+		"io.modelcontextprotocol/protocolVersion":    ProtocolVersion,
+		"io.modelcontextprotocol/clientInfo":         map[string]any{"name": "mnemonic-e2e", "version": "0"},
+		"io.modelcontextprotocol/clientCapabilities": map[string]any{},
+	}
+	req.Params = params
+	headers := http.Header{}
+	headers.Set("MCP-Protocol-Version", ProtocolVersion)
+	headers.Set("Mcp-Method", req.Method)
+	if name, ok := params["name"].(string); ok {
+		headers.Set("Mcp-Name", name)
+	}
+	return c.PostRaw(t, req, headers)
+}
+
+// PostRaw marshals body as JSON and POSTs it to /mcp with only the given
+// headers added, returning the raw response. Use it for legacy or malformed
+// requests.
+func (c *MCPClient) PostRaw(t *testing.T, body any, headers http.Header) *http.Response {
 	t.Helper()
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -229,6 +264,9 @@ func (c *MCPClient) Post(t *testing.T, body any) *http.Response {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
+	for k, v := range headers {
+		req.Header[k] = v
+	}
 	resp, err := c.client.Do(req)
 	if err != nil {
 		t.Fatalf("MCPClient: POST /mcp: %v", err)

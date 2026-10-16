@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -368,4 +369,124 @@ func TestGraphEnhancedSearch_VectorOnlyWhenNoGraphData(t *testing.T) {
 	if strings.Contains(text, "Related Patterns (via graph)") {
 		t.Errorf("expected vector-only response for unenriched pattern, but graph section was present:\n%s", text)
 	}
+}
+
+// Section 10: protocol version 2026-07-28
+
+// decodeMCP reads an SSE- or JSON-framed JSON-RPC response into out.
+func decodeMCP(t *testing.T, resp *http.Response, out any) {
+	t.Helper()
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if err := json.Unmarshal(helpers.ExtractSSEData(data), out); err != nil {
+		t.Fatalf("unmarshal: %v\nbody: %s", err, data)
+	}
+}
+
+func TestMCPServerDiscover_AdvertisesVersionAndTools(t *testing.T) {
+	client := helpers.NewMCPClient(t)
+	resp := client.Post(t, helpers.JSONRPCRequest{JSONRPC: "2.0", ID: 1, Method: "server/discover"})
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
+	var out struct {
+		Result struct {
+			ResultType        string                     `json:"resultType"`
+			SupportedVersions []string                   `json:"supportedVersions"`
+			Capabilities      map[string]json.RawMessage `json:"capabilities"`
+			Meta              struct {
+				ServerInfo struct {
+					Name string `json:"name"`
+				} `json:"io.modelcontextprotocol/serverInfo"`
+			} `json:"_meta"`
+		} `json:"result"`
+	}
+	decodeMCP(t, resp, &out)
+	r := out.Result
+	if r.ResultType != "complete" {
+		t.Errorf("resultType = %q, want complete", r.ResultType)
+	}
+	if !slices.Contains(r.SupportedVersions, helpers.ProtocolVersion) {
+		t.Errorf("supportedVersions %v does not include %s", r.SupportedVersions, helpers.ProtocolVersion)
+	}
+	if _, ok := r.Capabilities["tools"]; !ok {
+		t.Errorf("capabilities %v lack tools", r.Capabilities)
+	}
+	if _, ok := r.Capabilities["logging"]; ok {
+		t.Error("capabilities advertise the deprecated logging feature")
+	}
+	if r.Meta.ServerInfo.Name != "mnemonic" {
+		t.Errorf("serverInfo name = %q, want mnemonic", r.Meta.ServerInfo.Name)
+	}
+}
+
+func TestMCPToolsList_CarriesCacheHint(t *testing.T) {
+	client := helpers.NewMCPClient(t)
+	resp := client.ListTools(t)
+	if resp.Result == nil {
+		t.Fatalf("ListTools returned no result: %+v", resp.Error)
+	}
+	r := resp.Result
+	if r.ResultType != "complete" || r.TTLMs != 3600000 || r.CacheScope != "public" {
+		t.Errorf("got resultType=%q ttlMs=%d cacheScope=%q, want complete/3600000/public", r.ResultType, r.TTLMs, r.CacheScope)
+	}
+}
+
+func TestMCPToolsCall_HeaderMismatch_Returns400(t *testing.T) {
+	client := helpers.NewMCPClient(t)
+	headers := http.Header{}
+	headers.Set("MCP-Protocol-Version", helpers.ProtocolVersion)
+	headers.Set("Mcp-Method", "tools/call")
+	headers.Set("Mcp-Name", "get_pattern")
+	resp := client.PostRaw(t, helpers.JSONRPCRequest{
+		JSONRPC: "2.0", ID: 1, Method: "tools/call",
+		Params: map[string]any{
+			"name":      "search_patterns",
+			"arguments": map[string]any{"query": "x"},
+			"_meta": map[string]any{
+				"io.modelcontextprotocol/protocolVersion":    helpers.ProtocolVersion,
+				"io.modelcontextprotocol/clientCapabilities": map[string]any{},
+			},
+		},
+	}, headers)
+	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
+	var out helpers.JSONRPCResponse
+	decodeMCP(t, resp, &out)
+	if out.Error == nil || out.Error.Code != -32020 {
+		t.Errorf("error = %+v, want code -32020 (HeaderMismatch)", out.Error)
+	}
+}
+
+func TestMCPEndpoint_ForeignOrigin_Returns403(t *testing.T) {
+	client := helpers.NewMCPClient(t)
+	headers := http.Header{}
+	headers.Set("Origin", "https://evil.example")
+	headers.Set("Sec-Fetch-Site", "cross-site")
+	resp := client.PostRaw(t, helpers.JSONRPCRequest{JSONRPC: "2.0", ID: 1, Method: "tools/list", Params: map[string]any{}}, headers)
+	defer resp.Body.Close()
+	helpers.AssertStatusCode(t, resp, http.StatusForbidden)
+}
+
+func TestMCPEndpoint_GET_Returns405(t *testing.T) {
+	resp, err := http.Get(helpers.MCPBaseURL() + "/mcp")
+	if err != nil {
+		t.Fatalf("GET /mcp: %v", err)
+	}
+	defer resp.Body.Close()
+	helpers.AssertStatusCode(t, resp, http.StatusMethodNotAllowed)
+}
+
+// A client on an earlier protocol sends no MCP headers or _meta; it must
+// still be served.
+func TestMCPLegacyClient_ToolsCallStillWorks(t *testing.T) {
+	client := helpers.NewMCPClient(t)
+	resp := client.PostRaw(t, helpers.JSONRPCRequest{
+		JSONRPC: "2.0", ID: 1, Method: "tools/call",
+		Params: helpers.ToolCallParams{Name: "search_patterns", Arguments: map[string]any{"query": "error handling"}},
+	}, nil)
+	helpers.AssertStatusCode(t, resp, http.StatusOK)
+	var out helpers.JSONRPCResponse
+	decodeMCP(t, resp, &out)
+	helpers.AssertMCPSuccess(t, out)
 }
