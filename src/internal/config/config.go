@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -228,6 +229,11 @@ func findConfigFile(explicitPath string) string {
 	return ""
 }
 
+// neo4jSchemes are the URI schemes the Neo4j driver accepts: direct (bolt)
+// and routed (neo4j), each plain, TLS-verified (+s) or TLS with a self-signed
+// certificate (+ssc).
+var neo4jSchemes = []string{"bolt", "bolt+s", "bolt+ssc", "neo4j", "neo4j+s", "neo4j+ssc"}
+
 // Validate validates the configuration and returns one error per invalid key.
 func (c *MnemonicConfig) Validate() []error {
 	var errs []error
@@ -284,8 +290,9 @@ func (c *MnemonicConfig) Validate() []error {
 	if n.URI == "" {
 		check(true, "database.neo4j.uri", "required")
 	} else {
-		check(!strings.HasPrefix(n.URI, "bolt://") && !strings.HasPrefix(n.URI, "neo4j://"), "database.neo4j.uri",
-			fmt.Sprintf("must start with bolt:// or neo4j://, got %q", n.URI))
+		scheme, _, ok := strings.Cut(n.URI, "://")
+		check(!ok || !slices.Contains(neo4jSchemes, scheme), "database.neo4j.uri",
+			fmt.Sprintf("must start with bolt://, bolt+s://, bolt+ssc://, neo4j://, neo4j+s:// or neo4j+ssc://, got %q", n.URI))
 	}
 	check(n.MaxConnectionPoolSize < 1, "database.neo4j.max_connection_pool_size", "must be at least 1")
 	check(n.ConnectionAcquisitionTimeout <= 0, "database.neo4j.connection_acquisition_timeout", "must be a positive duration")

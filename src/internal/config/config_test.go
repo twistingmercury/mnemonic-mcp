@@ -539,6 +539,10 @@ func TestValidation_Neo4jValidURIs(t *testing.T) {
 		"bolt://neo4j-server:7687",
 		"neo4j://localhost:7687",
 		"neo4j://neo4j-cluster:7687",
+		"bolt+s://secure-host:7687",
+		"bolt+ssc://self-signed-host:7687",
+		"neo4j+s://xxxx.databases.neo4j.io",
+		"neo4j+ssc://self-signed-cluster:7687",
 	}
 
 	for _, uri := range validURIs {
