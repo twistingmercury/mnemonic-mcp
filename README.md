@@ -29,7 +29,7 @@
 
 ## Usage
 
-Mnemonic exposes Streamable HTTP MCP at <http://localhost:8081/mcp>.
+Mnemonic exposes Streamable HTTP MCP at <http://localhost:8081/mcp>, speaking MCP protocol version 2026-07-28 (and 2025-11-25 and earlier for older clients).
 
 Example MCP tool invocation:
 

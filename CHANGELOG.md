@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Support for MCP protocol version 2026-07-28, served by go-sdk v1.8.0: clients can call `server/discover` and send each request on its own with the protocol version and client capabilities in `_meta`, without an `initialize` handshake. Mismatched `Mcp-Method`/`Mcp-Name` headers get 400 with `-32020` (HeaderMismatch) and unknown versions get 400 with `-32022`. Clients on 2025-11-25 and earlier keep working through `initialize`.
+- A tool call whose `_meta` carries `traceparent` (and optionally `tracestate` and `baggage`) gets its `tools/call <tool>` span in that trace, linked to the `/mcp` HTTP span.
+- `mcp.method.name` and `mcp.protocol.version` attributes on the `/mcp` HTTP span, read from the `Mcp-Method` and `MCP-Protocol-Version` headers.
+
+### Changed
+
+- `/mcp` rejects cross-origin browser requests with 403, as the 2026-07-28 spec requires servers to validate `Origin`. Clients that send no `Origin` header, such as Claude Code, are unaffected.
+- The server advertises only the `tools` capability, without `listChanged`. It used to also advertise `logging`, which the spec now deprecates and the server never used, and `tools.listChanged`, although the tool list never changes at runtime.
+- `tools/list` and `server/discover` results carry `ttlMs: 3600000` and `cacheScope: "public"`, so clients may cache the tool list for an hour. They used to send `ttlMs: 0`.
+
 ## [0.4.1] - 2026-10-16
 
 ### Changed

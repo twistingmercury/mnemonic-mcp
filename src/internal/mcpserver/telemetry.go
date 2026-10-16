@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/twistingmercury/mnemonic/internal/metrics"
@@ -26,7 +27,8 @@ const (
 )
 
 // toolTelemetry returns middleware that gives every tools/call request a span
-// (a child of the /mcp HTTP span) and, when toolMetrics is non-nil, a count
+// (a child of the /mcp HTTP span, or of the trace context the client put in
+// the request's _meta) and, when toolMetrics is non-nil, a count
 // and latency record by tool and outcome. Only unavailable outcomes mark the
 // span as an error; invalid input and unknown patterns are caller mistakes.
 func toolTelemetry(toolMetrics *metrics.Tools) mcp.Middleware {
@@ -39,9 +41,9 @@ func toolTelemetry(toolMetrics *metrics.Tools) mcp.Middleware {
 
 			tool := call.Params.Name
 			start := time.Now()
-			ctx, span := tracer.Start(ctx, "tools/call "+tool,
-				trace.WithAttributes(attribute.String("mcp.tool.name", tool)),
-			)
+			opts := []trace.SpanStartOption{trace.WithAttributes(attribute.String("mcp.tool.name", tool))}
+			ctx, opts = metaTraceParent(ctx, call.Params.Meta, opts)
+			ctx, span := tracer.Start(ctx, "tools/call "+tool, opts...)
 			defer span.End()
 
 			res, err := next(ctx, method, req)
@@ -68,6 +70,33 @@ func toolTelemetry(toolMetrics *metrics.Tools) mcp.Middleware {
 			return res, err
 		}
 	}
+}
+
+// metaTraceParent returns ctx carrying the trace context from a request's
+// _meta (traceparent, tracestate and baggage, per the 2026-07-28 spec) when it
+// holds a valid one from a different trace than the /mcp HTTP span. The tool
+// span then joins the client's trace, with a link back to the HTTP span.
+// Otherwise ctx and opts are returned unchanged.
+func metaTraceParent(ctx context.Context, meta mcp.Meta, opts []trace.SpanStartOption) (context.Context, []trace.SpanStartOption) {
+	carrier := propagation.MapCarrier{}
+	for _, k := range []string{"traceparent", "tracestate", "baggage"} {
+		if v, ok := meta[k].(string); ok {
+			carrier[k] = v
+		}
+	}
+	if carrier["traceparent"] == "" {
+		return ctx, opts
+	}
+	metaCtx := otel.GetTextMapPropagator().Extract(ctx, carrier)
+	remote := trace.SpanContextFromContext(metaCtx)
+	httpSpan := trace.SpanContextFromContext(ctx)
+	if !remote.IsValid() || remote.TraceID() == httpSpan.TraceID() {
+		return ctx, opts
+	}
+	if httpSpan.IsValid() {
+		opts = append(opts, trace.WithLinks(trace.Link{SpanContext: httpSpan}))
+	}
+	return metaCtx, opts
 }
 
 // toolOutcome maps a tool error to a fixed outcome value.

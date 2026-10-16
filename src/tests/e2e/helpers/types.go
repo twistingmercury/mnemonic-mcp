@@ -204,7 +204,10 @@ type ToolDefinition struct {
 
 // ToolsListResult is the result payload of a tools/list response.
 type ToolsListResult struct {
-	Tools []ToolDefinition `json:"tools"`
+	ResultType string           `json:"resultType"`
+	TTLMs      int              `json:"ttlMs"`
+	CacheScope string           `json:"cacheScope"`
+	Tools      []ToolDefinition `json:"tools"`
 }
 
 // JSONRPCToolsListResp is the envelope for a JSON-RPC 2.0 tools/list response.
