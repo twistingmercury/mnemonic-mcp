@@ -51,9 +51,6 @@ func toolTelemetry(toolMetrics *metrics.Tools) mcp.Middleware {
 			toolErr := err
 			if r, ok := res.(*mcp.CallToolResult); ok && r != nil && r.IsError && toolErr == nil {
 				toolErr = r.GetError()
-				if toolErr == nil {
-					toolErr = errors.New("tool returned an error result")
-				}
 			}
 
 			outcome := toolOutcome(toolErr)

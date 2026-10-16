@@ -19,9 +19,6 @@ type RelatedPattern struct {
 	// Name is the human-readable name of the related pattern.
 	Name string
 
-	// SharedConcepts is the number of concepts shared between the source and this pattern.
-	SharedConcepts int
-
 	// Similarity is the pre-computed similarity score from the RELATED_TO edge (0.0-1.0).
 	// Computed as: sharedConcepts / max(totalConceptsA, totalConceptsB).
 	Similarity float64

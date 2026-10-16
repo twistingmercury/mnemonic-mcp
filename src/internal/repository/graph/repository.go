@@ -108,10 +108,10 @@ func (r *neo4jRepository) FindRelatedPatterns(ctx context.Context, patternID uui
 		`MATCH (p1:Pattern {id: $patternId})-[r:RELATED_TO]-(p2:Pattern)
 		 WITH p1, p2, r.similarity AS similarity
 		 OPTIONAL MATCH (p1)<-[:MENTIONED_IN]-(c:Concept)-[:MENTIONED_IN]->(p2)
-		 WITH p2, similarity, collect(c.name) AS conceptNames, count(c) AS sharedConcepts
+		 WITH p2, similarity, collect(c.name) AS conceptNames
 		 ORDER BY similarity DESC
 		 LIMIT $limit
-		 RETURN p2.id AS id, p2.name AS name, sharedConcepts, similarity, conceptNames`,
+		 RETURN p2.id AS id, p2.name AS name, similarity, conceptNames`,
 		map[string]any{
 			"patternId": patternID.String(),
 			"limit":     limit,
@@ -157,10 +157,6 @@ func toRelatedPattern(rec *neo4j.Record) (RelatedPattern, error) {
 	if err != nil {
 		return RelatedPattern{}, err
 	}
-	shared, _, err := neo4j.GetRecordValue[int64](rec, "sharedConcepts")
-	if err != nil {
-		return RelatedPattern{}, err
-	}
 	similarity, _, err := neo4j.GetRecordValue[float64](rec, "similarity")
 	if err != nil {
 		return RelatedPattern{}, err
@@ -179,10 +175,9 @@ func toRelatedPattern(rec *neo4j.Record) (RelatedPattern, error) {
 	}
 
 	return RelatedPattern{
-		ID:             id,
-		Name:           name,
-		SharedConcepts: int(shared),
-		Similarity:     similarity,
-		ConceptNames:   names,
+		ID:           id,
+		Name:         name,
+		Similarity:   similarity,
+		ConceptNames: names,
 	}, nil
 }

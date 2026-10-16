@@ -107,11 +107,10 @@ func TestGetPatternWithGraph(t *testing.T) {
 		pr.On("Get", mock.Anything, testPatternID).Return(enrichedPattern(), nil)
 		gr.On("FindRelatedPatterns", mock.Anything, testPatternID, 10).Return([]graphrepo.RelatedPattern{
 			{
-				ID:             testRelatedID,
-				Name:           "go-concurrency",
-				SharedConcepts: 2,
-				Similarity:     0.75,
-				ConceptNames:   []string{"goroutines", "channels"},
+				ID:           testRelatedID,
+				Name:         "go-concurrency",
+				Similarity:   0.75,
+				ConceptNames: []string{"goroutines", "channels"},
 			},
 		}, nil)
 		gr.On("GetPatternConcepts", mock.Anything, testPatternID).Return([]graphrepo.Concept{
@@ -233,11 +232,10 @@ func TestFindRelatedPatterns(t *testing.T) {
 		pr.On("GetName", mock.Anything, testPatternID).Return("go-error-handling", nil)
 		gr.On("FindRelatedPatterns", mock.Anything, testPatternID, 5).Return([]graphrepo.RelatedPattern{
 			{
-				ID:             testRelatedID,
-				Name:           "go-concurrency",
-				SharedConcepts: 3,
-				Similarity:     0.8,
-				ConceptNames:   []string{"goroutines", "channels", "select"},
+				ID:           testRelatedID,
+				Name:         "go-concurrency",
+				Similarity:   0.8,
+				ConceptNames: []string{"goroutines", "channels", "select"},
 			},
 		}, nil)
 

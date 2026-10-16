@@ -5,9 +5,10 @@
 package search
 
 import (
+	"cmp"
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -51,14 +52,14 @@ type SearchResult struct {
 }
 
 const (
-	// DefaultGraphSeedCount is the number of top vector-match patterns used as graph expansion seeds.
-	DefaultGraphSeedCount = 3
+	// graphSeedCount is the number of top vector-match patterns used as graph expansion seeds.
+	graphSeedCount = 3
 
-	// DefaultGraphResultsPerSeed is the max related patterns fetched per seed from Neo4j.
-	DefaultGraphResultsPerSeed = 5
+	// graphResultsPerSeed is the max related patterns fetched per seed from Neo4j.
+	graphResultsPerSeed = 5
 
-	// DefaultGraphMatchCap is the maximum graph matches returned in a single search response.
-	DefaultGraphMatchCap = 5
+	// graphMatchCap is the maximum graph matches returned in a single search response.
+	graphMatchCap = 5
 )
 
 // Service performs semantic search over pattern chunks with graph expansion.
@@ -144,16 +145,16 @@ func (s *Service) expandViaGraph(ctx context.Context, matches []*ChunkMatch, opt
 		}
 	}
 
-	// Sort seeds by similarity descending; take top 3.
+	// Sort seeds by similarity descending; take the top graphSeedCount.
 	seeds := make([]seedPattern, 0, len(bestSim))
 	for _, sp := range bestSim {
 		seeds = append(seeds, sp)
 	}
-	sort.Slice(seeds, func(i, j int) bool {
-		return seeds[i].similarity > seeds[j].similarity
+	slices.SortFunc(seeds, func(a, b seedPattern) int {
+		return cmp.Compare(b.similarity, a.similarity)
 	})
-	if len(seeds) > DefaultGraphSeedCount {
-		seeds = seeds[:DefaultGraphSeedCount]
+	if len(seeds) > graphSeedCount {
+		seeds = seeds[:graphSeedCount]
 	}
 
 	// Query the graph for every seed concurrently; a failed seed is logged and
@@ -162,7 +163,7 @@ func (s *Service) expandViaGraph(ctx context.Context, matches []*ChunkMatch, opt
 	var wg sync.WaitGroup
 	for i, seed := range seeds {
 		wg.Go(func() {
-			related, err := s.graphRepo.FindRelatedPatterns(ctx, seed.id, DefaultGraphResultsPerSeed)
+			related, err := s.graphRepo.FindRelatedPatterns(ctx, seed.id, graphResultsPerSeed)
 			if err != nil {
 				s.logger.Warn().Err(err).Str("seed_pattern_id", seed.id.String()).Msg("graph expansion failed for seed; continuing with remaining seeds")
 				return
@@ -231,7 +232,7 @@ func (s *Service) expandViaGraph(ctx context.Context, matches []*ChunkMatch, opt
 		if opts.Domain != "" && p.Domain != opts.Domain {
 			continue
 		}
-		if len(opts.Tags) > 0 && !hasAllTags(p.Tags, opts.Tags) {
+		if !hasAllTags(p.Tags, opts.Tags) {
 			continue
 		}
 		graphMatches = append(graphMatches, &GraphMatch{
@@ -248,11 +249,11 @@ func (s *Service) expandViaGraph(ctx context.Context, matches []*ChunkMatch, opt
 	}
 
 	// Sort by similarity descending, then cap.
-	sort.Slice(graphMatches, func(i, j int) bool {
-		return graphMatches[i].Similarity > graphMatches[j].Similarity
+	slices.SortFunc(graphMatches, func(a, b *GraphMatch) int {
+		return cmp.Compare(b.Similarity, a.Similarity)
 	})
-	if len(graphMatches) > DefaultGraphMatchCap {
-		graphMatches = graphMatches[:DefaultGraphMatchCap]
+	if len(graphMatches) > graphMatchCap {
+		graphMatches = graphMatches[:graphMatchCap]
 	}
 
 	return graphMatches
@@ -260,12 +261,8 @@ func (s *Service) expandViaGraph(ctx context.Context, matches []*ChunkMatch, opt
 
 // hasAllTags reports whether tags contains every element of required (conjunctive filter).
 func hasAllTags(tags []string, required []string) bool {
-	tagSet := make(map[string]struct{}, len(tags))
-	for _, t := range tags {
-		tagSet[t] = struct{}{}
-	}
 	for _, r := range required {
-		if _, ok := tagSet[r]; !ok {
+		if !slices.Contains(tags, r) {
 			return false
 		}
 	}

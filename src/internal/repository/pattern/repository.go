@@ -2,7 +2,6 @@ package pattern
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -45,13 +44,11 @@ func (r *pgxRepository) Get(ctx context.Context, id uuid.UUID) (*Pattern, error)
 	`
 
 	var p Pattern
-	var tagsJSON []byte
-
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&p.ID,
 		&p.Name,
 		&p.Content,
-		&tagsJSON,
+		&p.Tags,
 		&p.EnrichmentStatus,
 		&p.EnrichmentError,
 		&p.EnrichedAt,
@@ -61,10 +58,6 @@ func (r *pgxRepository) Get(ctx context.Context, id uuid.UUID) (*Pattern, error)
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("getting pattern: %w", err)
-	}
-
-	if err := json.Unmarshal(tagsJSON, &p.Tags); err != nil {
-		return nil, fmt.Errorf("unmarshaling tags: %w", err)
 	}
 
 	return &p, nil
@@ -106,14 +99,8 @@ func (r *pgxRepository) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*Patte
 
 	for rows.Next() {
 		var p Pattern
-		var tagsJSON []byte
-
-		if err := rows.Scan(&p.ID, &p.Name, &tagsJSON, &p.Language, &p.Domain); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Tags, &p.Language, &p.Domain); err != nil {
 			return nil, fmt.Errorf("getting patterns by IDs: scanning row: %w", err)
-		}
-
-		if err := json.Unmarshal(tagsJSON, &p.Tags); err != nil {
-			return nil, fmt.Errorf("unmarshaling tags: %w", err)
 		}
 
 		patterns = append(patterns, &p)
