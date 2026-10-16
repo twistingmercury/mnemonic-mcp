@@ -44,7 +44,7 @@ func main() {
 	}
 
 	if err := server.ListenAndServe(cfg); err != nil {
-		log.Fatalf("exited with err: %s\n", err.Error())
+		log.Fatalf("exited with err: %s\n", err.Error()) // #nosec G706 -- taint is the process's own argv (--config), set by the operator who launched it
 	}
 }
 
@@ -65,7 +65,7 @@ func checkHealth() (exitCode int) {
 
 	client := &http.Client{Timeout: healthCheckTimeout}
 
-	resp, err := client.Get(url) // #nosec G107 -- URL is constructed from local config, not user input
+	resp, err := client.Get(url) // #nosec G107 G704 -- host is literal localhost and path is constant; only the integer port comes from config
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "unhealthy: %v\n", err)
 		return 1
