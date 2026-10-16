@@ -75,14 +75,6 @@ func TestInitialize(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, tel)
 
-	// Verify we can get a logger
-	logger := tel.Logger()
-	assert.NotNil(t, logger)
-
-	// Verify we can get a meter
-	meter := tel.Meter("test")
-	assert.NotNil(t, meter)
-
 	// Clean shutdown
 	err = tel.Shutdown(ctx)
 	assert.NoError(t, err)
@@ -104,8 +96,7 @@ func TestInitializeWithMetricsEnabled(t *testing.T) {
 		_ = tel.Shutdown(ctx)
 	}()
 
-	assert.NotNil(t, tel.Meter("test"))
-	assert.NotNil(t, tel.MetricsRegistry())
+	assert.NotNil(t, tel.MeterProvider)
 }
 
 func TestInitializeWithTracingEnabled(t *testing.T) {
@@ -124,7 +115,7 @@ func TestInitializeWithTracingEnabled(t *testing.T) {
 		_ = tel.Shutdown(ctx)
 	}()
 
-	assert.NotNil(t, tel.Otelx().TracerProvider)
+	assert.NotNil(t, tel.TracerProvider)
 }
 
 func TestShutdown(t *testing.T) {
@@ -139,43 +130,4 @@ func TestShutdown(t *testing.T) {
 	// Shutdown should not error
 	err = tel.Shutdown(ctx)
 	assert.NoError(t, err)
-}
-
-func TestOtelxAccess(t *testing.T) {
-	cfg := createTestConfig()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	tel, err := telemetry.Initialize(ctx, cfg)
-	require.NoError(t, err)
-	defer func() {
-		_ = tel.Shutdown(ctx)
-	}()
-
-	// Verify we can access the underlying otelx instance
-	otelx := tel.Otelx()
-	assert.NotNil(t, otelx)
-}
-
-func TestMetricsRegistryCreatedAndAccessible(t *testing.T) {
-	cfg := createTestConfig()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	tel, err := telemetry.Initialize(ctx, cfg)
-	require.NoError(t, err)
-	require.NotNil(t, tel)
-	defer func() {
-		_ = tel.Shutdown(ctx)
-	}()
-
-	// Verify metrics registry is created and accessible
-	registry := tel.MetricsRegistry()
-	assert.NotNil(t, registry, "MetricsRegistry should not be nil")
-
-	// Verify the registry has its sub-registries initialized
-	assert.NotNil(t, registry.Patterns, "Patterns metrics should be initialized")
-	assert.NotNil(t, registry.Database, "Database metrics should be initialized")
 }

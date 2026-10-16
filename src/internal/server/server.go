@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/twistingmercury/mnemonic/internal/config"
@@ -31,6 +32,7 @@ import (
 	"github.com/twistingmercury/mnemonic/internal/telemetry"
 	"github.com/twistingmercury/mnemonic/internal/version"
 	otelxgin "github.com/twistingmercury/otelx/middleware/gin/v2"
+	"github.com/twistingmercury/otelx/v2"
 )
 
 // ListenAndServe starts the mnemonic server. It initializes telemetry,
@@ -47,13 +49,12 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 		return fmt.Errorf("failed to initialize telemetry: %w", err)
 	}
 	defer func() {
-		logger := tel.Logger()
 		if shutdownErr := tel.Shutdown(context.Background()); shutdownErr != nil {
-			logger.Error().Err(shutdownErr).Msg("telemetry shutdown error")
+			tel.Logger.Error().Err(shutdownErr).Msg("telemetry shutdown error")
 		}
 	}()
 
-	logger := tel.Logger()
+	logger := tel.Logger
 	logger.Info().
 		Str("host", cfg.Server.Host).
 		Int("admin_port", cfg.Server.Port).
@@ -69,11 +70,18 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	}
 	defer closeDatabases(pgPool, neo4jDriver, logger)
 
+	// Telemetry installs its meter provider globally, so the instruments are
+	// created from otel.Meter.
+	registry, err := metrics.NewRegistry(otel.Meter("mnemonic"))
+	if err != nil {
+		return fmt.Errorf("failed to create metrics registry: %w", err)
+	}
+
 	// Wire MCP dependencies.
-	toolDeps := wireDependencies(pgPool, neo4jDriver, cfg, logger, tel.MetricsRegistry())
+	toolDeps := wireDependencies(pgPool, neo4jDriver, cfg, logger, registry)
 
 	// Build operations HTTP server.
-	requestMetrics, err := middleware.NewRequestMetrics(tel.Meter("mnemonic/http"))
+	requestMetrics, err := middleware.NewRequestMetrics(otel.Meter("mnemonic/http"))
 	if err != nil {
 		return fmt.Errorf("failed to create request metrics: %w", err)
 	}
@@ -86,7 +94,7 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	adminServer := newHTTPServer(router, cfg)
 
 	// Build the MCP HTTP server.
-	mcpSrv := mcpserver.NewMCPServer(toolDeps, logger, cfg.MCP, tel.MetricsRegistry().Tools)
+	mcpSrv := mcpserver.NewMCPServer(toolDeps, logger, cfg.MCP, registry.Tools)
 	mcpHandler := mcpserver.NewMCPHTTPHandler(mcpSrv)
 	mcpHTTPServer := mcpserver.NewMCPHTTPServer(cfg.MCP, cfg.Server.Host, mcpHandler)
 
@@ -244,7 +252,7 @@ func runMCPServer(ctx context.Context, srv *http.Server, logger zerolog.Logger) 
 const mcpShutdownTimeout = 5 * time.Second
 
 // setupRouter creates and configures the Gin router with middleware.
-func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMetrics) *gin.Engine {
+func setupRouter(tel *otelx.Telemetry, requestMetrics *middleware.RequestMetrics) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 
@@ -258,7 +266,7 @@ func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMet
 
 	skipPaths := middleware.DefaultSkipPaths
 	router.Use(middleware.TracingMiddlewareWithSkipPaths(version.Service, skipPaths))
-	router.Use(otelxgin.LoggingMiddleware(tel.Otelx(),
+	router.Use(otelxgin.LoggingMiddleware(tel,
 		otelxgin.WithSkipPaths("/health", "/metrics"),
 		otelxgin.WithRequestHeaders("X-Request-ID", "X-Correlation-ID"),
 	))
