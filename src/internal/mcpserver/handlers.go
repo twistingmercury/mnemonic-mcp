@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
+	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
 )
 
@@ -24,7 +25,7 @@ const (
 // handleSearchPatterns returns a handler for the search_patterns tool.
 // It validates input constraints, delegates to the search service, and
 // formats results as markdown.
-func handleSearchPatterns(deps ToolDependencies, logger zerolog.Logger, defaultThreshold float64) mcp.ToolHandlerFor[SearchPatternsInput, any] {
+func handleSearchPatterns(search func(context.Context, searchsvc.SearchOptions) (*searchsvc.SearchResult, error), logger zerolog.Logger, defaultThreshold float64) mcp.ToolHandlerFor[SearchPatternsInput, any] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, input SearchPatternsInput) (*mcp.CallToolResult, any, error) {
 		// Apply defaults.
 		limit := defaultSearchLimit
@@ -51,7 +52,7 @@ func handleSearchPatterns(deps ToolDependencies, logger zerolog.Logger, defaultT
 			Str("query_preview", truncate(input.Query, 100)).
 			Msg("mcp tool invoked")
 
-		result, err := deps.SearchPatterns(ctx, searchsvc.SearchOptions{
+		result, err := search(ctx, searchsvc.SearchOptions{
 			Query:     input.Query,
 			Limit:     limit,
 			Threshold: threshold,
@@ -73,7 +74,7 @@ func handleSearchPatterns(deps ToolDependencies, logger zerolog.Logger, defaultT
 // handleFindRelatedPatterns returns a handler for the find_related_patterns tool.
 // It validates the pattern UUID and limit, delegates to the pattern service,
 // and formats results as markdown.
-func handleFindRelatedPatterns(deps ToolDependencies, logger zerolog.Logger) mcp.ToolHandlerFor[FindRelatedPatternsInput, any] {
+func handleFindRelatedPatterns(findRelated func(context.Context, uuid.UUID, int) (string, []patternsvc.RelatedPatternResult, error), logger zerolog.Logger) mcp.ToolHandlerFor[FindRelatedPatternsInput, any] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, input FindRelatedPatternsInput) (*mcp.CallToolResult, any, error) {
 		patternID, err := uuid.Parse(input.PatternID)
 		if err != nil {
@@ -94,7 +95,7 @@ func handleFindRelatedPatterns(deps ToolDependencies, logger zerolog.Logger) mcp
 			Str("pattern_id", patternID.String()).
 			Msg("mcp tool invoked")
 
-		sourceName, results, err := deps.FindRelatedPatterns(ctx, patternID, limit)
+		sourceName, results, err := findRelated(ctx, patternID, limit)
 		if err != nil {
 			return nil, nil, mapServiceError(err)
 		}
@@ -109,7 +110,7 @@ func handleFindRelatedPatterns(deps ToolDependencies, logger zerolog.Logger) mcp
 // handleGetPattern returns a handler for the get_pattern tool.
 // It validates the pattern UUID, retrieves the pattern with graph context,
 // and formats the result as markdown.
-func handleGetPattern(deps ToolDependencies, logger zerolog.Logger) mcp.ToolHandlerFor[GetPatternInput, any] {
+func handleGetPattern(getPattern func(context.Context, uuid.UUID) (*patternrepo.Pattern, *patternsvc.GraphContext, error), logger zerolog.Logger) mcp.ToolHandlerFor[GetPatternInput, any] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, input GetPatternInput) (*mcp.CallToolResult, any, error) {
 		id, err := uuid.Parse(input.ID)
 		if err != nil {
@@ -121,7 +122,7 @@ func handleGetPattern(deps ToolDependencies, logger zerolog.Logger) mcp.ToolHand
 			Str("pattern_id", id.String()).
 			Msg("mcp tool invoked")
 
-		pattern, graphCtx, err := deps.GetPatternWithGraph(ctx, id)
+		pattern, graphCtx, err := getPattern(ctx, id)
 		if err != nil {
 			return nil, nil, mapServiceError(err)
 		}

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"go.opentelemetry.io/otel/metric/noop"
@@ -25,10 +24,9 @@ const protocolVersion = "2026-07-28"
 // handler) over httptest and returns its URL.
 func newTestEndpoint(t *testing.T) string {
 	t.Helper()
-	deps := new(mockToolDeps)
-	deps.On("SearchPatterns", mock.Anything, mock.Anything).Return(&searchsvc.SearchResult{}, nil)
+	svc := Services{SearchPatterns: searchStub(t, nil, &searchsvc.SearchResult{}, nil)}
 	cfg := config.MCPConfig{DefaultSearchThreshold: 0.5}
-	srv := NewMCPHTTPServer(cfg, "localhost", NewMCPHTTPHandler(NewMCPServer(deps, noopLogger(), cfg, noopToolMetrics(t))))
+	srv := NewMCPHTTPServer(cfg, "localhost", NewMCPHTTPHandler(NewMCPServer(svc, noopLogger(), cfg, noopToolMetrics(t))))
 	ts := httptest.NewServer(srv.Handler)
 	t.Cleanup(ts.Close)
 	return ts.URL + "/mcp"

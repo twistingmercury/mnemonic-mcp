@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -13,6 +14,9 @@ import (
 
 	"github.com/twistingmercury/mnemonic/internal/config"
 	"github.com/twistingmercury/mnemonic/internal/metrics"
+	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
+	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
+	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
 	"github.com/twistingmercury/mnemonic/internal/version"
 )
 
@@ -20,11 +24,19 @@ import (
 // tool set only changes with a new release, so clients may cache it.
 const toolListTTL = time.Hour
 
+// Services are the service calls behind the three tools. Production passes
+// the search and pattern services' methods; tests pass closures.
+type Services struct {
+	SearchPatterns      func(ctx context.Context, opts searchsvc.SearchOptions) (*searchsvc.SearchResult, error)
+	FindRelatedPatterns func(ctx context.Context, patternID uuid.UUID, limit int) (string, []patternsvc.RelatedPatternResult, error)
+	GetPatternWithGraph func(ctx context.Context, id uuid.UUID) (*patternrepo.Pattern, *patternsvc.GraphContext, error)
+}
+
 // NewMCPServer creates a configured MCP server with all 3 pattern search
 // tools registered. The returned server is ready to be wrapped in an HTTP
 // handler via NewMCPHTTPHandler. Every tool call is traced, counted and
 // timed.
-func NewMCPServer(deps ToolDependencies, logger zerolog.Logger, mcpCfg config.MCPConfig, toolMetrics *metrics.Tools) *mcp.Server {
+func NewMCPServer(svc Services, logger zerolog.Logger, mcpCfg config.MCPConfig, toolMetrics *metrics.Tools) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "mnemonic",
 		Version: version.Version(),
@@ -40,9 +52,9 @@ func NewMCPServer(deps ToolDependencies, logger zerolog.Logger, mcpCfg config.MC
 	})
 
 	server.AddReceivingMiddleware(toolTelemetry(toolMetrics))
-	mcp.AddTool(server, searchPatternsTool, handleSearchPatterns(deps, logger, mcpCfg.DefaultSearchThreshold))
-	mcp.AddTool(server, findRelatedPatternsTool, handleFindRelatedPatterns(deps, logger))
-	mcp.AddTool(server, getPatternTool, handleGetPattern(deps, logger))
+	mcp.AddTool(server, searchPatternsTool, handleSearchPatterns(svc.SearchPatterns, logger, mcpCfg.DefaultSearchThreshold))
+	mcp.AddTool(server, findRelatedPatternsTool, handleFindRelatedPatterns(svc.FindRelatedPatterns, logger))
+	mcp.AddTool(server, getPatternTool, handleGetPattern(svc.GetPatternWithGraph, logger))
 
 	return server
 }

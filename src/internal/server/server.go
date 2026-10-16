@@ -79,7 +79,7 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	}
 
 	// Wire MCP dependencies.
-	toolDeps := wireDependencies(pgPool, neo4jDriver, cfg, logger, registry)
+	services := wireDependencies(pgPool, neo4jDriver, cfg, logger, registry)
 
 	// Build operations HTTP server.
 	router := setupRouter(tel)
@@ -91,7 +91,7 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	adminServer := newHTTPServer(router, cfg)
 
 	// Build the MCP HTTP server.
-	mcpSrv := mcpserver.NewMCPServer(toolDeps, logger, cfg.MCP, registry.Tools)
+	mcpSrv := mcpserver.NewMCPServer(services, logger, cfg.MCP, registry.Tools)
 	mcpHandler := mcpserver.NewMCPHTTPHandler(mcpSrv)
 	mcpHTTPServer := mcpserver.NewMCPHTTPServer(cfg.MCP, cfg.Server.Host, mcpHandler)
 
@@ -152,14 +152,14 @@ func closeDatabases(pgPool *pgxpool.Pool, neo4jDriver neo4j.DriverWithContext, l
 }
 
 // wireDependencies creates the repositories and read-side services required by
-// the MCP search tools and returns MCP ToolDependencies.
+// the MCP search tools and returns the service calls behind them.
 func wireDependencies(
 	pgPool *pgxpool.Pool,
 	neo4jDriver neo4j.DriverWithContext,
 	cfg *config.MnemonicConfig,
 	logger zerolog.Logger,
 	registry *metrics.Registry,
-) mcpserver.ToolDependencies {
+) mcpserver.Services {
 	patternRepo := patternrepo.NewRepository(pgPool)
 	graphRepo := graphrepo.NewRepository(neo4jDriver, cfg.Database.Neo4j.Database, registry.Database)
 	chunkRepo := chunkrepo.NewRepository(pgPool)
@@ -168,7 +168,11 @@ func wireDependencies(
 	searchSvc := searchsvc.New(embeddingSvc, patternRepo, chunkRepo, graphRepo, registry.Patterns, logger)
 	patternSvc := patternsvc.New(patternRepo, graphRepo, logger)
 
-	return mcpserver.NewToolDependencies(searchSvc, patternSvc)
+	return mcpserver.Services{
+		SearchPatterns:      searchSvc.SearchPatterns,
+		FindRelatedPatterns: patternSvc.FindRelatedPatterns,
+		GetPatternWithGraph: patternSvc.GetPatternWithGraph,
+	}
 }
 
 // namedServer is an HTTP server with the call that starts it listening.

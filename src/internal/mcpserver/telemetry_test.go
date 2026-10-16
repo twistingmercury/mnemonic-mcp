@@ -13,7 +13,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
@@ -70,14 +69,15 @@ func TestToolCallTelemetry(t *testing.T) {
 	require.NoError(t, err)
 
 	missing := uuid.New()
-	deps := new(mockToolDeps)
-	deps.On("SearchPatterns", mock.Anything, mock.Anything).Return(&searchsvc.SearchResult{}, nil)
-	deps.On("GetPatternWithGraph", mock.Anything, missing).Return(nil, nil, patternrepo.ErrNotFound)
-	deps.On("FindRelatedPatterns", mock.Anything, mock.Anything, mock.Anything).
-		Return("", nil, errors.New("neo4j down"))
+	related := uuid.New()
+	svc := Services{
+		SearchPatterns:      searchStub(t, nil, &searchsvc.SearchResult{}, nil),
+		GetPatternWithGraph: getPatternStub(t, missing, nil, nil, patternrepo.ErrNotFound),
+		FindRelatedPatterns: findRelatedStub(t, related, defaultRelatedLimit, "", nil, errors.New("neo4j down")),
+	}
 
 	cfg := config.MCPConfig{DefaultSearchThreshold: 0.5}
-	srv := NewMCPHTTPServer(cfg, "localhost", NewMCPHTTPHandler(NewMCPServer(deps, noopLogger(), cfg, toolMetrics)))
+	srv := NewMCPHTTPServer(cfg, "localhost", NewMCPHTTPHandler(NewMCPServer(svc, noopLogger(), cfg, toolMetrics)))
 	ts := httptest.NewServer(srv.Handler)
 	t.Cleanup(ts.Close)
 
@@ -97,7 +97,7 @@ func TestToolCallTelemetry(t *testing.T) {
 	call("search_patterns", map[string]any{"query": 42})
 	call("get_pattern", map[string]any{"id": missing.String()})
 	call("get_pattern", map[string]any{"id": "not-a-uuid"})
-	call("find_related_patterns", map[string]any{"pattern_id": uuid.NewString()})
+	call("find_related_patterns", map[string]any{"pattern_id": related.String()})
 
 	// Metrics: one record per call, by tool and outcome.
 	var rm metricdata.ResourceMetrics
