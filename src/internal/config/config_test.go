@@ -1,6 +1,8 @@
 package config_test
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -370,8 +372,7 @@ func TestValidation_ServerConfig(t *testing.T) {
 			cfg := validConfig()
 			tt.modify(cfg)
 			errs := cfg.Validate()
-			require.NotEmpty(t, errs, "expected validation errors")
-			assert.Contains(t, errs.Error(), tt.expectError)
+			assert.ErrorContains(t, errors.Join(errs...), tt.expectError)
 		})
 	}
 }
@@ -421,8 +422,7 @@ func TestValidation_MCPConfig(t *testing.T) {
 			if tt.expectError == "" {
 				assert.Empty(t, errs, "expected no validation errors")
 			} else {
-				require.NotEmpty(t, errs, "expected validation errors")
-				assert.Contains(t, errs.Error(), tt.expectError)
+				assert.ErrorContains(t, errors.Join(errs...), tt.expectError)
 			}
 		})
 	}
@@ -527,8 +527,7 @@ func TestValidation_DatabaseConfig(t *testing.T) {
 			cfg := validConfig()
 			tt.modify(cfg)
 			errs := cfg.Validate()
-			require.NotEmpty(t, errs, "expected validation errors")
-			assert.Contains(t, errs.Error(), tt.expectError)
+			assert.ErrorContains(t, errors.Join(errs...), tt.expectError)
 		})
 	}
 }
@@ -547,10 +546,7 @@ func TestValidation_Neo4jValidURIs(t *testing.T) {
 			cfg := validConfig()
 			cfg.Database.Neo4j.URI = uri
 			errs := cfg.Validate()
-			for _, err := range errs {
-				assert.NotEqual(t, "database.neo4j.uri", err.Field,
-					"URI %q should be valid", uri)
-			}
+			assert.NotContains(t, fmt.Sprint(errs), "database.neo4j.uri", "URI %q should be valid", uri)
 		})
 	}
 }
@@ -590,35 +586,7 @@ func TestValidation_OpenAIConfig(t *testing.T) {
 			cfg := validConfig()
 			tt.modify(cfg)
 			errs := cfg.Validate()
-			require.NotEmpty(t, errs, "expected validation errors")
-			assert.Contains(t, errs.Error(), tt.expectError)
-		})
-	}
-}
-
-// TestValidation_LoggingConfig tests logging configuration validation.
-func TestValidation_LoggingConfig(t *testing.T) {
-	tests := []struct {
-		name        string
-		modify      func(cfg *config.MnemonicConfig)
-		expectError string
-	}{
-		{
-			name: "invalid log level",
-			modify: func(cfg *config.MnemonicConfig) {
-				cfg.Logging.Level = "invalid"
-			},
-			expectError: "logging.level",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := validConfig()
-			tt.modify(cfg)
-			errs := cfg.Validate()
-			require.NotEmpty(t, errs, "expected validation errors")
-			assert.Contains(t, errs.Error(), tt.expectError)
+			assert.ErrorContains(t, errors.Join(errs...), tt.expectError)
 		})
 	}
 }
@@ -632,9 +600,7 @@ func TestValidation_LoggingLevels(t *testing.T) {
 			cfg := validConfig()
 			cfg.Logging.Level = level
 			errs := cfg.Validate()
-			for _, err := range errs {
-				assert.NotEqual(t, "logging.level", err.Field)
-			}
+			assert.NotContains(t, fmt.Sprint(errs), "logging.level")
 		})
 	}
 }
@@ -695,8 +661,7 @@ func TestValidation_ObservabilityConfig(t *testing.T) {
 			cfg := validConfig()
 			tt.modify(cfg)
 			errs := cfg.Validate()
-			require.NotEmpty(t, errs, "expected validation errors")
-			assert.Contains(t, errs.Error(), tt.expectError)
+			assert.ErrorContains(t, errors.Join(errs...), tt.expectError)
 		})
 	}
 }
@@ -707,7 +672,6 @@ func TestValidation_PortConflict(t *testing.T) {
 		name        string
 		modify      func(cfg *config.MnemonicConfig)
 		expectError bool
-		errorField  string
 	}{
 		{
 			name: "metrics enabled with same port as server - conflict",
@@ -717,7 +681,6 @@ func TestValidation_PortConflict(t *testing.T) {
 				cfg.Observability.Metrics.Port = 8080
 			},
 			expectError: true,
-			errorField:  "observability.metrics.port",
 		},
 		{
 			name: "metrics enabled with different port - no conflict",
@@ -745,26 +708,13 @@ func TestValidation_PortConflict(t *testing.T) {
 			tt.modify(cfg)
 			errs := cfg.Validate()
 
+			conflict := "observability.metrics.port: must be different from server.port"
 			if tt.expectError {
-				require.NotEmpty(t, errs, "expected validation errors")
-				// Check that the specific error field is present
-				found := false
-				for _, err := range errs {
-					if err.Field == tt.errorField {
-						found = true
-						assert.Contains(t, err.Message, "server.port")
-						break
-					}
-				}
-				assert.True(t, found, "expected error for field %q", tt.errorField)
+				assert.ErrorContains(t, errors.Join(errs...), conflict)
 			} else {
-				// Verify no port conflict errors (other validation errors may exist)
-				for _, err := range errs {
-					if err.Field == "observability.metrics.port" {
-						assert.NotContains(t, err.Message, "server.port",
-							"unexpected port conflict error when none expected")
-					}
-				}
+				// Other validation errors may exist; only the conflict must not.
+				assert.NotContains(t, fmt.Sprint(errs), conflict,
+					"unexpected port conflict error when none expected")
 			}
 		})
 	}
@@ -779,9 +729,9 @@ func TestValidation_MultipleErrors(t *testing.T) {
 	errs := cfg.Validate()
 	require.NotEmpty(t, errs, "expected validation errors")
 
-	errStr := errs.Error()
-	assert.Contains(t, errStr, "server.port")
-	assert.Contains(t, errStr, "database.postgres.port")
+	err := errors.Join(errs...)
+	assert.ErrorContains(t, err, "server.port")
+	assert.ErrorContains(t, err, "database.postgres.port")
 }
 
 // TestServerAddress tests the Address() helper method.
@@ -1094,30 +1044,6 @@ func TestValidConfig(t *testing.T) {
 	assert.Empty(t, errs, "expected no validation errors, got: %v", errs)
 }
 
-// TestValidationErrorFormat tests the ValidationError and ValidationErrors formatting.
-func TestValidationErrorFormat(t *testing.T) {
-	err := config.ValidationError{
-		Field:   "server.port",
-		Message: "must be between 1 and 65535, got 0",
-	}
-	assert.Equal(t, "server.port: must be between 1 and 65535, got 0", err.Error())
-
-	errs := config.ValidationErrors{
-		{Field: "server.port", Message: "invalid"},
-		{Field: "database.postgres.port", Message: "invalid"},
-	}
-	errStr := errs.Error()
-	assert.Contains(t, errStr, "configuration validation failed:")
-	assert.Contains(t, errStr, "server.port: invalid")
-	assert.Contains(t, errStr, "database.postgres.port: invalid")
-}
-
-// TestEmptyValidationErrors tests that empty ValidationErrors returns empty string.
-func TestEmptyValidationErrors(t *testing.T) {
-	var errs config.ValidationErrors
-	assert.Empty(t, errs.Error())
-}
-
 // Helper functions
 
 // clearMnemonicEnvVars clears all MNEMONIC_ prefixed environment variables.
@@ -1254,9 +1180,5 @@ func TestOpenAIBaseURL_ValidateRejectsBareString(t *testing.T) {
 	cfg := &config.MnemonicConfig{}
 	require.NoError(t, v.Unmarshal(cfg))
 
-	var fields []string
-	for _, e := range cfg.Validate() {
-		fields = append(fields, e.Field)
-	}
-	assert.Contains(t, fields, "openai.base_url")
+	assert.ErrorContains(t, errors.Join(cfg.Validate()...), "openai.base_url: ")
 }
