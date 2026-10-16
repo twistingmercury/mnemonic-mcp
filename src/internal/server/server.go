@@ -29,6 +29,7 @@ import (
 	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
 	"github.com/twistingmercury/mnemonic/internal/telemetry"
+	"github.com/twistingmercury/mnemonic/internal/version"
 	otelxgin "github.com/twistingmercury/otelx/middleware/gin/v2"
 )
 
@@ -261,7 +262,7 @@ func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMet
 	})
 
 	skipPaths := middleware.DefaultSkipPaths
-	router.Use(middleware.TracingMiddlewareWithSkipPaths("mnemonic", skipPaths))
+	router.Use(middleware.TracingMiddlewareWithSkipPaths(version.Service, skipPaths))
 	router.Use(otelxgin.LoggingMiddleware(tel.Otelx(),
 		otelxgin.WithSkipPaths("/health", "/metrics"),
 		otelxgin.WithRequestHeaders("X-Request-ID", "X-Correlation-ID"),
