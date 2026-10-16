@@ -69,15 +69,6 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	}
 	defer closeDatabases(pgPool, neo4jDriver, logger)
 
-	// Initialize health checks with real database connections.
-	if err := health.Initialize(health.Dependencies{
-		PGPool:      pgPool,
-		Neo4jDriver: neo4jDriver,
-		OpenAI:      cfg.OpenAI,
-	}); err != nil {
-		return fmt.Errorf("failed to initialize health checks: %w", err)
-	}
-
 	// Wire MCP dependencies.
 	toolDeps := wireDependencies(pgPool, neo4jDriver, cfg, logger, tel.MetricsRegistry())
 
@@ -87,7 +78,11 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 		return fmt.Errorf("failed to create request metrics: %w", err)
 	}
 	router := setupRouter(tel, requestMetrics)
-	operations.SetupHandlers(router, health.Descriptors())
+	operations.SetupHandlers(router, health.Descriptors(health.Dependencies{
+		PGPool:      pgPool,
+		Neo4jDriver: neo4jDriver,
+		OpenAI:      cfg.OpenAI,
+	}))
 	adminServer := newHTTPServer(router, cfg)
 
 	// Build the MCP HTTP server.

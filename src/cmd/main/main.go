@@ -45,10 +45,6 @@ func main() {
 		log.Fatalf("failed to load configuration: %s", err)
 	}
 
-	// Health checks are initialized inside ListenAndServe after database
-	// connections are established, so no separate health.Initialize call
-	// is needed here.
-
 	if err := server.ListenAndServe(cfg); err != nil {
 		log.Fatalf("exited with err: %s\n", err.Error())
 	}
