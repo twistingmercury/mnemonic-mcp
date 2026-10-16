@@ -14,39 +14,12 @@ import (
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
 )
 
-const (
-	defaultSearchLimit = 10
-	maxSearchLimit     = 50
-
-	defaultRelatedLimit = 5
-	maxRelatedLimit     = 20
-)
-
 // handleSearchPatterns returns a handler for the search_patterns tool.
-// It validates input constraints, delegates to the search service, and
-// formats results as markdown.
-func handleSearchPatterns(search func(context.Context, searchsvc.SearchOptions) (*searchsvc.SearchResult, error), logger zerolog.Logger, defaultThreshold float64) mcp.ToolHandlerFor[SearchPatternsInput, any] {
+// It delegates to the search service and formats results as markdown. The
+// tool's input schema has already defaulted and range-checked the limit and
+// threshold.
+func handleSearchPatterns(search func(context.Context, searchsvc.SearchOptions) (*searchsvc.SearchResult, error), logger zerolog.Logger) mcp.ToolHandlerFor[SearchPatternsInput, any] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, input SearchPatternsInput) (*mcp.CallToolResult, any, error) {
-		// Apply defaults.
-		limit := defaultSearchLimit
-		if input.Limit != nil {
-			limit = *input.Limit
-		}
-
-		threshold := defaultThreshold
-		if input.Threshold != nil {
-			threshold = *input.Threshold
-		}
-
-		// Validate constraints.
-		if limit < 1 || limit > maxSearchLimit {
-			return nil, nil, fmt.Errorf("%w: limit must be between 1 and %d, got %d", ErrInvalidInput, maxSearchLimit, limit)
-		}
-
-		if threshold < 0 || threshold > 1 {
-			return nil, nil, fmt.Errorf("%w: threshold must be between 0.0 and 1.0, got %f", ErrInvalidInput, threshold)
-		}
-
 		withTrace(ctx, logger).Info().
 			Str("tool", "search_patterns").
 			Str("query_preview", truncate(input.Query, 100)).
@@ -54,8 +27,8 @@ func handleSearchPatterns(search func(context.Context, searchsvc.SearchOptions) 
 
 		result, err := search(ctx, searchsvc.SearchOptions{
 			Query:     input.Query,
-			Limit:     limit,
-			Threshold: threshold,
+			Limit:     input.Limit,
+			Threshold: input.Threshold,
 			Tags:      input.Tags,
 			Language:  input.Language,
 			Domain:    input.Domain,
@@ -72,8 +45,9 @@ func handleSearchPatterns(search func(context.Context, searchsvc.SearchOptions) 
 }
 
 // handleFindRelatedPatterns returns a handler for the find_related_patterns tool.
-// It validates the pattern UUID and limit, delegates to the pattern service,
-// and formats results as markdown.
+// It validates the pattern UUID, delegates to the pattern service, and formats
+// results as markdown. The tool's input schema has already defaulted and
+// range-checked the limit.
 func handleFindRelatedPatterns(findRelated func(context.Context, uuid.UUID, int) (string, []patternsvc.RelatedPatternResult, error), logger zerolog.Logger) mcp.ToolHandlerFor[FindRelatedPatternsInput, any] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, input FindRelatedPatternsInput) (*mcp.CallToolResult, any, error) {
 		patternID, err := uuid.Parse(input.PatternID)
@@ -81,21 +55,12 @@ func handleFindRelatedPatterns(findRelated func(context.Context, uuid.UUID, int)
 			return nil, nil, fmt.Errorf("%w: invalid UUID %q", ErrInvalidInput, input.PatternID)
 		}
 
-		limit := defaultRelatedLimit
-		if input.Limit != nil {
-			limit = *input.Limit
-		}
-
-		if limit < 1 || limit > maxRelatedLimit {
-			return nil, nil, fmt.Errorf("%w: limit must be between 1 and %d, got %d", ErrInvalidInput, maxRelatedLimit, limit)
-		}
-
 		withTrace(ctx, logger).Info().
 			Str("tool", "find_related_patterns").
 			Str("pattern_id", patternID.String()).
 			Msg("mcp tool invoked")
 
-		sourceName, results, err := findRelated(ctx, patternID, limit)
+		sourceName, results, err := findRelated(ctx, patternID, input.Limit)
 		if err != nil {
 			return nil, nil, mapServiceError(err)
 		}

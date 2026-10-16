@@ -82,9 +82,11 @@ func TestHandleSearchPatterns_HappyPath(t *testing.T) {
 		Query:     "error handling",
 		Limit:     10,
 		Threshold: 0.5,
-	}, searchResult, nil), noopLogger(), 0.5)
+	}, searchResult, nil), noopLogger())
 	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
-		Query: "error handling",
+		Limit:     10,
+		Threshold: 0.5,
+		Query:     "error handling",
 	})
 
 	require.NoError(t, err)
@@ -103,9 +105,11 @@ func TestHandleSearchPatterns_NoResults(t *testing.T) {
 		Matches: []*searchsvc.ChunkMatch{},
 	}
 
-	handler := handleSearchPatterns(searchStub(t, nil, searchResult, nil), noopLogger(), 0.5)
+	handler := handleSearchPatterns(searchStub(t, nil, searchResult, nil), noopLogger())
 	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
-		Query: "nonexistent topic",
+		Limit:     10,
+		Threshold: 0.5,
+		Query:     "nonexistent topic",
 	})
 
 	require.NoError(t, err)
@@ -127,9 +131,11 @@ func TestHandleSearchPatterns_WithoutAgentFilter(t *testing.T) {
 		Query:     "testing",
 		Limit:     10,
 		Threshold: 0.5,
-	}, searchResult, nil), noopLogger(), 0.5)
+	}, searchResult, nil), noopLogger())
 	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
-		Query: "testing",
+		Limit:     10,
+		Threshold: 0.5,
+		Query:     "testing",
 	})
 
 	require.NoError(t, err)
@@ -140,43 +146,15 @@ func TestHandleSearchPatterns_WithoutAgentFilter(t *testing.T) {
 func TestHandleSearchPatterns_ServiceUnavailable(t *testing.T) {
 	t.Parallel()
 
-	handler := handleSearchPatterns(searchStub(t, nil, nil, errors.New("embedding failed")), noopLogger(), 0.5)
+	handler := handleSearchPatterns(searchStub(t, nil, nil, errors.New("embedding failed")), noopLogger())
 	_, _, err := handler(context.Background(), nil, SearchPatternsInput{
-		Query: "anything",
+		Limit:     10,
+		Threshold: 0.5,
+		Query:     "anything",
 	})
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrServiceUnavailable)
-}
-
-func TestHandleSearchPatterns_InvalidLimit(t *testing.T) {
-	t.Parallel()
-
-	limit := 100
-	handler := handleSearchPatterns(nil, noopLogger(), 0.5)
-	_, _, err := handler(context.Background(), nil, SearchPatternsInput{
-		Query: "anything",
-		Limit: &limit,
-	})
-
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrInvalidInput)
-	assert.Contains(t, err.Error(), "limit must be between 1 and 50")
-}
-
-func TestHandleSearchPatterns_InvalidThreshold(t *testing.T) {
-	t.Parallel()
-
-	threshold := 1.5
-	handler := handleSearchPatterns(nil, noopLogger(), 0.5)
-	_, _, err := handler(context.Background(), nil, SearchPatternsInput{
-		Query:     "anything",
-		Threshold: &threshold,
-	})
-
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrInvalidInput)
-	assert.Contains(t, err.Error(), "threshold must be between 0.0 and 1.0")
 }
 
 func TestHandleSearchPatterns_CustomLimitAndThreshold(t *testing.T) {
@@ -193,11 +171,11 @@ func TestHandleSearchPatterns_CustomLimitAndThreshold(t *testing.T) {
 		Query:     "go patterns",
 		Limit:     5,
 		Threshold: 0.9,
-	}, searchResult, nil), noopLogger(), 0.5)
+	}, searchResult, nil), noopLogger())
 	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
 		Query:     "go patterns",
-		Limit:     &limit,
-		Threshold: &threshold,
+		Limit:     limit,
+		Threshold: threshold,
 	})
 
 	require.NoError(t, err)
@@ -217,10 +195,12 @@ func TestHandleSearchPatterns_WithTags(t *testing.T) {
 		Limit:     10,
 		Threshold: 0.5,
 		Tags:      []string{"go", "errors"},
-	}, searchResult, nil), noopLogger(), 0.5)
+	}, searchResult, nil), noopLogger())
 	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
-		Query: "error handling",
-		Tags:  []string{"go", "errors"},
+		Limit:     10,
+		Threshold: 0.5,
+		Query:     "error handling",
+		Tags:      []string{"go", "errors"},
 	})
 
 	require.NoError(t, err)
@@ -240,10 +220,12 @@ func TestHandleSearchPatterns_WithLanguageFilter(t *testing.T) {
 		Limit:     10,
 		Threshold: 0.5,
 		Language:  "python",
-	}, searchResult, nil), noopLogger(), 0.5)
+	}, searchResult, nil), noopLogger())
 	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
-		Query:    "error handling",
-		Language: "python",
+		Limit:     10,
+		Threshold: 0.5,
+		Query:     "error handling",
+		Language:  "python",
 	})
 
 	require.NoError(t, err)
@@ -263,42 +245,16 @@ func TestHandleSearchPatterns_WithDomainFilter(t *testing.T) {
 		Limit:     10,
 		Threshold: 0.5,
 		Domain:    "backend",
-	}, searchResult, nil), noopLogger(), 0.5)
+	}, searchResult, nil), noopLogger())
 	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
-		Query:  "error handling",
-		Domain: "backend",
+		Limit:     10,
+		Threshold: 0.5,
+		Query:     "error handling",
+		Domain:    "backend",
 	})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-}
-
-func TestHandleSearchPatterns_ZeroLimit(t *testing.T) {
-	t.Parallel()
-
-	limit := 0
-	handler := handleSearchPatterns(nil, noopLogger(), 0.5)
-	_, _, err := handler(context.Background(), nil, SearchPatternsInput{
-		Query: "anything",
-		Limit: &limit,
-	})
-
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrInvalidInput)
-}
-
-func TestHandleSearchPatterns_NegativeThreshold(t *testing.T) {
-	t.Parallel()
-
-	threshold := -0.1
-	handler := handleSearchPatterns(nil, noopLogger(), 0.5)
-	_, _, err := handler(context.Background(), nil, SearchPatternsInput{
-		Query:     "anything",
-		Threshold: &threshold,
-	})
-
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrInvalidInput)
 }
 
 // --- find_related_patterns handler tests ---
@@ -321,6 +277,7 @@ func TestHandleFindRelatedPatterns_HappyPath(t *testing.T) {
 
 	handler := handleFindRelatedPatterns(findRelatedStub(t, patternID, 5, "source-pattern", relatedResults, nil), noopLogger())
 	result, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
+		Limit:     5,
 		PatternID: patternID.String(),
 	})
 
@@ -338,6 +295,7 @@ func TestHandleFindRelatedPatterns_NotFound(t *testing.T) {
 
 	handler := handleFindRelatedPatterns(findRelatedStub(t, patternID, 5, "", nil, errors.Join(patternrepo.ErrNotFound, errors.New("pattern not found"))), noopLogger())
 	_, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
+		Limit:     5,
 		PatternID: patternID.String(),
 	})
 
@@ -352,6 +310,7 @@ func TestHandleFindRelatedPatterns_EmptyResults(t *testing.T) {
 
 	handler := handleFindRelatedPatterns(findRelatedStub(t, patternID, 5, "lonely-pattern", []patternsvc.RelatedPatternResult{}, nil), noopLogger())
 	result, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
+		Limit:     5,
 		PatternID: patternID.String(),
 	})
 
@@ -373,21 +332,6 @@ func TestHandleFindRelatedPatterns_InvalidUUID(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid UUID")
 }
 
-func TestHandleFindRelatedPatterns_InvalidLimit(t *testing.T) {
-	t.Parallel()
-
-	limit := 25
-	handler := handleFindRelatedPatterns(nil, noopLogger())
-	_, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
-		PatternID: uuid.New().String(),
-		Limit:     &limit,
-	})
-
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrInvalidInput)
-	assert.Contains(t, err.Error(), "limit must be between 1 and 20")
-}
-
 func TestHandleFindRelatedPatterns_CustomLimit(t *testing.T) {
 	t.Parallel()
 
@@ -397,7 +341,7 @@ func TestHandleFindRelatedPatterns_CustomLimit(t *testing.T) {
 	handler := handleFindRelatedPatterns(findRelatedStub(t, patternID, 10, "test-pattern", []patternsvc.RelatedPatternResult{}, nil), noopLogger())
 	result, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
 		PatternID: patternID.String(),
-		Limit:     &limit,
+		Limit:     limit,
 	})
 
 	require.NoError(t, err)
@@ -411,6 +355,7 @@ func TestHandleFindRelatedPatterns_ServiceUnavailable(t *testing.T) {
 
 	handler := handleFindRelatedPatterns(findRelatedStub(t, patternID, 5, "", nil, errors.New("neo4j down")), noopLogger())
 	_, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
+		Limit:     5,
 		PatternID: patternID.String(),
 	})
 

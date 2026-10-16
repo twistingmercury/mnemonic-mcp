@@ -52,8 +52,8 @@ func NewMCPServer(svc Services, logger zerolog.Logger, mcpCfg config.MCPConfig, 
 	})
 
 	server.AddReceivingMiddleware(toolTelemetry(toolMetrics))
-	mcp.AddTool(server, searchPatternsTool, handleSearchPatterns(svc.SearchPatterns, logger, mcpCfg.DefaultSearchThreshold))
-	mcp.AddTool(server, findRelatedPatternsTool, handleFindRelatedPatterns(svc.FindRelatedPatterns, logger))
+	mcp.AddTool(server, searchPatternsTool(mcpCfg.DefaultSearchThreshold), handleSearchPatterns(svc.SearchPatterns, logger))
+	mcp.AddTool(server, findRelatedPatternsTool(), handleFindRelatedPatterns(svc.FindRelatedPatterns, logger))
 	mcp.AddTool(server, getPatternTool, handleGetPattern(svc.GetPatternWithGraph, logger))
 
 	return server
