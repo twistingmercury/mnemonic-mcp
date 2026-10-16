@@ -66,7 +66,7 @@ type PostgresConfig struct {
 	Password        string        `mapstructure:"password"` // #nosec G117 -- credentials loaded from config/env, not serialized
 	SSLMode         string        `mapstructure:"ssl_mode"`
 	MaxOpenConns    int32         `mapstructure:"max_open_conns"`
-	MaxIdleConns    int32         `mapstructure:"max_idle_conns"`
+	MinConns        int32         `mapstructure:"min_conns"`
 	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
 }
 
@@ -183,7 +183,7 @@ func SetDefaults(v *viper.Viper) {
 	v.SetDefault("database.postgres.password", "")
 	v.SetDefault("database.postgres.ssl_mode", DefaultPostgresSSLMode)
 	v.SetDefault("database.postgres.max_open_conns", DefaultPostgresMaxOpenConns)
-	v.SetDefault("database.postgres.max_idle_conns", DefaultPostgresMaxIdleConns)
+	v.SetDefault("database.postgres.min_conns", DefaultPostgresMinConns)
 	v.SetDefault("database.postgres.conn_max_lifetime", DefaultPostgresConnMaxLifetime)
 
 	// Neo4j defaults
@@ -280,9 +280,9 @@ func (c *MnemonicConfig) Validate() []error {
 	check(pg.Database == "", "database.postgres.database", "required")
 	check(!inPortRange(pg.Port), "database.postgres.port", portMessage(pg.Port))
 	check(pg.MaxOpenConns < 1, "database.postgres.max_open_conns", "must be at least 1")
-	check(pg.MaxIdleConns < 0, "database.postgres.max_idle_conns", "must be non-negative")
-	check(pg.MaxIdleConns > pg.MaxOpenConns, "database.postgres.max_idle_conns",
-		fmt.Sprintf("must be less than or equal to max_open_conns (%d), got %d", pg.MaxOpenConns, pg.MaxIdleConns))
+	check(pg.MinConns < 0, "database.postgres.min_conns", "must be non-negative")
+	check(pg.MinConns > pg.MaxOpenConns, "database.postgres.min_conns",
+		fmt.Sprintf("must be less than or equal to max_open_conns (%d), got %d", pg.MaxOpenConns, pg.MinConns))
 	check(pg.ConnMaxLifetime < 0, "database.postgres.conn_max_lifetime", "must be non-negative")
 
 	// Neo4j
