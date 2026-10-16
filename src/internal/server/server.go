@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
@@ -264,10 +266,14 @@ func setupRouter(tel *otelx.Telemetry, requestMetrics *middleware.RequestMetrics
 		c.Next()
 	})
 
-	skipPaths := middleware.DefaultSkipPaths
-	router.Use(middleware.TracingMiddlewareWithSkipPaths(version.Service, skipPaths))
+	// /health is polled by probes; keep it out of traces, metrics and logs.
+	// /metrics is served on the otelx metrics port, not on this router.
+	skipPaths := []string{"/health"}
+	router.Use(otelgin.Middleware(version.Service, otelgin.WithFilter(func(r *http.Request) bool {
+		return !slices.Contains(skipPaths, r.URL.Path)
+	})))
 	router.Use(otelxgin.LoggingMiddleware(tel,
-		otelxgin.WithSkipPaths("/health", "/metrics"),
+		otelxgin.WithSkipPaths(skipPaths...),
 		otelxgin.WithRequestHeaders("X-Request-ID", "X-Correlation-ID"),
 	))
 	router.Use(requestMetrics.MiddlewareWithSkipPaths(skipPaths))
