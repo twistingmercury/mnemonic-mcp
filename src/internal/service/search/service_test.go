@@ -10,6 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+
+	"github.com/twistingmercury/mnemonic/internal/metrics"
 	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	"github.com/twistingmercury/mnemonic/internal/repository/pattern"
@@ -110,7 +113,11 @@ func newTestService(embSvc *mockEmbeddingService, patternRepo *mockPatternRepo, 
 
 func newTestServiceWithGraph(embSvc *mockEmbeddingService, patternRepo *mockPatternRepo, chunkRepo *mockChunkRepo, graphRepo *mockGraphRepo) *search.Service {
 	logger := zerolog.Nop()
-	return search.New(embSvc, patternRepo, chunkRepo, graphRepo, nil, logger)
+	patternMetrics, err := metrics.NewPattern(noop.NewMeterProvider().Meter("test"))
+	if err != nil {
+		panic(err)
+	}
+	return search.New(embSvc, patternRepo, chunkRepo, graphRepo, patternMetrics, logger)
 }
 
 func testChunkMatch(patternID uuid.UUID, patternName string, similarity float64) *chunkrepo.Match {

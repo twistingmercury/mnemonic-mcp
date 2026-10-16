@@ -22,8 +22,8 @@ const toolListTTL = time.Hour
 
 // NewMCPServer creates a configured MCP server with all 3 pattern search
 // tools registered. The returned server is ready to be wrapped in an HTTP
-// handler via NewMCPHTTPHandler. Every tool call is traced and, when
-// toolMetrics is non-nil, counted and timed.
+// handler via NewMCPHTTPHandler. Every tool call is traced, counted and
+// timed.
 func NewMCPServer(deps ToolDependencies, logger zerolog.Logger, mcpCfg config.MCPConfig, toolMetrics *metrics.Tools) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "mnemonic",

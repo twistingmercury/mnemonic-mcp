@@ -72,7 +72,6 @@ type Service struct {
 }
 
 // New creates a new search Service backed by the given dependencies.
-// patternMetrics may be nil, in which case vector search is not recorded.
 func New(
 	embeddingSvc openaisvc.EmbeddingService,
 	patternRepo patternrepo.Repository,
@@ -110,9 +109,7 @@ func (s *Service) SearchPatterns(ctx context.Context, opts SearchOptions) (*Sear
 	if err != nil {
 		return nil, fmt.Errorf("find similar chunks: %w", err)
 	}
-	if s.metrics != nil {
-		s.metrics.RecordQuery(ctx, "pgvector", time.Since(searchStart), len(matches))
-	}
+	s.metrics.RecordQuery(ctx, "pgvector", time.Since(searchStart), len(matches))
 
 	return &SearchResult{
 		Matches:      matches,

@@ -29,8 +29,7 @@ const (
 
 // toolTelemetry returns middleware that gives every tools/call request a span
 // (a child of the /mcp HTTP span, or of the trace context the client put in
-// the request's _meta) and, when toolMetrics is non-nil, a count
-// and latency record by tool and outcome. Only unavailable outcomes mark the
+// the request's _meta) and a count and latency record by tool and outcome. Only unavailable outcomes mark the
 // span as an error; invalid input and unknown patterns are caller mistakes.
 func toolTelemetry(toolMetrics *metrics.Tools) mcp.Middleware {
 	return func(next mcp.MethodHandler) mcp.MethodHandler {
@@ -65,9 +64,7 @@ func toolTelemetry(toolMetrics *metrics.Tools) mcp.Middleware {
 					span.SetStatus(codes.Error, toolErr.Error())
 				}
 			}
-			if toolMetrics != nil {
-				toolMetrics.Record(ctx, tool, outcome, time.Since(start))
-			}
+			toolMetrics.Record(ctx, tool, outcome, time.Since(start))
 			return res, err
 		}
 	}

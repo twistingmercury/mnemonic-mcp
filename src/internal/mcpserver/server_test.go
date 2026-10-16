@@ -12,7 +12,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"go.opentelemetry.io/otel/metric/noop"
+
 	"github.com/twistingmercury/mnemonic/internal/config"
+	"github.com/twistingmercury/mnemonic/internal/metrics"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
 )
 
@@ -25,10 +28,18 @@ func newTestEndpoint(t *testing.T) string {
 	deps := new(mockToolDeps)
 	deps.On("SearchPatterns", mock.Anything, mock.Anything).Return(&searchsvc.SearchResult{}, nil)
 	cfg := config.MCPConfig{DefaultSearchThreshold: 0.5}
-	srv := NewMCPHTTPServer(cfg, "localhost", NewMCPHTTPHandler(NewMCPServer(deps, noopLogger(), cfg, nil)))
+	srv := NewMCPHTTPServer(cfg, "localhost", NewMCPHTTPHandler(NewMCPServer(deps, noopLogger(), cfg, noopToolMetrics(t))))
 	ts := httptest.NewServer(srv.Handler)
 	t.Cleanup(ts.Close)
 	return ts.URL + "/mcp"
+}
+
+// noopToolMetrics returns tool instruments that record nothing.
+func noopToolMetrics(t *testing.T) *metrics.Tools {
+	t.Helper()
+	m, err := metrics.NewTools(noop.NewMeterProvider().Meter("test"))
+	require.NoError(t, err)
+	return m
 }
 
 // modernMeta is the per-request _meta a 2026-07-28 client sends.

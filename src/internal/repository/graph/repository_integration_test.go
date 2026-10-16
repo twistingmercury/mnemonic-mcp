@@ -12,7 +12,9 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/twistingmercury/mnemonic/internal/metrics"
 	"github.com/twistingmercury/mnemonic/internal/repository/graph"
+	"go.opentelemetry.io/otel/metric/noop"
 )
 
 const (
@@ -59,7 +61,9 @@ func setupNeo4j(t *testing.T) (*seeder, graph.Repository) {
 		_ = driver.Close(context.Background())
 	})
 
-	return s, graph.NewRepository(driver, database, nil)
+	dbMetrics, err := metrics.NewDatabase(noop.NewMeterProvider().Meter("test"))
+	require.NoError(t, err)
+	return s, graph.NewRepository(driver, database, dbMetrics)
 }
 
 type seeder struct {
