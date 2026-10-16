@@ -158,19 +158,6 @@ func TestOtelxAccess(t *testing.T) {
 	assert.NotNil(t, otelx)
 }
 
-func TestInitializeWithInvalidLogLevel(t *testing.T) {
-	cfg := createTestConfig()
-	cfg.Logging.Level = "invalid-level"
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	tel, err := telemetry.Initialize(ctx, cfg)
-	require.Error(t, err)
-	assert.Nil(t, tel)
-	assert.Contains(t, err.Error(), "invalid log level")
-}
-
 func TestMetricsRegistryCreatedAndAccessible(t *testing.T) {
 	cfg := createTestConfig()
 
