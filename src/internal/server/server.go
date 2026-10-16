@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"os/signal"
 	"slices"
+	"sync"
 	"syscall"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -95,15 +95,15 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	mcpHandler := mcpserver.NewMCPHTTPHandler(mcpSrv)
 	mcpHTTPServer := mcpserver.NewMCPHTTPServer(cfg.MCP, cfg.Server.Host, mcpHandler)
 
-	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		return runHTTPServer(gCtx, adminServer, cfg, logger, "operations")
-	})
-	g.Go(func() error {
-		return runMCPServer(gCtx, mcpHTTPServer, logger)
-	})
-
-	if err := g.Wait(); err != nil {
+	if err := serve(ctx, cfg, logger, []namedServer{
+		{"operations", adminServer, func() error {
+			if cfg.Server.TLS.Enabled {
+				return adminServer.ListenAndServeTLS(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
+			}
+			return adminServer.ListenAndServe()
+		}},
+		{"mcp", mcpHTTPServer, mcpHTTPServer.ListenAndServe},
+	}); err != nil {
 		return err
 	}
 
@@ -171,82 +171,48 @@ func wireDependencies(
 	return mcpserver.NewToolDependencies(searchSvc, patternSvc)
 }
 
-// runHTTPServer starts the operations HTTP server and gracefully shuts it down
-// when the context is cancelled.
-func runHTTPServer(ctx context.Context, srv *http.Server, cfg *config.MnemonicConfig, logger zerolog.Logger, name string) error {
-	errCh := make(chan error, 1)
-
-	go func() {
-		logger.Info().
-			Str("addr", srv.Addr).
-			Str("component", name).
-			Msg("HTTP server listening")
-
-		var err error
-		if cfg.Server.TLS.Enabled {
-			err = srv.ListenAndServeTLS(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
-		} else {
-			err = srv.ListenAndServe()
-		}
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- fmt.Errorf("%s server error: %w", name, err)
-		}
-		close(errCh)
-	}()
-
-	select {
-	case err := <-errCh:
-		return err
-	case <-ctx.Done():
-	}
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
-	defer cancel()
-
-	logger.Info().Str("component", name).Msg("shutting down HTTP server")
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("%s shutdown error: %w", name, err)
-	}
-	return nil
+// namedServer is an HTTP server with the call that starts it listening.
+type namedServer struct {
+	name   string
+	srv    *http.Server
+	listen func() error
 }
 
-// runMCPServer starts the MCP HTTP server and gracefully shuts it down when
-// the context is cancelled.
-func runMCPServer(ctx context.Context, srv *http.Server, logger zerolog.Logger) error {
-	errCh := make(chan error, 1)
+// serve runs every server until ctx is cancelled or one of them fails to
+// listen, then shuts them all down concurrently within
+// cfg.Server.ShutdownTimeout. It returns the listener failure, if any,
+// otherwise the joined shutdown errors.
+func serve(ctx context.Context, cfg *config.MnemonicConfig, logger zerolog.Logger, servers []namedServer) error {
+	g, gCtx := errgroup.WithContext(ctx)
+	for _, s := range servers {
+		g.Go(func() error {
+			logger.Info().Str("addr", s.srv.Addr).Str("component", s.name).Msg("HTTP server listening")
+			if err := s.listen(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				return fmt.Errorf("%s server error: %w", s.name, err)
+			}
+			return nil
+		})
+	}
+	g.Go(func() error {
+		<-gCtx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
+		defer cancel()
 
-	go func() {
-		logger.Info().
-			Str("addr", srv.Addr).
-			Str("component", "mcp").
-			Msg("MCP server listening")
-
-		err := srv.ListenAndServe()
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- fmt.Errorf("mcp server error: %w", err)
+		errs := make([]error, len(servers))
+		var wg sync.WaitGroup
+		for i, s := range servers {
+			wg.Go(func() {
+				logger.Info().Str("component", s.name).Msg("shutting down HTTP server")
+				if err := s.srv.Shutdown(shutdownCtx); err != nil {
+					errs[i] = fmt.Errorf("%s shutdown error: %w", s.name, err)
+				}
+			})
 		}
-		close(errCh)
-	}()
-
-	select {
-	case err := <-errCh:
-		return err
-	case <-ctx.Done():
-	}
-
-	// Use a fixed 5s timeout for MCP shutdown; it has no long-running requests.
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), mcpShutdownTimeout)
-	defer cancel()
-
-	logger.Info().Str("component", "mcp").Msg("shutting down MCP server")
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("mcp shutdown error: %w", err)
-	}
-	return nil
+		wg.Wait()
+		return errors.Join(errs...)
+	})
+	return g.Wait()
 }
-
-// mcpShutdownTimeout is the grace period for MCP server shutdown.
-const mcpShutdownTimeout = 5 * time.Second
 
 // setupRouter creates and configures the Gin router with middleware.
 func setupRouter(tel *otelx.Telemetry) *gin.Engine {
