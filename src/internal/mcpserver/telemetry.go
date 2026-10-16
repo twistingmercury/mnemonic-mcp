@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -99,12 +100,18 @@ func metaTraceParent(ctx context.Context, meta mcp.Meta, opts []trace.SpanStartO
 	return metaCtx, opts
 }
 
+// sdkArgumentsErrorPrefix starts the error go-sdk sets on the result when the
+// arguments fail the tool's input schema (missing required field, wrong type,
+// out-of-range value). The SDK formats the cause with %v, so the prefix is
+// the only thing to match (go-sdk v1.8 mcp/server.go, toolForErr).
+const sdkArgumentsErrorPrefix = `validating "arguments": `
+
 // toolOutcome maps a tool error to a fixed outcome value.
 func toolOutcome(err error) string {
 	switch {
 	case err == nil:
 		return outcomeOK
-	case errors.Is(err, ErrInvalidInput):
+	case errors.Is(err, ErrInvalidInput), strings.HasPrefix(err.Error(), sdkArgumentsErrorPrefix):
 		return outcomeInvalid
 	case errors.Is(err, ErrPatternNotFound):
 		return outcomeNotFound

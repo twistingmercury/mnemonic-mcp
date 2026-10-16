@@ -92,6 +92,9 @@ func TestToolCallTelemetry(t *testing.T) {
 		require.NoError(t, err)
 	}
 	call("search_patterns", map[string]any{"query": "retry with backoff"})
+	// Arguments that fail the input schema are rejected by the SDK.
+	call("search_patterns", map[string]any{})
+	call("search_patterns", map[string]any{"query": 42})
 	call("get_pattern", map[string]any{"id": missing.String()})
 	call("get_pattern", map[string]any{"id": "not-a-uuid"})
 	call("find_related_patterns", map[string]any{"pattern_id": uuid.NewString()})
@@ -114,6 +117,7 @@ func TestToolCallTelemetry(t *testing.T) {
 	}
 	assert.Equal(t, map[string]int64{
 		"search_patterns/ok":                1,
+		"search_patterns/invalid_input":     2,
 		"get_pattern/not_found":             1,
 		"get_pattern/invalid_input":         1,
 		"find_related_patterns/unavailable": 1,
@@ -158,6 +162,7 @@ func TestToolOutcome(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, outcomeOK, toolOutcome(nil))
 	assert.Equal(t, outcomeInvalid, toolOutcome(ErrInvalidInput))
+	assert.Equal(t, outcomeInvalid, toolOutcome(errors.New(`validating "arguments": validating root: required: missing properties: ["query"]`)))
 	assert.Equal(t, outcomeNotFound, toolOutcome(mapServiceError(service.ErrNotFound)))
 	assert.Equal(t, outcomeUnavailable, toolOutcome(mapServiceError(errors.New("boom"))))
 }
