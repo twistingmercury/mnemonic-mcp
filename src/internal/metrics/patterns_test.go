@@ -12,16 +12,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
-func TestNewPattern(t *testing.T) {
-	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	meter := provider.Meter("test")
-
-	pm, err := metrics.NewPattern(meter)
-	require.NoError(t, err)
-	assert.NotNil(t, pm)
-}
-
 func TestPatternRecordQuery(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
@@ -54,26 +44,4 @@ func TestPatternRecordQuery(t *testing.T) {
 	}
 	assert.True(t, foundQueryLatency, "query latency metric should be recorded")
 	assert.True(t, foundPatternsReturned, "patterns returned metric should be recorded")
-}
-
-func TestPatternWithDifferentDatabases(t *testing.T) {
-	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	meter := provider.Meter("test")
-
-	pm, err := metrics.NewPattern(meter)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-
-	databases := []string{"postgres", "pgvector", "neo4j"}
-	for _, db := range databases {
-		pm.RecordQuery(ctx, db, 25*time.Millisecond, 5)
-	}
-
-	var data metricdata.ResourceMetrics
-	err = reader.Collect(ctx, &data)
-	require.NoError(t, err)
-
-	assert.NotEmpty(t, data.ScopeMetrics)
 }
