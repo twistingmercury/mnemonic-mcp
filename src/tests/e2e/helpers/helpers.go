@@ -45,23 +45,6 @@ func NewTestClient(t *testing.T) *TestClient {
 	}
 }
 
-// NewReadOnlyTestClient creates a client without admin role (developer only).
-func NewReadOnlyTestClient(t *testing.T) *TestClient {
-	t.Helper()
-	client := NewTestClient(t)
-	client.UserRoles = "developer"
-	return client
-}
-
-// NewUnauthenticatedClient creates a client without authentication headers.
-func NewUnauthenticatedClient(t *testing.T) *TestClient {
-	t.Helper()
-	return &TestClient{
-		Client:  &http.Client{Timeout: 10 * time.Second},
-		BaseURL: apiBaseURL(),
-	}
-}
-
 // Do executes an HTTP request with authentication headers.
 func (c *TestClient) Do(req *http.Request) (*http.Response, error) {
 	if c.UserID != "" {
@@ -82,15 +65,6 @@ func (c *TestClient) Do(req *http.Request) (*http.Response, error) {
 	return c.Client.Do(req)
 }
 
-// Get performs a GET request to the specified path.
-func (c *TestClient) Get(path string) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodGet, c.BaseURL+path, nil)
-	if err != nil {
-		return nil, err
-	}
-	return c.Do(req)
-}
-
 // Post performs a POST request with JSON body.
 func (c *TestClient) Post(path string, body any) (*http.Response, error) {
 	jsonBody, err := json.Marshal(body)
@@ -98,28 +72,6 @@ func (c *TestClient) Post(path string, body any) (*http.Response, error) {
 		return nil, err
 	}
 	req, err := http.NewRequest(http.MethodPost, c.BaseURL+path, bytes.NewReader(jsonBody))
-	if err != nil {
-		return nil, err
-	}
-	return c.Do(req)
-}
-
-// Put performs a PUT request with JSON body.
-func (c *TestClient) Put(path string, body any) (*http.Response, error) {
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequest(http.MethodPut, c.BaseURL+path, bytes.NewReader(jsonBody))
-	if err != nil {
-		return nil, err
-	}
-	return c.Do(req)
-}
-
-// Delete performs a DELETE request.
-func (c *TestClient) Delete(path string) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodDelete, c.BaseURL+path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -157,23 +109,6 @@ func AssertStatusCode(t *testing.T, resp *http.Response, expected int) {
 	}
 }
 
-// AssertContentType verifies the Content-Type header.
-func AssertContentType(t *testing.T, resp *http.Response, expected string) {
-	t.Helper()
-	ct := resp.Header.Get("Content-Type")
-	if ct != expected {
-		t.Fatalf("expected Content-Type %q, got %q", expected, ct)
-	}
-}
-
-// AssertRequestIDHeader verifies X-Request-ID header is present.
-func AssertRequestIDHeader(t *testing.T, resp *http.Response) {
-	t.Helper()
-	if resp.Header.Get("X-Request-ID") == "" {
-		t.Fatal("expected X-Request-ID header to be present")
-	}
-}
-
 // GenerateUniqueName creates a unique name for test resources.
 func GenerateUniqueName(prefix string) string {
 	return fmt.Sprintf("%s-%s", prefix, uuid.New().String()[:8])
@@ -189,6 +124,16 @@ func ExtractSSEData(body []byte) []byte {
 		}
 	}
 	return body
+}
+
+// Decode reads an SSE- or JSON-framed JSON-RPC response into out and closes
+// the body.
+func Decode(t *testing.T, resp *http.Response, out any) {
+	t.Helper()
+	data := ReadBody(t, resp)
+	if err := json.Unmarshal(ExtractSSEData(data), out); err != nil {
+		t.Fatalf("unmarshal: %v\nbody: %s", err, data)
+	}
 }
 
 // MCPBaseURL returns the base URL for the MCP server from environment or default.
@@ -285,16 +230,8 @@ func (c *MCPClient) CallTool(t *testing.T, toolName string, arguments any) JSONR
 		Method:  "tools/call",
 		Params:  ToolCallParams{Name: toolName, Arguments: arguments},
 	}
-	resp := c.Post(t, req)
-	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("MCPClient.CallTool: read body: %v", err)
-	}
 	var result JSONRPCResponse
-	if err := json.Unmarshal(ExtractSSEData(data), &result); err != nil {
-		t.Fatalf("MCPClient.CallTool: unmarshal: %v\nbody: %s", err, data)
-	}
+	Decode(t, c.Post(t, req), &result)
 	return result
 }
 
@@ -309,16 +246,8 @@ func (c *MCPClient) ListTools(t *testing.T) JSONRPCToolsListResp {
 		Method:  "tools/list",
 		Params:  map[string]any{},
 	}
-	resp := c.Post(t, req)
-	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("MCPClient.ListTools: read body: %v", err)
-	}
 	var result JSONRPCToolsListResp
-	if err := json.Unmarshal(ExtractSSEData(data), &result); err != nil {
-		t.Fatalf("MCPClient.ListTools: unmarshal: %v\nbody: %s", err, data)
-	}
+	Decode(t, c.Post(t, req), &result)
 	return result
 }
 

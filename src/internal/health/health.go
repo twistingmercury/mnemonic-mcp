@@ -2,7 +2,6 @@ package health
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,10 +15,6 @@ import (
 
 // checkTimeout is the per-check timeout used when probing dependencies.
 const checkTimeout = 3 * time.Second
-
-// defaultOpenAIBaseURL is the OpenAI API root used when none is configured.
-// It is a variable so unit tests can keep checks off the network.
-var defaultOpenAIBaseURL = "https://api.openai.com/v1"
 
 // Pinger is satisfied by *pgxpool.Pool and any type that supports Ping.
 type Pinger interface {
@@ -39,96 +34,50 @@ type Dependencies struct {
 	OpenAI      config.OpenAIConfig
 }
 
-var (
-	healthDeps  *Dependencies
-	descriptors []heartbeat.DependencyDescriptor
-)
-
-// Initialize configures the health check dependency descriptors using the
-// provided database connections. It must be called before Descriptors is used.
-func Initialize(deps Dependencies) error {
-	if deps.PGPool == nil {
-		return errors.New("health: PostgreSQL pool is nil")
-	}
-	if deps.Neo4jDriver == nil {
-		return errors.New("health: Neo4j driver is nil")
+// Descriptors returns the dependency checks for the heartbeat handler.
+// PostgreSQL and Neo4j are Critical when unreachable; OpenAI only warns.
+func Descriptors(d Dependencies) []heartbeat.DependencyDescriptor {
+	openAIBaseURL := config.DefaultOpenAIBaseURL
+	if d.OpenAI.BaseURL != "" {
+		openAIBaseURL = strings.TrimRight(d.OpenAI.BaseURL, "/")
 	}
 
-	healthDeps = &deps
-
-	openAIBaseURL := defaultOpenAIBaseURL
-	if deps.OpenAI.BaseURL != "" {
-		openAIBaseURL = strings.TrimRight(deps.OpenAI.BaseURL, "/")
-	}
-
-	descriptors = []heartbeat.DependencyDescriptor{
+	return []heartbeat.DependencyDescriptor{
 		{
 			Name:      "PostgreSQL",
 			Type:      "database",
 			Timeout:   checkTimeout,
-			CheckFunc: checkPostgreSQLHealth,
+			CheckFunc: probe("ping failed", d.PGPool.Ping),
 		},
 		{
 			Name:      "Neo4j",
 			Type:      "database",
 			Timeout:   checkTimeout,
-			CheckFunc: checkNeo4jHealth,
+			CheckFunc: probe("connectivity check failed", d.Neo4jDriver.VerifyConnectivity),
 		},
 		{
 			Name:      "OpenAI embedding model",
 			Type:      "external_api",
 			Timeout:   checkTimeout,
-			CheckFunc: openAIModelCheck(openAIBaseURL, deps.OpenAI.APIKey, deps.OpenAI.EmbeddingModel),
+			CheckFunc: openAIModelCheck(openAIBaseURL, d.OpenAI.APIKey, d.OpenAI.EmbeddingModel),
 		},
 	}
-
-	return nil
 }
 
-// Descriptors returns the registered dependency descriptors for use with the
-// heartbeat Handler. It must be called after Initialize.
-func Descriptors() []heartbeat.DependencyDescriptor {
-	return descriptors
-}
-
-// checkPostgreSQLHealth pings the PostgreSQL connection pool. heartbeat
-// cancels ctx when the check's timeout expires and records the duration.
-func checkPostgreSQLHealth(ctx context.Context) (status heartbeat.StatusResult) {
-	if healthDeps == nil || healthDeps.PGPool == nil {
-		status.Status = heartbeat.StatusCritical
-		status.Message = "PostgreSQL pool not initialized"
+// probe returns a check that is Critical, naming the failure, when fn errors.
+// heartbeat cancels ctx when the check's timeout expires and records the
+// duration.
+func probe(failure string, fn func(context.Context) error) heartbeat.CheckFunc {
+	return func(ctx context.Context) (status heartbeat.StatusResult) {
+		if err := fn(ctx); err != nil {
+			status.Status = heartbeat.StatusCritical
+			status.Message = fmt.Sprintf("%s: %v", failure, err)
+			return status
+		}
+		status.Status = heartbeat.StatusOK
+		status.Message = "ok"
 		return status
 	}
-
-	if err := healthDeps.PGPool.Ping(ctx); err != nil {
-		status.Status = heartbeat.StatusCritical
-		status.Message = fmt.Sprintf("ping failed: %v", err)
-		return status
-	}
-
-	status.Status = heartbeat.StatusOK
-	status.Message = "ok"
-	return status
-}
-
-// checkNeo4jHealth verifies Neo4j driver connectivity. heartbeat cancels ctx
-// when the check's timeout expires and records the duration.
-func checkNeo4jHealth(ctx context.Context) (status heartbeat.StatusResult) {
-	if healthDeps == nil || healthDeps.Neo4jDriver == nil {
-		status.Status = heartbeat.StatusCritical
-		status.Message = "Neo4j driver not initialized"
-		return status
-	}
-
-	if err := healthDeps.Neo4jDriver.VerifyConnectivity(ctx); err != nil {
-		status.Status = heartbeat.StatusCritical
-		status.Message = fmt.Sprintf("connectivity check failed: %v", err)
-		return status
-	}
-
-	status.Status = heartbeat.StatusOK
-	status.Message = "ok"
-	return status
 }
 
 // openAIModelCheck returns a check that retrieves model from the OpenAI models

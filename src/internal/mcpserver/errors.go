@@ -6,10 +6,10 @@ import "errors"
 // Applies to: get_pattern, find_related_patterns.
 var ErrPatternNotFound = errors.New("pattern not found")
 
-// ErrInvalidInput is returned when handler-level validation fails
-// (constraints the SDK schema validation does not catch, such as
-// limit exceeding maximum or threshold out of range).
-// Applies to: all 3 tools.
+// ErrInvalidInput is returned when handler-level validation fails, for
+// constraints the SDK's schema validation does not catch: a pattern ID that
+// is not a UUID. Out-of-range limits and thresholds fail the input schema.
+// Applies to: get_pattern, find_related_patterns.
 var ErrInvalidInput = errors.New("invalid input")
 
 // ErrServiceUnavailable is returned when a backend database

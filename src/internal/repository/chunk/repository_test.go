@@ -2,7 +2,6 @@ package chunk_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 
@@ -43,11 +42,10 @@ func TestRepository_FindSimilar(t *testing.T) {
 			name: "returns matching chunks with pattern metadata",
 			opts: opts,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
-				tagsJSON, _ := json.Marshal([]string{"go", "patterns"})
 				rows := pgxmock.NewRows(matchColumns).
-					AddRow(patternID, "go-error-handling", tagsJSON, "Overview", "content here", 0.85)
+					AddRow(patternID, "go-error-handling", []string{"go", "patterns"}, "Overview", "content here", 0.85)
 				mock.ExpectQuery("SELECT pc.pattern_id, p.name, p.tags, pc.section_title, pc.content,.* FROM pattern_chunks pc").
-					WithArgs(pgxmock.AnyArg(), opts.MinSimilarity, opts.Language, opts.Domain, opts.MaxResults).
+					WithArgs(pgxmock.AnyArg(), opts.MinSimilarity, opts.Language, opts.Domain, opts.Tags, opts.MaxResults).
 					WillReturnRows(rows)
 			},
 			want: []*chunk.Match{{
@@ -64,7 +62,7 @@ func TestRepository_FindSimilar(t *testing.T) {
 			opts: opts,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("SELECT .* FROM pattern_chunks pc").
-					WithArgs(pgxmock.AnyArg(), opts.MinSimilarity, opts.Language, opts.Domain, opts.MaxResults).
+					WithArgs(pgxmock.AnyArg(), opts.MinSimilarity, opts.Language, opts.Domain, opts.Tags, opts.MaxResults).
 					WillReturnRows(pgxmock.NewRows(matchColumns))
 			},
 			want: []*chunk.Match{},
@@ -79,18 +77,8 @@ func TestRepository_FindSimilar(t *testing.T) {
 				Tags:          []string{"go", "errors"},
 			},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery(`AND p.tags @> \$5::jsonb ORDER BY pc.embedding <=> \$1 LIMIT \$6`).
-					WithArgs(pgxmock.AnyArg(), 0.5, "go", "engineering", `["go","errors"]`, 10).
-					WillReturnRows(pgxmock.NewRows(matchColumns))
-			},
-			want: []*chunk.Match{},
-		},
-		{
-			name: "non-positive MaxResults defaults to 10",
-			opts: chunk.SimilarityOptions{MinSimilarity: 0.5},
-			setupMock: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery("SELECT .* FROM pattern_chunks pc").
-					WithArgs(pgxmock.AnyArg(), 0.5, "", "", 10).
+				mock.ExpectQuery(`AND \(\$5::jsonb IS NULL OR p.tags @> \$5::jsonb\)\s+ORDER BY pc.embedding <=> \$1\s+LIMIT \$6`).
+					WithArgs(pgxmock.AnyArg(), 0.5, "go", "engineering", []string{"go", "errors"}, 10).
 					WillReturnRows(pgxmock.NewRows(matchColumns))
 			},
 			want: []*chunk.Match{},
@@ -100,7 +88,7 @@ func TestRepository_FindSimilar(t *testing.T) {
 			opts: opts,
 			setupMock: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("SELECT .* FROM pattern_chunks pc").
-					WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+					WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 					WillReturnError(errors.New("connection failed"))
 			},
 			wantErr: true,

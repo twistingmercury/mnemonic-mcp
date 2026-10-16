@@ -1,9 +1,13 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -62,7 +66,7 @@ type PostgresConfig struct {
 	Password        string        `mapstructure:"password"` // #nosec G117 -- credentials loaded from config/env, not serialized
 	SSLMode         string        `mapstructure:"ssl_mode"`
 	MaxOpenConns    int32         `mapstructure:"max_open_conns"`
-	MaxIdleConns    int32         `mapstructure:"max_idle_conns"`
+	MinConns        int32         `mapstructure:"min_conns"`
 	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
 }
 
@@ -112,41 +116,42 @@ type TracingConfig struct {
 	OTLPInsecure bool    `mapstructure:"otlp_insecure"`
 }
 
-// ValidationError represents a configuration validation error.
-type ValidationError struct {
-	Field   string
-	Message string
-}
-
-func (e ValidationError) Error() string {
-	return fmt.Sprintf("%s: %s", e.Field, e.Message)
-}
-
-// ValidationErrors is a collection of validation errors.
-type ValidationErrors []ValidationError
-
-func (e ValidationErrors) Error() string {
-	if len(e) == 0 {
-		return ""
+// Load loads, unmarshals and validates the configuration that Resolve
+// assembles. Going through Resolve keeps the server and any other reader of
+// the same sources, such as the --health probe, from drifting apart on
+// precedence or file selection.
+func Load() (*MnemonicConfig, error) {
+	v, err := Resolve()
+	if err != nil {
+		return nil, err
 	}
-	var sb strings.Builder
-	sb.WriteString("configuration validation failed:\n")
-	for _, err := range e {
-		fmt.Fprintf(&sb, "  - %s\n", err.Error())
+
+	cfg := &MnemonicConfig{}
+	if err := v.Unmarshal(cfg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
-	return sb.String()
+
+	if errs := cfg.Validate(); len(errs) > 0 {
+		return nil, fmt.Errorf("configuration validation failed:\n%w", errors.Join(errs...))
+	}
+
+	return cfg, nil
 }
 
-// Load loads configuration from all sources with the following precedence:
-// 1. Compiled defaults (lowest priority)
+// Resolve layers the configuration sources into a viper instance without
+// unmarshalling or validating them, for callers that need a few keys and must
+// not fail on unrelated sections (for example missing credentials).
+//
+// Precedence, lowest to highest:
+// 1. Compiled defaults
 // 2. Configuration file
-// 3. Environment variables (highest priority)
+// 3. Environment variables
 //
 // The config file is discovered in the following order:
 // 1. $MNEMONIC_CONFIG_FILE (if set; a read error is then fatal)
 // 2. /etc/mnemonic/config.yaml (production)
 // 3. ./config.yaml (development)
-func Load() (*MnemonicConfig, error) {
+func Resolve() (*viper.Viper, error) {
 	v := viper.New()
 	SetDefaults(v)
 
@@ -163,16 +168,7 @@ func Load() (*MnemonicConfig, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
-	cfg := &MnemonicConfig{}
-	if err := v.Unmarshal(cfg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
-	}
-
-	if errs := cfg.Validate(); len(errs) > 0 {
-		return nil, errs
-	}
-
-	return cfg, nil
+	return v, nil
 }
 
 // SetDefaults sets all default values in the viper instance.
@@ -204,7 +200,7 @@ func SetDefaults(v *viper.Viper) {
 	v.SetDefault("database.postgres.password", "")
 	v.SetDefault("database.postgres.ssl_mode", DefaultPostgresSSLMode)
 	v.SetDefault("database.postgres.max_open_conns", DefaultPostgresMaxOpenConns)
-	v.SetDefault("database.postgres.max_idle_conns", DefaultPostgresMaxIdleConns)
+	v.SetDefault("database.postgres.min_conns", DefaultPostgresMinConns)
 	v.SetDefault("database.postgres.conn_max_lifetime", DefaultPostgresConnMaxLifetime)
 
 	// Neo4j defaults
@@ -250,332 +246,110 @@ func findConfigFile(explicitPath string) string {
 	return ""
 }
 
-// Validate validates the configuration and returns any validation errors.
-func (c *MnemonicConfig) Validate() ValidationErrors {
-	var errs ValidationErrors
+// neo4jSchemes are the URI schemes the Neo4j driver accepts: direct (bolt)
+// and routed (neo4j), each plain, TLS-verified (+s) or TLS with a self-signed
+// certificate (+ssc).
+var neo4jSchemes = []string{"bolt", "bolt+s", "bolt+ssc", "neo4j", "neo4j+s", "neo4j+ssc"}
 
-	// Server validation
-	errs = append(errs, c.Server.validate()...)
-
-	// MCP validation
-	errs = append(errs, c.MCP.validate()...)
-
-	// Database validation
-	errs = append(errs, c.Database.validate()...)
-
-	// OpenAI validation
-	errs = append(errs, c.OpenAI.validate()...)
-
-	// Logging validation
-	errs = append(errs, c.Logging.validate()...)
-
-	// Observability validation
-	errs = append(errs, c.Observability.validate()...)
-
-	// Cross-configuration validation
-	if c.Observability.Metrics.Enabled && c.Server.Port == c.Observability.Metrics.Port {
-		errs = append(errs, ValidationError{
-			Field:   "observability.metrics.port",
-			Message: fmt.Sprintf("must be different from server.port (%d) to avoid port conflict", c.Server.Port),
-		})
-	}
-	if c.Server.Port == c.MCP.Port {
-		errs = append(errs, ValidationError{
-			Field:   "mcp.port",
-			Message: fmt.Sprintf("must be different from server.port (%d) to avoid port conflict", c.Server.Port),
-		})
-	}
-	return errs
-}
-
-func (c *ServerConfig) validate() ValidationErrors {
-	var errs ValidationErrors
-
-	if c.Port < 1 || c.Port > 65535 {
-		errs = append(errs, ValidationError{
-			Field:   "server.port",
-			Message: fmt.Sprintf("must be between 1 and 65535, got %d", c.Port),
-		})
-	}
-
-	if c.ReadTimeout <= 0 {
-		errs = append(errs, ValidationError{
-			Field:   "server.read_timeout",
-			Message: "must be a positive duration",
-		})
-	}
-
-	if c.WriteTimeout <= 0 {
-		errs = append(errs, ValidationError{
-			Field:   "server.write_timeout",
-			Message: "must be a positive duration",
-		})
-	}
-
-	if c.IdleTimeout <= 0 {
-		errs = append(errs, ValidationError{
-			Field:   "server.idle_timeout",
-			Message: "must be a positive duration",
-		})
-	}
-
-	if c.ShutdownTimeout <= 0 {
-		errs = append(errs, ValidationError{
-			Field:   "server.shutdown_timeout",
-			Message: "must be a positive duration",
-		})
-	}
-
-	// TLS validation
-	if c.TLS.Enabled {
-		if c.TLS.CertFile == "" {
-			errs = append(errs, ValidationError{
-				Field:   "server.tls.cert_file",
-				Message: "required when TLS is enabled",
-			})
-		} else if _, err := os.Stat(c.TLS.CertFile); err != nil {
-			errs = append(errs, ValidationError{
-				Field:   "server.tls.cert_file",
-				Message: fmt.Sprintf("cannot access file: %v", err),
-			})
+// Validate validates the configuration and returns one error per invalid key.
+func (c *MnemonicConfig) Validate() []error {
+	var errs []error
+	check := func(bad bool, field, message string) {
+		if bad {
+			errs = append(errs, errors.New(field+": "+message))
 		}
+	}
+	inPortRange := func(port int) bool { return port >= 1 && port <= 65535 }
+	portMessage := func(port int) string { return fmt.Sprintf("must be between 1 and 65535, got %d", port) }
 
-		if c.TLS.KeyFile == "" {
-			errs = append(errs, ValidationError{
-				Field:   "server.tls.key_file",
-				Message: "required when TLS is enabled",
-			})
-		} else if _, err := os.Stat(c.TLS.KeyFile); err != nil {
-			errs = append(errs, ValidationError{
-				Field:   "server.tls.key_file",
-				Message: fmt.Sprintf("cannot access file: %v", err),
-			})
+	// Server
+	s := c.Server
+	check(!inPortRange(s.Port), "server.port", portMessage(s.Port))
+	check(s.ReadTimeout <= 0, "server.read_timeout", "must be a positive duration")
+	check(s.WriteTimeout <= 0, "server.write_timeout", "must be a positive duration")
+	check(s.IdleTimeout <= 0, "server.idle_timeout", "must be a positive duration")
+	check(s.ShutdownTimeout <= 0, "server.shutdown_timeout", "must be a positive duration")
+	if s.TLS.Enabled {
+		for _, f := range []struct{ field, path string }{
+			{"server.tls.cert_file", s.TLS.CertFile},
+			{"server.tls.key_file", s.TLS.KeyFile},
+		} {
+			if f.path == "" {
+				check(true, f.field, "required when TLS is enabled")
+			} else if _, err := os.Stat(f.path); err != nil {
+				check(true, f.field, fmt.Sprintf("cannot access file: %v", err))
+			}
 		}
 	}
 
-	return errs
-}
+	// MCP
+	m := c.MCP
+	check(!inPortRange(m.Port), "mcp.port", portMessage(m.Port))
+	check(m.ReadTimeout <= 0, "mcp.read_timeout", "must be a positive duration")
+	check(m.WriteTimeout <= 0, "mcp.write_timeout", "must be a positive duration")
+	check(m.IdleTimeout <= 0, "mcp.idle_timeout", "must be a positive duration")
+	check(m.DefaultSearchThreshold < 0 || m.DefaultSearchThreshold > 1, "mcp.default_search_threshold",
+		fmt.Sprintf("must be between 0.0 and 1.0, got %f", m.DefaultSearchThreshold))
 
-func (c *MCPConfig) validate() ValidationErrors {
-	var errs ValidationErrors
+	// PostgreSQL
+	pg := c.Database.Postgres
+	check(pg.Host == "", "database.postgres.host", "required")
+	check(pg.Database == "", "database.postgres.database", "required")
+	check(!inPortRange(pg.Port), "database.postgres.port", portMessage(pg.Port))
+	check(pg.MaxOpenConns < 1, "database.postgres.max_open_conns", "must be at least 1")
+	check(pg.MinConns < 0, "database.postgres.min_conns", "must be non-negative")
+	check(pg.MinConns > pg.MaxOpenConns, "database.postgres.min_conns",
+		fmt.Sprintf("must be less than or equal to max_open_conns (%d), got %d", pg.MaxOpenConns, pg.MinConns))
+	check(pg.ConnMaxLifetime < 0, "database.postgres.conn_max_lifetime", "must be non-negative")
 
-	if c.Port < 1 || c.Port > 65535 {
-		errs = append(errs, ValidationError{
-			Field:   "mcp.port",
-			Message: fmt.Sprintf("must be between 1 and 65535, got %d", c.Port),
-		})
+	// Neo4j
+	n := c.Database.Neo4j
+	if n.URI == "" {
+		check(true, "database.neo4j.uri", "required")
+	} else {
+		scheme, _, ok := strings.Cut(n.URI, "://")
+		check(!ok || !slices.Contains(neo4jSchemes, scheme), "database.neo4j.uri",
+			fmt.Sprintf("must start with bolt://, bolt+s://, bolt+ssc://, neo4j://, neo4j+s:// or neo4j+ssc://, got %q", n.URI))
+	}
+	check(n.MaxConnectionPoolSize < 1, "database.neo4j.max_connection_pool_size", "must be at least 1")
+	check(n.ConnectionAcquisitionTimeout <= 0, "database.neo4j.connection_acquisition_timeout", "must be a positive duration")
+
+	// OpenAI. The API key may be empty for development and testing; a missing
+	// key fails at runtime when the API is called.
+	o := c.OpenAI
+	check(o.EmbeddingDimensions < 1, "openai.embedding_dimensions", "must be at least 1")
+	check(o.RetryAttempts < 0, "openai.retry_attempts", "must be non-negative")
+	check(o.RetryDelay < 0, "openai.retry_delay", "must be non-negative")
+	if o.BaseURL != "" {
+		u, err := url.Parse(o.BaseURL)
+		check(err != nil || u.Scheme == "" || u.Host == "", "openai.base_url",
+			fmt.Sprintf("must be an absolute URL with scheme and host, got %q", o.BaseURL))
 	}
 
-	if c.ReadTimeout <= 0 {
-		errs = append(errs, ValidationError{
-			Field:   "mcp.read_timeout",
-			Message: "must be a positive duration",
-		})
+	// Logging
+	switch strings.ToLower(c.Logging.Level) {
+	case "debug", "info", "warn", "error":
+	default:
+		check(true, "logging.level", fmt.Sprintf("must be one of: debug, info, warn, error; got %q", c.Logging.Level))
 	}
 
-	if c.WriteTimeout <= 0 {
-		errs = append(errs, ValidationError{
-			Field:   "mcp.write_timeout",
-			Message: "must be a positive duration",
-		})
+	// Observability
+	obs := c.Observability
+	if obs.Metrics.Enabled {
+		check(!inPortRange(obs.Metrics.Port), "observability.metrics.port", portMessage(obs.Metrics.Port))
+		check(obs.Metrics.Path == "", "observability.metrics.path", "required when metrics are enabled")
+	}
+	if obs.Tracing.Enabled {
+		check(obs.Tracing.Endpoint == "", "observability.tracing.endpoint", "required when tracing is enabled")
+		check(obs.Tracing.SampleRate < 0 || obs.Tracing.SampleRate > 1, "observability.tracing.sample_rate",
+			fmt.Sprintf("must be between 0 and 1, got %f", obs.Tracing.SampleRate))
 	}
 
-	if c.IdleTimeout <= 0 {
-		errs = append(errs, ValidationError{
-			Field:   "mcp.idle_timeout",
-			Message: "must be a positive duration",
-		})
-	}
-
-	if c.DefaultSearchThreshold < 0 || c.DefaultSearchThreshold > 1 {
-		errs = append(errs, ValidationError{
-			Field:   "mcp.default_search_threshold",
-			Message: fmt.Sprintf("must be between 0.0 and 1.0, got %f", c.DefaultSearchThreshold),
-		})
-	}
-
-	return errs
-}
-
-func (c *DatabaseConfig) validate() ValidationErrors {
-	var errs ValidationErrors
-
-	// PostgreSQL validation
-	if c.Postgres.Host == "" {
-		errs = append(errs, ValidationError{
-			Field:   "database.postgres.host",
-			Message: "required",
-		})
-	}
-
-	if c.Postgres.Database == "" {
-		errs = append(errs, ValidationError{
-			Field:   "database.postgres.database",
-			Message: "required",
-		})
-	}
-
-	if c.Postgres.Port < 1 || c.Postgres.Port > 65535 {
-		errs = append(errs, ValidationError{
-			Field:   "database.postgres.port",
-			Message: fmt.Sprintf("must be between 1 and 65535, got %d", c.Postgres.Port),
-		})
-	}
-
-	if c.Postgres.MaxOpenConns < 1 {
-		errs = append(errs, ValidationError{
-			Field:   "database.postgres.max_open_conns",
-			Message: "must be at least 1",
-		})
-	}
-
-	if c.Postgres.MaxIdleConns < 0 {
-		errs = append(errs, ValidationError{
-			Field:   "database.postgres.max_idle_conns",
-			Message: "must be non-negative",
-		})
-	}
-
-	if c.Postgres.MaxIdleConns > c.Postgres.MaxOpenConns {
-		errs = append(errs, ValidationError{
-			Field:   "database.postgres.max_idle_conns",
-			Message: fmt.Sprintf("must be less than or equal to max_open_conns (%d), got %d", c.Postgres.MaxOpenConns, c.Postgres.MaxIdleConns),
-		})
-	}
-
-	if c.Postgres.ConnMaxLifetime < 0 {
-		errs = append(errs, ValidationError{
-			Field:   "database.postgres.conn_max_lifetime",
-			Message: "must be non-negative",
-		})
-	}
-
-	// Neo4j validation
-	if c.Neo4j.URI == "" {
-		errs = append(errs, ValidationError{
-			Field:   "database.neo4j.uri",
-			Message: "required",
-		})
-	} else if !strings.HasPrefix(c.Neo4j.URI, "bolt://") && !strings.HasPrefix(c.Neo4j.URI, "neo4j://") {
-		errs = append(errs, ValidationError{
-			Field:   "database.neo4j.uri",
-			Message: fmt.Sprintf("must start with bolt:// or neo4j://, got %q", c.Neo4j.URI),
-		})
-	}
-
-	if c.Neo4j.MaxConnectionPoolSize < 1 {
-		errs = append(errs, ValidationError{
-			Field:   "database.neo4j.max_connection_pool_size",
-			Message: "must be at least 1",
-		})
-	}
-
-	if c.Neo4j.ConnectionAcquisitionTimeout <= 0 {
-		errs = append(errs, ValidationError{
-			Field:   "database.neo4j.connection_acquisition_timeout",
-			Message: "must be a positive duration",
-		})
-	}
-
-	return errs
-}
-
-func (c *OpenAIConfig) validate() ValidationErrors {
-	var errs ValidationErrors
-
-	// API key is required for production, but we allow empty for development/testing
-	// The actual check will happen at runtime when trying to use the API
-
-	if c.EmbeddingDimensions < 1 {
-		errs = append(errs, ValidationError{
-			Field:   "openai.embedding_dimensions",
-			Message: "must be at least 1",
-		})
-	}
-
-	if c.RetryAttempts < 0 {
-		errs = append(errs, ValidationError{
-			Field:   "openai.retry_attempts",
-			Message: "must be non-negative",
-		})
-	}
-
-	if c.RetryDelay < 0 {
-		errs = append(errs, ValidationError{
-			Field:   "openai.retry_delay",
-			Message: "must be non-negative",
-		})
-	}
-
-	if c.BaseURL != "" {
-		u, err := url.Parse(c.BaseURL)
-		if err != nil || u.Scheme == "" || u.Host == "" {
-			errs = append(errs, ValidationError{
-				Field:   "openai.base_url",
-				Message: fmt.Sprintf("must be an absolute URL with scheme and host, got %q", c.BaseURL),
-			})
-		}
-	}
-
-	return errs
-}
-
-func (c *LoggingConfig) validate() ValidationErrors {
-	var errs ValidationErrors
-
-	validLevels := map[string]bool{
-		"debug": true,
-		"info":  true,
-		"warn":  true,
-		"error": true,
-	}
-
-	if !validLevels[strings.ToLower(c.Level)] {
-		errs = append(errs, ValidationError{
-			Field:   "logging.level",
-			Message: fmt.Sprintf("must be one of: debug, info, warn, error; got %q", c.Level),
-		})
-	}
-
-	return errs
-}
-
-func (c *ObservabilityConfig) validate() ValidationErrors {
-	var errs ValidationErrors
-
-	// Metrics validation
-	if c.Metrics.Enabled {
-		if c.Metrics.Port < 1 || c.Metrics.Port > 65535 {
-			errs = append(errs, ValidationError{
-				Field:   "observability.metrics.port",
-				Message: fmt.Sprintf("must be between 1 and 65535, got %d", c.Metrics.Port),
-			})
-		}
-
-		if c.Metrics.Path == "" {
-			errs = append(errs, ValidationError{
-				Field:   "observability.metrics.path",
-				Message: "required when metrics are enabled",
-			})
-		}
-	}
-
-	// Tracing validation
-	if c.Tracing.Enabled {
-		if c.Tracing.Endpoint == "" {
-			errs = append(errs, ValidationError{
-				Field:   "observability.tracing.endpoint",
-				Message: "required when tracing is enabled",
-			})
-		}
-
-		if c.Tracing.SampleRate < 0 || c.Tracing.SampleRate > 1 {
-			errs = append(errs, ValidationError{
-				Field:   "observability.tracing.sample_rate",
-				Message: fmt.Sprintf("must be between 0 and 1, got %f", c.Tracing.SampleRate),
-			})
-		}
-	}
+	// Cross-configuration
+	check(obs.Metrics.Enabled && s.Port == obs.Metrics.Port, "observability.metrics.port",
+		fmt.Sprintf("must be different from server.port (%d) to avoid port conflict", s.Port))
+	check(s.Port == m.Port, "mcp.port",
+		fmt.Sprintf("must be different from server.port (%d) to avoid port conflict", s.Port))
 
 	return errs
 }
@@ -591,83 +365,35 @@ func (c *MCPConfig) Address(host string) string {
 	return fmt.Sprintf("%s:%d", host, c.Port)
 }
 
-// DSN returns the PostgreSQL DSN for use with database/sql.
-// Username, password, and SSLMode are URL-encoded to handle special characters safely.
-func (c *PostgresConfig) DSN() string {
-	u := &url.URL{
+// url builds the PostgreSQL connection URL. url.URL escapes the credentials
+// and the sslmode value.
+func (c *PostgresConfig) url() *url.URL {
+	return &url.URL{
 		Scheme:   "postgres",
 		User:     url.UserPassword(c.Username, c.Password),
-		Host:     fmt.Sprintf("%s:%d", c.Host, c.Port),
+		Host:     net.JoinHostPort(c.Host, strconv.Itoa(c.Port)),
 		Path:     c.Database,
-		RawQuery: fmt.Sprintf("sslmode=%s", url.QueryEscape(c.SSLMode)),
+		RawQuery: url.Values{"sslmode": {c.SSLMode}}.Encode(),
 	}
-	return u.String()
 }
 
-// SafeDSN returns the PostgreSQL DSN with the password masked.
-// Use this method for logging to prevent secret exposure.
+// DSN returns the PostgreSQL connection URL.
+func (c *PostgresConfig) DSN() string {
+	return c.url().String()
+}
+
+// SafeDSN returns the PostgreSQL connection URL with the password redacted,
+// for logging.
 func (c *PostgresConfig) SafeDSN() string {
-	u := &url.URL{
-		Scheme:   "postgres",
-		User:     url.User(c.Username),
-		Host:     fmt.Sprintf("%s:%d", c.Host, c.Port),
-		Path:     c.Database,
-		RawQuery: fmt.Sprintf("sslmode=%s", url.QueryEscape(c.SSLMode)),
-	}
-	// Build the DSN with the URL-encoded username, then inject the mask.
-	// url.User encodes the username safely; we append the fixed mask ourselves
-	// so that the literal "*****" is not percent-encoded.
-	safe := u.String()
-	// Replace "postgres://encodeduser@" with "postgres://encodeduser:*****@"
-	encoded := u.User.String()
-	safe = strings.Replace(safe, encoded+"@", encoded+":*****@", 1)
-	return safe
+	return c.url().Redacted()
 }
 
-// SafeURI returns the Neo4j URI with any embedded credentials masked for logging.
-// If the URI contains embedded credentials (user:pass@host), the password is masked.
-// Use this method for logging to prevent secret exposure.
+// SafeURI returns the Neo4j URI with any embedded password redacted, for
+// logging.
 func (c *Neo4jConfig) SafeURI() string {
-	// Check for embedded credentials in the URI (e.g., bolt://user:pass@host:port)
-	// Format: scheme://[user[:password]@]host[:port]
-	uri := c.URI
-
-	// Find the scheme separator
-	schemeEnd := strings.Index(uri, "://")
-	if schemeEnd == -1 {
-		return uri
+	u, err := url.Parse(c.URI)
+	if err != nil {
+		return "[unparseable neo4j uri]"
 	}
-
-	// Get the part after the scheme
-	rest := uri[schemeEnd+3:]
-
-	// Find the LAST @ symbol which separates credentials from host
-	// This handles passwords that contain @ symbols
-	atIndex := strings.LastIndex(rest, "@")
-	if atIndex == -1 {
-		// No embedded credentials
-		return uri
-	}
-
-	// Extract the credentials part (before the last @)
-	credentials := rest[:atIndex]
-
-	// Find the FIRST colon which separates username from password
-	colonIndex := strings.Index(credentials, ":")
-	if colonIndex == -1 {
-		// Only username, no password to mask
-		return uri
-	}
-
-	// Build the safe URI with masked password
-	scheme := uri[:schemeEnd+3]
-	username := credentials[:colonIndex]
-	hostPart := rest[atIndex+1:]
-
-	return fmt.Sprintf("%s%s:*****@%s", scheme, username, hostPart)
-}
-
-// Credentials returns the username and password for use with neo4j.BasicAuth().
-func (c *Neo4jConfig) Credentials() (username, password string) {
-	return c.Username, c.Password
+	return u.Redacted()
 }

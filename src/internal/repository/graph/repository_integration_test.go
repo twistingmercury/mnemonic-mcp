@@ -12,7 +12,9 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/twistingmercury/mnemonic/internal/metrics"
 	"github.com/twistingmercury/mnemonic/internal/repository/graph"
+	"go.opentelemetry.io/otel/metric/noop"
 )
 
 const (
@@ -59,7 +61,9 @@ func setupNeo4j(t *testing.T) (*seeder, graph.Repository) {
 		_ = driver.Close(context.Background())
 	})
 
-	return s, graph.NewRepository(driver, database, nil)
+	dbMetrics, err := metrics.NewDatabase(noop.NewMeterProvider().Meter("test"))
+	require.NoError(t, err)
+	return s, graph.NewRepository(driver, database, dbMetrics)
 }
 
 type seeder struct {
@@ -131,7 +135,6 @@ func TestIntegration_FindRelatedPatterns(t *testing.T) {
 
 		assert.Equal(t, pB, results[0].ID)
 		assert.Equal(t, testIntegrationPatternPrefix+"related-b", results[0].Name)
-		assert.Equal(t, 3, results[0].SharedConcepts)
 		assert.InDelta(t, 0.75, results[0].Similarity, 1e-9)
 		assert.ElementsMatch(t, []string{
 			testIntegrationConceptPrefix + "go",
@@ -140,7 +143,7 @@ func TestIntegration_FindRelatedPatterns(t *testing.T) {
 		}, results[0].ConceptNames)
 
 		assert.Equal(t, pC, results[1].ID)
-		assert.Equal(t, 1, results[1].SharedConcepts)
+		assert.Equal(t, []string{testIntegrationConceptPrefix + "go"}, results[1].ConceptNames)
 	})
 
 	t.Run("does not include the source pattern itself", func(t *testing.T) {

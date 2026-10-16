@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
-	"github.com/twistingmercury/mnemonic/internal/service"
 	patternsvc "github.com/twistingmercury/mnemonic/internal/service/pattern"
 )
 
@@ -107,11 +106,10 @@ func TestGetPatternWithGraph(t *testing.T) {
 		pr.On("Get", mock.Anything, testPatternID).Return(enrichedPattern(), nil)
 		gr.On("FindRelatedPatterns", mock.Anything, testPatternID, 10).Return([]graphrepo.RelatedPattern{
 			{
-				ID:             testRelatedID,
-				Name:           "go-concurrency",
-				SharedConcepts: 2,
-				Similarity:     0.75,
-				ConceptNames:   []string{"goroutines", "channels"},
+				ID:           testRelatedID,
+				Name:         "go-concurrency",
+				Similarity:   0.75,
+				ConceptNames: []string{"goroutines", "channels"},
 			},
 		}, nil)
 		gr.On("GetPatternConcepts", mock.Anything, testPatternID).Return([]graphrepo.Concept{
@@ -170,7 +168,7 @@ func TestGetPatternWithGraph(t *testing.T) {
 
 		pattern, graphCtx, err := svc.GetPatternWithGraph(context.Background(), testPatternID)
 
-		assert.ErrorIs(t, err, service.ErrNotFound)
+		assert.ErrorIs(t, err, patternrepo.ErrNotFound)
 		assert.Nil(t, pattern)
 		assert.Nil(t, graphCtx)
 	})
@@ -188,7 +186,7 @@ func TestGetPatternWithGraph(t *testing.T) {
 		_, _, err := svc.GetPatternWithGraph(context.Background(), testPatternID)
 
 		assert.ErrorIs(t, err, dbErr)
-		assert.NotErrorIs(t, err, service.ErrNotFound)
+		assert.NotErrorIs(t, err, patternrepo.ErrNotFound)
 	})
 
 	for _, failing := range []string{"FindRelatedPatterns", "GetPatternConcepts"} {
@@ -233,11 +231,10 @@ func TestFindRelatedPatterns(t *testing.T) {
 		pr.On("GetName", mock.Anything, testPatternID).Return("go-error-handling", nil)
 		gr.On("FindRelatedPatterns", mock.Anything, testPatternID, 5).Return([]graphrepo.RelatedPattern{
 			{
-				ID:             testRelatedID,
-				Name:           "go-concurrency",
-				SharedConcepts: 3,
-				Similarity:     0.8,
-				ConceptNames:   []string{"goroutines", "channels", "select"},
+				ID:           testRelatedID,
+				Name:         "go-concurrency",
+				Similarity:   0.8,
+				ConceptNames: []string{"goroutines", "channels", "select"},
 			},
 		}, nil)
 
@@ -270,7 +267,7 @@ func TestFindRelatedPatterns(t *testing.T) {
 
 		assert.Empty(t, name)
 		assert.Nil(t, results)
-		assert.ErrorIs(t, err, service.ErrNotFound)
+		assert.ErrorIs(t, err, patternrepo.ErrNotFound)
 	})
 
 	t.Run("neo4j failure is returned", func(t *testing.T) {

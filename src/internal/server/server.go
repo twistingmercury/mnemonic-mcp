@@ -6,13 +6,16 @@ import (
 	"fmt"
 	"net/http"
 	"os/signal"
+	"slices"
+	"sync"
 	"syscall"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/twistingmercury/mnemonic/internal/config"
@@ -21,7 +24,6 @@ import (
 	"github.com/twistingmercury/mnemonic/internal/health"
 	"github.com/twistingmercury/mnemonic/internal/mcpserver"
 	"github.com/twistingmercury/mnemonic/internal/metrics"
-	"github.com/twistingmercury/mnemonic/internal/middleware"
 	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
@@ -31,6 +33,7 @@ import (
 	"github.com/twistingmercury/mnemonic/internal/telemetry"
 	"github.com/twistingmercury/mnemonic/internal/version"
 	otelxgin "github.com/twistingmercury/otelx/middleware/gin/v2"
+	"github.com/twistingmercury/otelx/v2"
 )
 
 // ListenAndServe starts the mnemonic server. It initializes telemetry,
@@ -47,13 +50,12 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 		return fmt.Errorf("failed to initialize telemetry: %w", err)
 	}
 	defer func() {
-		logger := tel.Logger()
 		if shutdownErr := tel.Shutdown(context.Background()); shutdownErr != nil {
-			logger.Error().Err(shutdownErr).Msg("telemetry shutdown error")
+			tel.Logger.Error().Err(shutdownErr).Msg("telemetry shutdown error")
 		}
 	}()
 
-	logger := tel.Logger()
+	logger := tel.Logger
 	logger.Info().
 		Str("host", cfg.Server.Host).
 		Int("admin_port", cfg.Server.Port).
@@ -69,41 +71,39 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	}
 	defer closeDatabases(pgPool, neo4jDriver, logger)
 
-	// Initialize health checks with real database connections.
-	if err := health.Initialize(health.Dependencies{
-		PGPool:      pgPool,
-		Neo4jDriver: neo4jDriver,
-		OpenAI:      cfg.OpenAI,
-	}); err != nil {
-		return fmt.Errorf("failed to initialize health checks: %w", err)
+	// Telemetry installs its meter provider globally, so the instruments are
+	// created from otel.Meter.
+	registry, err := metrics.NewRegistry(otel.Meter("mnemonic"))
+	if err != nil {
+		return fmt.Errorf("failed to create metrics registry: %w", err)
 	}
 
 	// Wire MCP dependencies.
-	toolDeps := wireDependencies(pgPool, neo4jDriver, cfg, logger, tel.MetricsRegistry())
+	services := wireDependencies(pgPool, neo4jDriver, cfg, logger, registry)
 
 	// Build operations HTTP server.
-	requestMetrics, err := middleware.NewRequestMetrics(tel.Meter("mnemonic/http"))
-	if err != nil {
-		return fmt.Errorf("failed to create request metrics: %w", err)
-	}
-	router := setupRouter(tel, requestMetrics)
-	operations.SetupHandlers(router, health.Descriptors())
+	router := setupRouter(tel)
+	operations.SetupHandlers(router, health.Descriptors(health.Dependencies{
+		PGPool:      pgPool,
+		Neo4jDriver: neo4jDriver,
+		OpenAI:      cfg.OpenAI,
+	}))
 	adminServer := newHTTPServer(router, cfg)
 
 	// Build the MCP HTTP server.
-	mcpSrv := mcpserver.NewMCPServer(toolDeps, logger, cfg.MCP, tel.MetricsRegistry().Tools)
+	mcpSrv := mcpserver.NewMCPServer(services, logger, cfg.MCP, registry.Tools)
 	mcpHandler := mcpserver.NewMCPHTTPHandler(mcpSrv)
 	mcpHTTPServer := mcpserver.NewMCPHTTPServer(cfg.MCP, cfg.Server.Host, mcpHandler)
 
-	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		return runHTTPServer(gCtx, adminServer, cfg, logger, "operations")
-	})
-	g.Go(func() error {
-		return runMCPServer(gCtx, mcpHTTPServer, logger)
-	})
-
-	if err := g.Wait(); err != nil {
+	if err := serve(ctx, cfg, logger, []namedServer{
+		{"operations", adminServer, func() error {
+			if cfg.Server.TLS.Enabled {
+				return adminServer.ListenAndServeTLS(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
+			}
+			return adminServer.ListenAndServe()
+		}},
+		{"mcp", mcpHTTPServer, mcpHTTPServer.ListenAndServe},
+	}); err != nil {
 		return err
 	}
 
@@ -152,14 +152,14 @@ func closeDatabases(pgPool *pgxpool.Pool, neo4jDriver neo4j.DriverWithContext, l
 }
 
 // wireDependencies creates the repositories and read-side services required by
-// the MCP search tools and returns MCP ToolDependencies.
+// the MCP search tools and returns the service calls behind them.
 func wireDependencies(
 	pgPool *pgxpool.Pool,
 	neo4jDriver neo4j.DriverWithContext,
 	cfg *config.MnemonicConfig,
 	logger zerolog.Logger,
 	registry *metrics.Registry,
-) mcpserver.ToolDependencies {
+) mcpserver.Services {
 	patternRepo := patternrepo.NewRepository(pgPool)
 	graphRepo := graphrepo.NewRepository(neo4jDriver, cfg.Database.Neo4j.Database, registry.Database)
 	chunkRepo := chunkrepo.NewRepository(pgPool)
@@ -168,88 +168,58 @@ func wireDependencies(
 	searchSvc := searchsvc.New(embeddingSvc, patternRepo, chunkRepo, graphRepo, registry.Patterns, logger)
 	patternSvc := patternsvc.New(patternRepo, graphRepo, logger)
 
-	return mcpserver.NewToolDependencies(searchSvc, patternSvc)
+	return mcpserver.Services{
+		SearchPatterns:      searchSvc.SearchPatterns,
+		FindRelatedPatterns: patternSvc.FindRelatedPatterns,
+		GetPatternWithGraph: patternSvc.GetPatternWithGraph,
+	}
 }
 
-// runHTTPServer starts the operations HTTP server and gracefully shuts it down
-// when the context is cancelled.
-func runHTTPServer(ctx context.Context, srv *http.Server, cfg *config.MnemonicConfig, logger zerolog.Logger, name string) error {
-	errCh := make(chan error, 1)
-
-	go func() {
-		logger.Info().
-			Str("addr", srv.Addr).
-			Str("component", name).
-			Msg("HTTP server listening")
-
-		var err error
-		if cfg.Server.TLS.Enabled {
-			err = srv.ListenAndServeTLS(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
-		} else {
-			err = srv.ListenAndServe()
-		}
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- fmt.Errorf("%s server error: %w", name, err)
-		}
-		close(errCh)
-	}()
-
-	select {
-	case err := <-errCh:
-		return err
-	case <-ctx.Done():
-	}
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
-	defer cancel()
-
-	logger.Info().Str("component", name).Msg("shutting down HTTP server")
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("%s shutdown error: %w", name, err)
-	}
-	return nil
+// namedServer is an HTTP server with the call that starts it listening.
+type namedServer struct {
+	name   string
+	srv    *http.Server
+	listen func() error
 }
 
-// runMCPServer starts the MCP HTTP server and gracefully shuts it down when
-// the context is cancelled.
-func runMCPServer(ctx context.Context, srv *http.Server, logger zerolog.Logger) error {
-	errCh := make(chan error, 1)
+// serve runs every server until ctx is cancelled or one of them fails to
+// listen, then shuts them all down concurrently within
+// cfg.Server.ShutdownTimeout. It returns the listener failure, if any,
+// otherwise the joined shutdown errors.
+func serve(ctx context.Context, cfg *config.MnemonicConfig, logger zerolog.Logger, servers []namedServer) error {
+	g, gCtx := errgroup.WithContext(ctx)
+	for _, s := range servers {
+		g.Go(func() error {
+			logger.Info().Str("addr", s.srv.Addr).Str("component", s.name).Msg("HTTP server listening")
+			if err := s.listen(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				return fmt.Errorf("%s server error: %w", s.name, err)
+			}
+			return nil
+		})
+	}
+	g.Go(func() error {
+		<-gCtx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
+		defer cancel()
 
-	go func() {
-		logger.Info().
-			Str("addr", srv.Addr).
-			Str("component", "mcp").
-			Msg("MCP server listening")
-
-		err := srv.ListenAndServe()
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- fmt.Errorf("mcp server error: %w", err)
+		errs := make([]error, len(servers))
+		var wg sync.WaitGroup
+		for i, s := range servers {
+			wg.Go(func() {
+				logger.Info().Str("component", s.name).Msg("shutting down HTTP server")
+				if err := s.srv.Shutdown(shutdownCtx); err != nil {
+					errs[i] = fmt.Errorf("%s shutdown error: %w", s.name, err)
+				}
+			})
 		}
-		close(errCh)
-	}()
-
-	select {
-	case err := <-errCh:
-		return err
-	case <-ctx.Done():
-	}
-
-	// Use a fixed 5s timeout for MCP shutdown; it has no long-running requests.
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), mcpShutdownTimeout)
-	defer cancel()
-
-	logger.Info().Str("component", "mcp").Msg("shutting down MCP server")
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("mcp shutdown error: %w", err)
-	}
-	return nil
+		wg.Wait()
+		return errors.Join(errs...)
+	})
+	return g.Wait()
 }
-
-// mcpShutdownTimeout is the grace period for MCP server shutdown.
-const mcpShutdownTimeout = 5 * time.Second
 
 // setupRouter creates and configures the Gin router with middleware.
-func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMetrics) *gin.Engine {
+func setupRouter(tel *otelx.Telemetry) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 
@@ -261,13 +231,16 @@ func setupRouter(tel *telemetry.Telemetry, requestMetrics *middleware.RequestMet
 		c.Next()
 	})
 
-	skipPaths := middleware.DefaultSkipPaths
-	router.Use(middleware.TracingMiddlewareWithSkipPaths(version.Service, skipPaths))
-	router.Use(otelxgin.LoggingMiddleware(tel.Otelx(),
-		otelxgin.WithSkipPaths("/health", "/metrics"),
+	// /health is polled by probes; keep it out of traces, metrics and logs.
+	// /metrics is served on the otelx metrics port, not on this router.
+	skipPaths := []string{"/health"}
+	router.Use(otelgin.Middleware(version.Service, otelgin.WithFilter(func(r *http.Request) bool {
+		return !slices.Contains(skipPaths, r.URL.Path)
+	})))
+	router.Use(otelxgin.LoggingMiddleware(tel,
+		otelxgin.WithSkipPaths(skipPaths...),
 		otelxgin.WithRequestHeaders("X-Request-ID", "X-Correlation-ID"),
 	))
-	router.Use(requestMetrics.MiddlewareWithSkipPaths(skipPaths))
 
 	return router
 }

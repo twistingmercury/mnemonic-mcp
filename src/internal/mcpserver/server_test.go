@@ -8,11 +8,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"go.opentelemetry.io/otel/metric/noop"
+
 	"github.com/twistingmercury/mnemonic/internal/config"
+	"github.com/twistingmercury/mnemonic/internal/metrics"
 	searchsvc "github.com/twistingmercury/mnemonic/internal/service/search"
 )
 
@@ -22,13 +25,20 @@ const protocolVersion = "2026-07-28"
 // handler) over httptest and returns its URL.
 func newTestEndpoint(t *testing.T) string {
 	t.Helper()
-	deps := new(mockToolDeps)
-	deps.On("SearchPatterns", mock.Anything, mock.Anything).Return(&searchsvc.SearchResult{}, nil)
+	svc := Services{SearchPatterns: searchStub(t, nil, &searchsvc.SearchResult{}, nil)}
 	cfg := config.MCPConfig{DefaultSearchThreshold: 0.5}
-	srv := NewMCPHTTPServer(cfg, "localhost", NewMCPHTTPHandler(NewMCPServer(deps, noopLogger(), cfg, nil)))
+	srv := NewMCPHTTPServer(cfg, "localhost", NewMCPHTTPHandler(NewMCPServer(svc, zerolog.Nop(), cfg, noopToolMetrics(t))))
 	ts := httptest.NewServer(srv.Handler)
 	t.Cleanup(ts.Close)
 	return ts.URL + "/mcp"
+}
+
+// noopToolMetrics returns tool instruments that record nothing.
+func noopToolMetrics(t *testing.T) *metrics.Tools {
+	t.Helper()
+	m, err := metrics.NewTools(noop.NewMeterProvider().Meter("test"))
+	require.NoError(t, err)
+	return m
 }
 
 // modernMeta is the per-request _meta a 2026-07-28 client sends.

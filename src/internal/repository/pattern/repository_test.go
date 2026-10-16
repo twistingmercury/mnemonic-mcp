@@ -2,7 +2,6 @@ package pattern_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -20,7 +19,7 @@ func TestRepository_Get(t *testing.T) {
 
 	now := time.Now()
 	patternID := uuid.New()
-	tagsJSON, _ := json.Marshal([]string{"tag1", "tag2"})
+	tags := []string{"tag1", "tag2"}
 	errMsg := "boom"
 	columns := []string{"id", "name", "content", "tags", "enrichment_status", "enrichment_error", "enriched_at"}
 
@@ -36,7 +35,7 @@ func TestRepository_Get(t *testing.T) {
 				mock.ExpectQuery("SELECT id, name, content, tags, .* FROM patterns").
 					WithArgs(patternID).
 					WillReturnRows(pgxmock.NewRows(columns).
-						AddRow(patternID, "test-pattern", "Test content", tagsJSON, "enriched", nil, &now))
+						AddRow(patternID, "test-pattern", "Test content", tags, "enriched", nil, &now))
 			},
 			wantPattern: &pattern.Pattern{
 				ID:               patternID,
@@ -53,7 +52,7 @@ func TestRepository_Get(t *testing.T) {
 				mock.ExpectQuery("SELECT .* FROM patterns").
 					WithArgs(patternID).
 					WillReturnRows(pgxmock.NewRows(columns).
-						AddRow(patternID, "test-pattern", "Test content", tagsJSON, "failed", &errMsg, nil))
+						AddRow(patternID, "test-pattern", "Test content", tags, "failed", &errMsg, nil))
 			},
 			wantPattern: &pattern.Pattern{
 				ID:               patternID,
@@ -175,11 +174,11 @@ func TestGetByIDs(t *testing.T) {
 
 	id1 := uuid.New()
 	id2 := uuid.New()
-	tagsJSON, _ := json.Marshal([]string{"test", "example"})
+	tags := []string{"test", "example"}
 	columns := []string{"id", "name", "tags", "language", "domain"}
 
 	newRow := func(id uuid.UUID, name string) []any {
-		return []any{id, name, tagsJSON, "go", "backend"}
+		return []any{id, name, tags, "go", "backend"}
 	}
 
 	t.Run("success multiple IDs all found", func(t *testing.T) {

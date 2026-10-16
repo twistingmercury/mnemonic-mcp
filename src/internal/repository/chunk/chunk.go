@@ -29,7 +29,7 @@ type SimilarityOptions struct {
 	// MinSimilarity is the minimum cosine similarity score to include in results.
 	MinSimilarity float64
 
-	// MaxResults caps the number of results returned. Defaults to 10 when <= 0.
+	// MaxResults caps the number of results returned.
 	MaxResults int
 
 	// Language filters results to chunks whose parent pattern has this language.

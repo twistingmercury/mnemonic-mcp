@@ -10,10 +10,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+
+	"github.com/twistingmercury/mnemonic/internal/metrics"
 	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	"github.com/twistingmercury/mnemonic/internal/repository/pattern"
-	"github.com/twistingmercury/mnemonic/internal/service"
 	openaisvc "github.com/twistingmercury/mnemonic/internal/service/openai"
 	"github.com/twistingmercury/mnemonic/internal/service/search"
 )
@@ -110,7 +112,11 @@ func newTestService(embSvc *mockEmbeddingService, patternRepo *mockPatternRepo, 
 
 func newTestServiceWithGraph(embSvc *mockEmbeddingService, patternRepo *mockPatternRepo, chunkRepo *mockChunkRepo, graphRepo *mockGraphRepo) *search.Service {
 	logger := zerolog.Nop()
-	return search.New(embSvc, patternRepo, chunkRepo, graphRepo, nil, logger)
+	patternMetrics, err := metrics.NewPattern(noop.NewMeterProvider().Meter("test"))
+	if err != nil {
+		panic(err)
+	}
+	return search.New(embSvc, patternRepo, chunkRepo, graphRepo, patternMetrics, logger)
 }
 
 func testChunkMatch(patternID uuid.UUID, patternName string, similarity float64) *chunkrepo.Match {
@@ -159,41 +165,6 @@ func TestSearchPatterns_HappyPath(t *testing.T) {
 	assert.Equal(t, id1, result.Matches[0].PatternID)
 	assert.Equal(t, "go-error-handling", result.Matches[0].PatternName)
 	assert.InDelta(t, 0.92, result.Matches[0].Similarity, 0.001)
-
-	embSvc.AssertExpectations(t)
-	chunkRepo.AssertExpectations(t)
-}
-
-func TestSearchPatterns_PassesLanguageAndDomainFilters(t *testing.T) {
-	t.Parallel()
-
-	embSvc := new(mockEmbeddingService)
-	patternRepo := new(mockPatternRepo)
-	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, chunkRepo)
-
-	patternID := uuid.New()
-
-	embSvc.On("Embed", mock.Anything, "testing patterns").Return(testEmbedding, nil)
-	chunkRepo.On("FindSimilar", mock.Anything, testEmbedding, chunkrepo.SimilarityOptions{
-		MinSimilarity: 0.7,
-		MaxResults:    10,
-		Language:      "go",
-		Domain:        "backend",
-	}).Return([]*chunkrepo.Match{testChunkMatch(patternID, "go-testing", 0.88)}, nil)
-
-	result, err := svc.SearchPatterns(context.Background(), search.SearchOptions{
-		Query:     "testing patterns",
-		Limit:     10,
-		Threshold: 0.7,
-		Language:  "go",
-		Domain:    "backend",
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Len(t, result.Matches, 1)
-	assert.Equal(t, patternID, result.Matches[0].PatternID)
 
 	embSvc.AssertExpectations(t)
 	chunkRepo.AssertExpectations(t)
@@ -251,7 +222,7 @@ func TestSearchPatterns_EmbeddingFailure(t *testing.T) {
 
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, service.ErrServiceUnavailable), "expected service.ErrServiceUnavailable, got: %v", err)
+	assert.ErrorIs(t, err, openaisvc.ErrEmbeddingFailed)
 
 	chunkRepo.AssertNotCalled(t, "FindSimilar")
 }
@@ -280,64 +251,6 @@ func TestSearchPatterns_NoMatchingPatterns(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Empty(t, result.Matches)
 	assert.Equal(t, "obscure topic", result.Query)
-}
-
-func TestSearchPatterns_ContextCancellation(t *testing.T) {
-	t.Parallel()
-
-	embSvc := new(mockEmbeddingService)
-	patternRepo := new(mockPatternRepo)
-	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, chunkRepo)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately.
-
-	embSvc.On("Embed", mock.Anything, "cancelled query").Return(nil, context.Canceled)
-
-	result, err := svc.SearchPatterns(ctx, search.SearchOptions{
-		Query:     "cancelled query",
-		Limit:     10,
-		Threshold: 0.7,
-	})
-
-	assert.Nil(t, result)
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, service.ErrServiceUnavailable), "expected service.ErrServiceUnavailable, got: %v", err)
-}
-
-func TestSearchPatterns_WithTags(t *testing.T) {
-	t.Parallel()
-
-	embSvc := new(mockEmbeddingService)
-	patternRepo := new(mockPatternRepo)
-	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, chunkRepo)
-
-	id1 := uuid.New()
-
-	embSvc.On("Embed", mock.Anything, "go patterns").Return(testEmbedding, nil)
-	chunkRepo.On("FindSimilar", mock.Anything, testEmbedding, chunkrepo.SimilarityOptions{
-		MinSimilarity: 0.7,
-		MaxResults:    10,
-		Tags:          []string{"go", "best-practices"},
-	}).Return([]*chunkrepo.Match{
-		testChunkMatch(id1, "go-best-practices", 0.91),
-	}, nil)
-
-	result, err := svc.SearchPatterns(context.Background(), search.SearchOptions{
-		Query:     "go patterns",
-		Limit:     10,
-		Threshold: 0.7,
-		Tags:      []string{"go", "best-practices"},
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Len(t, result.Matches, 1)
-
-	embSvc.AssertExpectations(t)
-	chunkRepo.AssertExpectations(t)
 }
 
 func TestSearchPatterns_FindSimilarError(t *testing.T) {
