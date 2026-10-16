@@ -1,12 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -79,18 +78,13 @@ func TestFormatHealthStatus_EmptyStatus(t *testing.T) {
 }
 
 func TestCheckHealth_Healthy(t *testing.T) {
-	resp := map[string]interface{}{
-		"status": "OK",
-		"name":   "mnemonic",
-	}
-	body, err := json.Marshal(resp)
-	require.NoError(t, err)
+	body := `{"status":"OK","name":"mnemonic"}`
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, config.DefaultHealthPath, r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(body)
+		_, _ = w.Write([]byte(body))
 	}))
 	defer srv.Close()
 
@@ -103,17 +97,12 @@ func TestCheckHealth_Healthy(t *testing.T) {
 }
 
 func TestCheckHealth_Unhealthy(t *testing.T) {
-	resp := map[string]interface{}{
-		"status": "Critical",
-		"name":   "mnemonic",
-	}
-	body, err := json.Marshal(resp)
-	require.NoError(t, err)
+	body := `{"status":"Critical","name":"mnemonic"}`
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = w.Write(body)
+		_, _ = w.Write([]byte(body))
 	}))
 	defer srv.Close()
 
@@ -140,10 +129,10 @@ func TestCheckHealth_BadPort(t *testing.T) {
 	assert.Equal(t, 1, exitCode)
 }
 
-// extractPort parses "http://127.0.0.1:PORT" and returns "PORT" as a string.
+// extractPort returns the port of a test server URL.
 func extractPort(t *testing.T, rawURL string) string {
 	t.Helper()
-	parts := strings.Split(rawURL, ":")
-	require.Len(t, parts, 3, "expected URL with scheme:host:port")
-	return parts[2]
+	u, err := url.Parse(rawURL)
+	require.NoError(t, err)
+	return u.Port()
 }

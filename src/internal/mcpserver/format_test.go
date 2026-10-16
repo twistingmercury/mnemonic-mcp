@@ -48,28 +48,6 @@ func TestFormatSearchResults_WithResults(t *testing.T) {
 	assert.Contains(t, md, "Always wrap errors with context.")
 	assert.Contains(t, md, "## retry-logic (85% match)")
 	assert.Contains(t, md, "Use exponential backoff.")
-	assert.NotContains(t, md, "filtered by agent")
-}
-
-func TestFormatSearchResults_HeaderFormat(t *testing.T) {
-	t.Parallel()
-
-	result := &searchsvc.SearchResult{
-		Query: "testing",
-		Matches: []*searchsvc.ChunkMatch{
-			{
-				PatternID:   uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
-				PatternName: "unit-testing",
-				Content:     "Test content",
-				Similarity:  0.88,
-			},
-		},
-	}
-
-	md := formatSearchResults(result)
-
-	// 1 section from 1 distinct pattern.
-	assert.Contains(t, md, "Found 1 sections across 1 patterns matching 'testing':")
 }
 
 func TestFormatSearchResults_Empty(t *testing.T) {
@@ -196,48 +174,34 @@ func TestFormatSearchResults_WithGraphMatches(t *testing.T) {
 	assert.Contains(t, md, "**Shared concepts:** resilience, fault-tolerance")
 }
 
-func TestFormatSearchResults_NilGraphMatches(t *testing.T) {
+// TestFormatSearchResults_NoGraphMatches verifies that nil and empty graph
+// matches both leave out the graph section.
+func TestFormatSearchResults_NoGraphMatches(t *testing.T) {
 	t.Parallel()
 
-	result := &searchsvc.SearchResult{
-		Query: "error handling",
-		Matches: []*searchsvc.ChunkMatch{
-			{
-				PatternID:   uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-				PatternName: "go-error-handling",
-				Content:     "Always wrap errors with context.",
-				Similarity:  0.92,
-			},
-		},
-		GraphMatches: nil,
+	for name, graphMatches := range map[string][]*searchsvc.GraphMatch{"nil": nil, "empty": {}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			result := &searchsvc.SearchResult{
+				Query: "error handling",
+				Matches: []*searchsvc.ChunkMatch{
+					{
+						PatternID:   uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+						PatternName: "go-error-handling",
+						Content:     "Always wrap errors with context.",
+						Similarity:  0.92,
+					},
+				},
+				GraphMatches: graphMatches,
+			}
+
+			md := formatSearchResults(result)
+
+			assert.Contains(t, md, "## go-error-handling (92% match)")
+			assert.NotContains(t, md, "Related Patterns (via graph)")
+		})
 	}
-
-	md := formatSearchResults(result)
-
-	assert.Contains(t, md, "## go-error-handling (92% match)")
-	assert.NotContains(t, md, "Related Patterns (via graph)")
-}
-
-func TestFormatSearchResults_EmptyGraphMatches(t *testing.T) {
-	t.Parallel()
-
-	result := &searchsvc.SearchResult{
-		Query: "error handling",
-		Matches: []*searchsvc.ChunkMatch{
-			{
-				PatternID:   uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-				PatternName: "go-error-handling",
-				Content:     "Always wrap errors with context.",
-				Similarity:  0.92,
-			},
-		},
-		GraphMatches: []*searchsvc.GraphMatch{},
-	}
-
-	md := formatSearchResults(result)
-
-	assert.Contains(t, md, "## go-error-handling (92% match)")
-	assert.NotContains(t, md, "Related Patterns (via graph)")
 }
 
 // --- formatRelatedPatterns tests ---

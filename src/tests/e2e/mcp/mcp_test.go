@@ -139,24 +139,20 @@ func TestMCPFindRelated_LimitTooHigh_ReturnsError(t *testing.T) {
 
 // Section 5: find_related_patterns data paths
 
-func TestMCPFindRelated_ExistingPattern_ReturnsSuccessOrEmpty(t *testing.T) {
+// TestMCPFindRelated_UnenrichedPattern_ReturnsNoRelated finds related patterns
+// for a pattern that exists in PostgreSQL but has no graph node yet, which is
+// a success with no related patterns.
+func TestMCPFindRelated_UnenrichedPattern_ReturnsNoRelated(t *testing.T) {
 	apiClient := helpers.NewTestClient(t)
 	pattern := helpers.CreateTestPattern(t, apiClient)
 
 	mcpClient := helpers.NewMCPClient(t)
 	resp := mcpClient.CallTool(t, "find_related_patterns", map[string]any{"pattern_id": pattern.ID})
 
-	if resp.Error != nil || (resp.Result != nil && resp.Result.IsError) {
-		t.Log("Outcome B: MCP returned error (expected for unenriched pattern with no Neo4j node)")
-		return
-	}
 	result := helpers.AssertMCPSuccess(t, resp)
-	t.Log("Outcome A: MCP returned success")
-	if len(result.Content) > 0 {
-		text := result.Content[0].Text
-		if !strings.Contains(text, "No related patterns found for") {
-			t.Errorf("expected 'No related patterns found for' in response, got: %s", text)
-		}
+	want := "No related patterns found for '" + pattern.Name + "'"
+	if len(result.Content) == 0 || !strings.Contains(result.Content[0].Text, want) {
+		t.Errorf("expected %q in response, got: %+v", want, result.Content)
 	}
 }
 
@@ -248,7 +244,7 @@ func TestMCPEndpoint_MalformedJSON_DoesNotPanic(t *testing.T) {
 
 // TestGraphEnhancedSearch_UnenrichedPattern_NoGraphSection creates an unenriched
 // pattern via the API and searches for it via MCP. Because the pattern has no
-// embeddings or graph nodes, the response must succeed without a
+// embeddings or graph nodes, the response must succeed vector-only, without a
 // "Related Patterns (via graph)" section.
 func TestGraphEnhancedSearch_UnenrichedPattern_NoGraphSection(t *testing.T) {
 	apiClient := helpers.NewTestClient(t)
@@ -348,43 +344,7 @@ func TestGraphEnhancedSearch_NoDuplicatePatterns(t *testing.T) {
 	}
 }
 
-// TestGraphEnhancedSearch_VectorOnlyWhenNoGraphData creates a test pattern and
-// calls search_patterns. Because the pattern is unenriched, no graph data exists.
-// If the search succeeds, the response must not contain a graph results section.
-func TestGraphEnhancedSearch_VectorOnlyWhenNoGraphData(t *testing.T) {
-	apiClient := helpers.NewTestClient(t)
-	pattern := helpers.CreateTestPattern(t, apiClient)
-
-	mcpClient := helpers.NewMCPClient(t)
-	resp := mcpClient.CallTool(t, "search_patterns", map[string]any{
-		"query": pattern.Name,
-	})
-
-	result := helpers.AssertMCPSuccess(t, resp)
-	if len(result.Content) == 0 {
-		return // empty results — assertion does not apply
-	}
-
-	text := result.Content[0].Text
-	if strings.Contains(text, "Related Patterns (via graph)") {
-		t.Errorf("expected vector-only response for unenriched pattern, but graph section was present:\n%s", text)
-	}
-}
-
 // Section 10: protocol version 2026-07-28
-
-// decodeMCP reads an SSE- or JSON-framed JSON-RPC response into out.
-func decodeMCP(t *testing.T, resp *http.Response, out any) {
-	t.Helper()
-	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read body: %v", err)
-	}
-	if err := json.Unmarshal(helpers.ExtractSSEData(data), out); err != nil {
-		t.Fatalf("unmarshal: %v\nbody: %s", err, data)
-	}
-}
 
 func TestMCPServerDiscover_AdvertisesVersionAndTools(t *testing.T) {
 	client := helpers.NewMCPClient(t)
@@ -402,7 +362,7 @@ func TestMCPServerDiscover_AdvertisesVersionAndTools(t *testing.T) {
 			} `json:"_meta"`
 		} `json:"result"`
 	}
-	decodeMCP(t, resp, &out)
+	helpers.Decode(t, resp, &out)
 	r := out.Result
 	if r.ResultType != "complete" {
 		t.Errorf("resultType = %q, want complete", r.ResultType)
@@ -452,7 +412,7 @@ func TestMCPToolsCall_HeaderMismatch_Returns400(t *testing.T) {
 	}, headers)
 	helpers.AssertStatusCode(t, resp, http.StatusBadRequest)
 	var out helpers.JSONRPCResponse
-	decodeMCP(t, resp, &out)
+	helpers.Decode(t, resp, &out)
 	if out.Error == nil || out.Error.Code != -32020 {
 		t.Errorf("error = %+v, want code -32020 (HeaderMismatch)", out.Error)
 	}
@@ -487,6 +447,6 @@ func TestMCPLegacyClient_ToolsCallStillWorks(t *testing.T) {
 	}, nil)
 	helpers.AssertStatusCode(t, resp, http.StatusOK)
 	var out helpers.JSONRPCResponse
-	decodeMCP(t, resp, &out)
+	helpers.Decode(t, resp, &out)
 	helpers.AssertMCPSuccess(t, out)
 }

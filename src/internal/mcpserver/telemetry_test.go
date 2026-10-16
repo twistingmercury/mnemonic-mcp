@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -77,7 +78,7 @@ func TestToolCallTelemetry(t *testing.T) {
 	}
 
 	cfg := config.MCPConfig{DefaultSearchThreshold: 0.5}
-	srv := NewMCPHTTPServer(cfg, "localhost", NewMCPHTTPHandler(NewMCPServer(svc, noopLogger(), cfg, toolMetrics)))
+	srv := NewMCPHTTPServer(cfg, "localhost", NewMCPHTTPHandler(NewMCPServer(svc, zerolog.Nop(), cfg, toolMetrics)))
 	ts := httptest.NewServer(srv.Handler)
 	t.Cleanup(ts.Close)
 

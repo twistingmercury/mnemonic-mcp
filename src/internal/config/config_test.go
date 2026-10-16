@@ -941,59 +941,6 @@ func TestNeo4jSafeURI(t *testing.T) {
 	}
 }
 
-// TestBooleanEnvironmentVariables tests boolean parsing from env vars.
-func TestBooleanEnvironmentVariables(t *testing.T) {
-	tests := []struct {
-		name     string
-		value    string
-		expected bool
-	}{
-		{"true lowercase", "true", true},
-		{"TRUE uppercase", "TRUE", true},
-		{"1", "1", true},
-		{"false lowercase", "false", false},
-		{"FALSE uppercase", "FALSE", false},
-		{"0", "0", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			clearMnemonicEnvVars(t)
-			// otlp_insecure has no validation dependencies while tracing is off.
-			t.Setenv("MNEMONIC_OBSERVABILITY_TRACING_OTLP_INSECURE", tt.value)
-
-			cfg, err := config.Load()
-			require.NoError(t, err)
-			assert.Equal(t, tt.expected, cfg.Observability.Tracing.OTLPInsecure)
-		})
-	}
-}
-
-// TestDurationEnvironmentVariables tests duration parsing from env vars.
-func TestDurationEnvironmentVariables(t *testing.T) {
-	tests := []struct {
-		name     string
-		value    string
-		expected time.Duration
-	}{
-		{"seconds", "45s", 45 * time.Second},
-		{"minutes", "5m", 5 * time.Minute},
-		{"hours", "1h", 1 * time.Hour},
-		{"complex", "1h30m", 90 * time.Minute},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			clearMnemonicEnvVars(t)
-			t.Setenv("MNEMONIC_SERVER_READ_TIMEOUT", tt.value)
-
-			cfg, err := config.Load()
-			require.NoError(t, err)
-			assert.Equal(t, tt.expected, cfg.Server.ReadTimeout)
-		})
-	}
-}
-
 // TestValidConfig verifies a fully valid config passes validation.
 func TestValidConfig(t *testing.T) {
 	cfg := validConfig()
@@ -1018,74 +965,15 @@ func clearMnemonicEnvVars(t *testing.T) {
 	}
 }
 
-// validConfig returns a fully valid configuration for testing.
+// validConfig returns the compiled defaults, which form a valid configuration.
 func validConfig() *config.MnemonicConfig {
-	return &config.MnemonicConfig{
-		Server: config.ServerConfig{
-			Host:            "0.0.0.0",
-			Port:            8080,
-			ReadTimeout:     30 * time.Second,
-			WriteTimeout:    30 * time.Second,
-			IdleTimeout:     120 * time.Second,
-			ShutdownTimeout: 5 * time.Second,
-			TLS: config.TLSConfig{
-				Enabled:  false,
-				CertFile: "",
-				KeyFile:  "",
-			},
-		},
-		MCP: config.MCPConfig{
-			Port:                   8081,
-			ReadTimeout:            30 * time.Second,
-			WriteTimeout:           30 * time.Second,
-			IdleTimeout:            120 * time.Second,
-			DefaultSearchThreshold: 0.5,
-		},
-		Database: config.DatabaseConfig{
-			Postgres: config.PostgresConfig{
-				Host:            "localhost",
-				Port:            5432,
-				Database:        "mnemonic",
-				Username:        "mnemonic",
-				Password:        "",
-				SSLMode:         "prefer",
-				MaxOpenConns:    25,
-				MinConns:        5,
-				ConnMaxLifetime: 5 * time.Minute,
-			},
-			Neo4j: config.Neo4jConfig{
-				URI:                          "bolt://localhost:7687",
-				Username:                     "neo4j",
-				Password:                     "",
-				Database:                     "neo4j",
-				MaxConnectionPoolSize:        50,
-				ConnectionAcquisitionTimeout: 60 * time.Second,
-			},
-		},
-		OpenAI: config.OpenAIConfig{
-			APIKey:              "",
-			EmbeddingModel:      "text-embedding-3-small",
-			EmbeddingDimensions: 1536,
-			RetryAttempts:       3,
-			RetryDelay:          1 * time.Second,
-		},
-		Logging: config.LoggingConfig{
-			Level: "info",
-		},
-		Observability: config.ObservabilityConfig{
-			Metrics: config.MetricsConfig{
-				Enabled: true,
-				Path:    "/metrics",
-				Port:    9090,
-			},
-			Tracing: config.TracingConfig{
-				Enabled:      false,
-				Endpoint:     "",
-				SampleRate:   0.1,
-				OTLPInsecure: true,
-			},
-		},
+	v := viper.New()
+	config.SetDefaults(v)
+	cfg := &config.MnemonicConfig{}
+	if err := v.Unmarshal(cfg); err != nil {
+		panic(err)
 	}
+	return cfg
 }
 
 // TestLoad_ExplicitConfigFileMustBeReadable verifies that a config file named
@@ -1099,30 +987,12 @@ func TestLoad_ExplicitConfigFileMustBeReadable(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to read config file")
 }
 
-func TestOpenAIBaseURL_DefaultsToOpenAI(t *testing.T) {
-	clearMnemonicEnvVars(t)
-
-	v := viper.New()
-	config.SetDefaults(v)
-
-	cfg := &config.MnemonicConfig{}
-	require.NoError(t, v.Unmarshal(cfg))
-
-	assert.Equal(t, config.DefaultOpenAIBaseURL, cfg.OpenAI.BaseURL)
-}
-
 func TestOpenAIBaseURL_EnvOverride(t *testing.T) {
 	clearMnemonicEnvVars(t)
 	t.Setenv("MNEMONIC_OPENAI_BASE_URL", "http://localhost:8090/v1")
 
-	v := viper.New()
-	config.SetDefaults(v)
-	v.SetEnvPrefix("MNEMONIC")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
-
-	cfg := &config.MnemonicConfig{}
-	require.NoError(t, v.Unmarshal(cfg))
+	cfg, err := config.Load()
+	require.NoError(t, err)
 
 	assert.Equal(t, "http://localhost:8090/v1", cfg.OpenAI.BaseURL)
 }

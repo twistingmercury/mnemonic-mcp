@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -26,7 +27,7 @@ func newTestEndpoint(t *testing.T) string {
 	t.Helper()
 	svc := Services{SearchPatterns: searchStub(t, nil, &searchsvc.SearchResult{}, nil)}
 	cfg := config.MCPConfig{DefaultSearchThreshold: 0.5}
-	srv := NewMCPHTTPServer(cfg, "localhost", NewMCPHTTPHandler(NewMCPServer(svc, noopLogger(), cfg, noopToolMetrics(t))))
+	srv := NewMCPHTTPServer(cfg, "localhost", NewMCPHTTPHandler(NewMCPServer(svc, zerolog.Nop(), cfg, noopToolMetrics(t))))
 	ts := httptest.NewServer(srv.Handler)
 	t.Cleanup(ts.Close)
 	return ts.URL + "/mcp"

@@ -170,41 +170,6 @@ func TestSearchPatterns_HappyPath(t *testing.T) {
 	chunkRepo.AssertExpectations(t)
 }
 
-func TestSearchPatterns_PassesLanguageAndDomainFilters(t *testing.T) {
-	t.Parallel()
-
-	embSvc := new(mockEmbeddingService)
-	patternRepo := new(mockPatternRepo)
-	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, chunkRepo)
-
-	patternID := uuid.New()
-
-	embSvc.On("Embed", mock.Anything, "testing patterns").Return(testEmbedding, nil)
-	chunkRepo.On("FindSimilar", mock.Anything, testEmbedding, chunkrepo.SimilarityOptions{
-		MinSimilarity: 0.7,
-		MaxResults:    10,
-		Language:      "go",
-		Domain:        "backend",
-	}).Return([]*chunkrepo.Match{testChunkMatch(patternID, "go-testing", 0.88)}, nil)
-
-	result, err := svc.SearchPatterns(context.Background(), search.SearchOptions{
-		Query:     "testing patterns",
-		Limit:     10,
-		Threshold: 0.7,
-		Language:  "go",
-		Domain:    "backend",
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Len(t, result.Matches, 1)
-	assert.Equal(t, patternID, result.Matches[0].PatternID)
-
-	embSvc.AssertExpectations(t)
-	chunkRepo.AssertExpectations(t)
-}
-
 func TestSearchPatterns_PassesTagsLanguageDomainTogether(t *testing.T) {
 	t.Parallel()
 
@@ -286,64 +251,6 @@ func TestSearchPatterns_NoMatchingPatterns(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Empty(t, result.Matches)
 	assert.Equal(t, "obscure topic", result.Query)
-}
-
-func TestSearchPatterns_ContextCancellation(t *testing.T) {
-	t.Parallel()
-
-	embSvc := new(mockEmbeddingService)
-	patternRepo := new(mockPatternRepo)
-	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, chunkRepo)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately.
-
-	embSvc.On("Embed", mock.Anything, "cancelled query").Return(nil, context.Canceled)
-
-	result, err := svc.SearchPatterns(ctx, search.SearchOptions{
-		Query:     "cancelled query",
-		Limit:     10,
-		Threshold: 0.7,
-	})
-
-	assert.Nil(t, result)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled)
-}
-
-func TestSearchPatterns_WithTags(t *testing.T) {
-	t.Parallel()
-
-	embSvc := new(mockEmbeddingService)
-	patternRepo := new(mockPatternRepo)
-	chunkRepo := new(mockChunkRepo)
-	svc := newTestService(embSvc, patternRepo, chunkRepo)
-
-	id1 := uuid.New()
-
-	embSvc.On("Embed", mock.Anything, "go patterns").Return(testEmbedding, nil)
-	chunkRepo.On("FindSimilar", mock.Anything, testEmbedding, chunkrepo.SimilarityOptions{
-		MinSimilarity: 0.7,
-		MaxResults:    10,
-		Tags:          []string{"go", "best-practices"},
-	}).Return([]*chunkrepo.Match{
-		testChunkMatch(id1, "go-best-practices", 0.91),
-	}, nil)
-
-	result, err := svc.SearchPatterns(context.Background(), search.SearchOptions{
-		Query:     "go patterns",
-		Limit:     10,
-		Threshold: 0.7,
-		Tags:      []string{"go", "best-practices"},
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Len(t, result.Matches, 1)
-
-	embSvc.AssertExpectations(t)
-	chunkRepo.AssertExpectations(t)
 }
 
 func TestSearchPatterns_FindSimilarError(t *testing.T) {

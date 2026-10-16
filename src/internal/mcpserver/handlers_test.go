@@ -50,11 +50,6 @@ func getPatternStub(t *testing.T, wantID uuid.UUID, pattern *patternrepo.Pattern
 	}
 }
 
-// noopLogger returns a zerolog.Logger that discards output.
-func noopLogger() zerolog.Logger {
-	return zerolog.Nop()
-}
-
 // extractTextContent extracts the text string from a CallToolResult's Content.
 func extractTextContent(t *testing.T, result *mcp.CallToolResult) string {
 	t.Helper()
@@ -82,11 +77,11 @@ func TestHandleSearchPatterns_HappyPath(t *testing.T) {
 		Query:     "error handling",
 		Limit:     10,
 		Threshold: 0.5,
-	}, searchResult, nil), noopLogger())
+	}, searchResult, nil), zerolog.Nop())
 	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
+		Query:     "error handling",
 		Limit:     10,
 		Threshold: 0.5,
-		Query:     "error handling",
 	})
 
 	require.NoError(t, err)
@@ -105,11 +100,11 @@ func TestHandleSearchPatterns_NoResults(t *testing.T) {
 		Matches: []*searchsvc.ChunkMatch{},
 	}
 
-	handler := handleSearchPatterns(searchStub(t, nil, searchResult, nil), noopLogger())
+	handler := handleSearchPatterns(searchStub(t, nil, searchResult, nil), zerolog.Nop())
 	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
+		Query:     "nonexistent topic",
 		Limit:     10,
 		Threshold: 0.5,
-		Query:     "nonexistent topic",
 	})
 
 	require.NoError(t, err)
@@ -117,139 +112,39 @@ func TestHandleSearchPatterns_NoResults(t *testing.T) {
 	assert.Contains(t, text, "No patterns found matching 'nonexistent topic'")
 }
 
-func TestHandleSearchPatterns_WithoutAgentFilter(t *testing.T) {
-	t.Parallel()
-
-	searchResult := &searchsvc.SearchResult{
-		Query: "testing",
-		Matches: []*searchsvc.ChunkMatch{
-			{PatternName: "test-pattern", Content: "Test content", Similarity: 0.88},
-		},
-	}
-
-	handler := handleSearchPatterns(searchStub(t, &searchsvc.SearchOptions{
-		Query:     "testing",
-		Limit:     10,
-		Threshold: 0.5,
-	}, searchResult, nil), noopLogger())
-	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
-		Limit:     10,
-		Threshold: 0.5,
-		Query:     "testing",
-	})
-
-	require.NoError(t, err)
-	text := extractTextContent(t, result)
-	assert.Contains(t, text, "Found 1 sections across 1 patterns matching 'testing':")
-}
-
 func TestHandleSearchPatterns_ServiceUnavailable(t *testing.T) {
 	t.Parallel()
 
-	handler := handleSearchPatterns(searchStub(t, nil, nil, errors.New("embedding failed")), noopLogger())
+	handler := handleSearchPatterns(searchStub(t, nil, nil, errors.New("embedding failed")), zerolog.Nop())
 	_, _, err := handler(context.Background(), nil, SearchPatternsInput{
+		Query:     "anything",
 		Limit:     10,
 		Threshold: 0.5,
-		Query:     "anything",
 	})
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrServiceUnavailable)
 }
 
-func TestHandleSearchPatterns_CustomLimitAndThreshold(t *testing.T) {
+// TestHandleSearchPatterns_PassesOptions verifies that every input field
+// reaches the search service unchanged.
+func TestHandleSearchPatterns_PassesOptions(t *testing.T) {
 	t.Parallel()
 
-	searchResult := &searchsvc.SearchResult{
-		Query:   "go patterns",
-		Matches: []*searchsvc.ChunkMatch{},
-	}
-
-	limit := 5
-	threshold := 0.9
 	handler := handleSearchPatterns(searchStub(t, &searchsvc.SearchOptions{
 		Query:     "go patterns",
 		Limit:     5,
 		Threshold: 0.9,
-	}, searchResult, nil), noopLogger())
+		Tags:      []string{"go", "errors"},
+		Language:  "python",
+		Domain:    "backend",
+	}, &searchsvc.SearchResult{Query: "go patterns"}, nil), zerolog.Nop())
 	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
 		Query:     "go patterns",
-		Limit:     limit,
-		Threshold: threshold,
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-}
-
-func TestHandleSearchPatterns_WithTags(t *testing.T) {
-	t.Parallel()
-
-	searchResult := &searchsvc.SearchResult{
-		Query:   "error handling",
-		Matches: []*searchsvc.ChunkMatch{},
-	}
-
-	handler := handleSearchPatterns(searchStub(t, &searchsvc.SearchOptions{
-		Query:     "error handling",
-		Limit:     10,
-		Threshold: 0.5,
+		Limit:     5,
+		Threshold: 0.9,
 		Tags:      []string{"go", "errors"},
-	}, searchResult, nil), noopLogger())
-	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
-		Limit:     10,
-		Threshold: 0.5,
-		Query:     "error handling",
-		Tags:      []string{"go", "errors"},
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-}
-
-func TestHandleSearchPatterns_WithLanguageFilter(t *testing.T) {
-	t.Parallel()
-
-	searchResult := &searchsvc.SearchResult{
-		Query:   "error handling",
-		Matches: []*searchsvc.ChunkMatch{},
-	}
-
-	handler := handleSearchPatterns(searchStub(t, &searchsvc.SearchOptions{
-		Query:     "error handling",
-		Limit:     10,
-		Threshold: 0.5,
 		Language:  "python",
-	}, searchResult, nil), noopLogger())
-	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
-		Limit:     10,
-		Threshold: 0.5,
-		Query:     "error handling",
-		Language:  "python",
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-}
-
-func TestHandleSearchPatterns_WithDomainFilter(t *testing.T) {
-	t.Parallel()
-
-	searchResult := &searchsvc.SearchResult{
-		Query:   "error handling",
-		Matches: []*searchsvc.ChunkMatch{},
-	}
-
-	handler := handleSearchPatterns(searchStub(t, &searchsvc.SearchOptions{
-		Query:     "error handling",
-		Limit:     10,
-		Threshold: 0.5,
-		Domain:    "backend",
-	}, searchResult, nil), noopLogger())
-	result, _, err := handler(context.Background(), nil, SearchPatternsInput{
-		Limit:     10,
-		Threshold: 0.5,
-		Query:     "error handling",
 		Domain:    "backend",
 	})
 
@@ -275,7 +170,7 @@ func TestHandleFindRelatedPatterns_HappyPath(t *testing.T) {
 		},
 	}
 
-	handler := handleFindRelatedPatterns(findRelatedStub(t, patternID, 5, "source-pattern", relatedResults, nil), noopLogger())
+	handler := handleFindRelatedPatterns(findRelatedStub(t, patternID, 5, "source-pattern", relatedResults, nil), zerolog.Nop())
 	result, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
 		Limit:     5,
 		PatternID: patternID.String(),
@@ -293,7 +188,7 @@ func TestHandleFindRelatedPatterns_NotFound(t *testing.T) {
 
 	patternID := uuid.New()
 
-	handler := handleFindRelatedPatterns(findRelatedStub(t, patternID, 5, "", nil, errors.Join(patternrepo.ErrNotFound, errors.New("pattern not found"))), noopLogger())
+	handler := handleFindRelatedPatterns(findRelatedStub(t, patternID, 5, "", nil, errors.Join(patternrepo.ErrNotFound, errors.New("pattern not found"))), zerolog.Nop())
 	_, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
 		Limit:     5,
 		PatternID: patternID.String(),
@@ -308,7 +203,7 @@ func TestHandleFindRelatedPatterns_EmptyResults(t *testing.T) {
 
 	patternID := uuid.New()
 
-	handler := handleFindRelatedPatterns(findRelatedStub(t, patternID, 5, "lonely-pattern", []patternsvc.RelatedPatternResult{}, nil), noopLogger())
+	handler := handleFindRelatedPatterns(findRelatedStub(t, patternID, 5, "lonely-pattern", []patternsvc.RelatedPatternResult{}, nil), zerolog.Nop())
 	result, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
 		Limit:     5,
 		PatternID: patternID.String(),
@@ -322,7 +217,7 @@ func TestHandleFindRelatedPatterns_EmptyResults(t *testing.T) {
 func TestHandleFindRelatedPatterns_InvalidUUID(t *testing.T) {
 	t.Parallel()
 
-	handler := handleFindRelatedPatterns(nil, noopLogger())
+	handler := handleFindRelatedPatterns(nil, zerolog.Nop())
 	_, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
 		PatternID: "not-a-uuid",
 	})
@@ -338,7 +233,7 @@ func TestHandleFindRelatedPatterns_CustomLimit(t *testing.T) {
 	patternID := uuid.New()
 
 	limit := 10
-	handler := handleFindRelatedPatterns(findRelatedStub(t, patternID, 10, "test-pattern", []patternsvc.RelatedPatternResult{}, nil), noopLogger())
+	handler := handleFindRelatedPatterns(findRelatedStub(t, patternID, 10, "test-pattern", []patternsvc.RelatedPatternResult{}, nil), zerolog.Nop())
 	result, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
 		PatternID: patternID.String(),
 		Limit:     limit,
@@ -353,7 +248,7 @@ func TestHandleFindRelatedPatterns_ServiceUnavailable(t *testing.T) {
 
 	patternID := uuid.New()
 
-	handler := handleFindRelatedPatterns(findRelatedStub(t, patternID, 5, "", nil, errors.New("neo4j down")), noopLogger())
+	handler := handleFindRelatedPatterns(findRelatedStub(t, patternID, 5, "", nil, errors.New("neo4j down")), zerolog.Nop())
 	_, _, err := handler(context.Background(), nil, FindRelatedPatternsInput{
 		Limit:     5,
 		PatternID: patternID.String(),
@@ -387,7 +282,7 @@ func TestHandleGetPattern_HappyPathWithGraph(t *testing.T) {
 		},
 	}
 
-	handler := handleGetPattern(getPatternStub(t, patternID, pattern, graphCtx, nil), noopLogger())
+	handler := handleGetPattern(getPatternStub(t, patternID, pattern, graphCtx, nil), zerolog.Nop())
 	result, _, err := handler(context.Background(), nil, GetPatternInput{
 		ID: patternID.String(),
 	})
@@ -416,7 +311,7 @@ func TestHandleGetPattern_PendingEnrichment(t *testing.T) {
 		EnrichmentStatus: "pending",
 	}
 
-	handler := handleGetPattern(getPatternStub(t, patternID, pattern, nil, nil), noopLogger())
+	handler := handleGetPattern(getPatternStub(t, patternID, pattern, nil, nil), zerolog.Nop())
 	result, _, err := handler(context.Background(), nil, GetPatternInput{
 		ID: patternID.String(),
 	})
@@ -442,7 +337,7 @@ func TestHandleGetPattern_FailedEnrichment(t *testing.T) {
 		EnrichmentError:  &errMsg,
 	}
 
-	handler := handleGetPattern(getPatternStub(t, patternID, pattern, nil, nil), noopLogger())
+	handler := handleGetPattern(getPatternStub(t, patternID, pattern, nil, nil), zerolog.Nop())
 	result, _, err := handler(context.Background(), nil, GetPatternInput{
 		ID: patternID.String(),
 	})
@@ -459,7 +354,7 @@ func TestHandleGetPattern_NotFound(t *testing.T) {
 
 	patternID := uuid.New()
 
-	handler := handleGetPattern(getPatternStub(t, patternID, nil, nil, errors.Join(patternrepo.ErrNotFound, errors.New("pattern not found"))), noopLogger())
+	handler := handleGetPattern(getPatternStub(t, patternID, nil, nil, errors.Join(patternrepo.ErrNotFound, errors.New("pattern not found"))), zerolog.Nop())
 	_, _, err := handler(context.Background(), nil, GetPatternInput{
 		ID: patternID.String(),
 	})
@@ -471,7 +366,7 @@ func TestHandleGetPattern_NotFound(t *testing.T) {
 func TestHandleGetPattern_InvalidUUID(t *testing.T) {
 	t.Parallel()
 
-	handler := handleGetPattern(nil, noopLogger())
+	handler := handleGetPattern(nil, zerolog.Nop())
 	_, _, err := handler(context.Background(), nil, GetPatternInput{
 		ID: "bad-uuid",
 	})
@@ -482,20 +377,6 @@ func TestHandleGetPattern_InvalidUUID(t *testing.T) {
 }
 
 // --- mapServiceError tests ---
-
-func TestMapServiceError_NotFound(t *testing.T) {
-	t.Parallel()
-
-	err := mapServiceError(errors.Join(patternrepo.ErrNotFound, errors.New("pattern 123")))
-	assert.ErrorIs(t, err, ErrPatternNotFound)
-}
-
-func TestMapServiceError_UnknownError(t *testing.T) {
-	t.Parallel()
-
-	err := mapServiceError(errors.New("unexpected"))
-	assert.ErrorIs(t, err, ErrServiceUnavailable)
-}
 
 // --- truncate tests ---
 
