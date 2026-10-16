@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-16
+
 ### Added
 
 - Support for MCP protocol version 2026-07-28, served by go-sdk v1.8.0: clients can call `server/discover` and send each request on its own with the protocol version and client capabilities in `_meta`, without an `initialize` handshake. Mismatched `Mcp-Method`/`Mcp-Name` headers get 400 with `-32020` (HeaderMismatch) and unknown versions get 400 with `-32022`. Clients on 2025-11-25 and earlier keep working through `initialize`.
