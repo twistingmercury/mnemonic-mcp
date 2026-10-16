@@ -2,7 +2,6 @@ package graph
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -144,10 +143,6 @@ func (r *neo4jRepository) defaultSessionFactory(ctx context.Context) SessionExec
 
 // GetPatternConcepts returns all concepts linked to a pattern via MENTIONED_IN relationships.
 func (r *neo4jRepository) GetPatternConcepts(ctx context.Context, patternID uuid.UUID) (_ []Concept, err error) {
-	if patternID == uuid.Nil {
-		return nil, errors.New("patternID must not be nil UUID")
-	}
-
 	ctx, done := r.instrument(ctx, "GetPatternConcepts")
 	defer func() { done(err) }()
 
@@ -213,10 +208,6 @@ func (r *neo4jRepository) GetPatternConcepts(ctx context.Context, patternID uuid
 // FindRelatedPatterns finds patterns related to the given pattern using pre-computed RELATED_TO edges.
 // Results include similarity scores and shared concept names.
 func (r *neo4jRepository) FindRelatedPatterns(ctx context.Context, patternID uuid.UUID, limit int) (_ []RelatedPattern, err error) {
-	if patternID == uuid.Nil {
-		return nil, errors.New("patternID must not be nil UUID")
-	}
-
 	ctx, done := r.instrument(ctx, "FindRelatedPatterns")
 	defer func() { done(err) }()
 

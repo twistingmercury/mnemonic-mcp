@@ -230,15 +230,6 @@ func TestRepository_GetPatternConcepts_CollectError(t *testing.T) {
 	assert.Contains(t, err.Error(), "collect failed")
 }
 
-func TestRepository_Validation_GetPatternConcepts(t *testing.T) {
-	t.Parallel()
-
-	repo := newTestRepo(&mockSessionExecutor{})
-	_, err := repo.GetPatternConcepts(context.Background(), uuid.Nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "patternID must not be nil UUID")
-}
-
 // --- FindRelatedPatterns tests ---
 
 func TestRepository_FindRelatedPatterns(t *testing.T) {
@@ -437,13 +428,4 @@ func TestRepository_ContextCancellation(t *testing.T) {
 	_, err := newTestRepo(session).GetPatternConcepts(ctx, uuid.New())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
-}
-
-func TestRepository_Validation_FindRelatedPatterns(t *testing.T) {
-	t.Parallel()
-
-	repo := newTestRepo(&mockSessionExecutor{})
-	_, err := repo.FindRelatedPatterns(context.Background(), uuid.Nil, 10)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "patternID must not be nil UUID")
 }
