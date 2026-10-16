@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-16
+
+### Changed
+
+- **Breaking:** `database.postgres.max_idle_conns` (`MNEMONIC_DATABASE_POSTGRES_MAX_IDLE_CONNS`) is renamed `database.postgres.min_conns` (`MNEMONIC_DATABASE_POSTGRES_MIN_CONNS`). It always set the pool's minimum open connections, not an idle cap. The default is still 5; it must be between 0 and `max_open_conns`.
+- The `search_patterns` tool schema declares the minimum, maximum and default of `limit` and `threshold`, and the SDK enforces them. Out-of-range values and an explicit `null` are rejected with the SDK's `validating "arguments"` message.
+- The MCP server shuts down within `server.shutdown_timeout` instead of a fixed 5 seconds. The default is the same.
+- `find_related_patterns` output no longer shows a shared-concept count; the concept names are still listed.
+- Config validation errors list one `field: message` per line under the header, without a leading dash.
+- Logged connection strings mask the password as `xxxxx` instead of `*****`.
+
+### Removed
+
+- **Breaking:** the `mnemonic.http.request.count`, `mnemonic.http.request.duration` and `mnemonic.http.request.in_flight` metrics. Use otelgin's standard `http.server.request.duration`.
+- The Neo4j session adapter layer; the graph repository uses `neo4j.ExecuteQuery`.
+
+### Fixed
+
+- Tool calls with invalid arguments are counted as `invalid_input` instead of `unavailable`.
+- An all-zero pattern ID passed to `find_related_patterns` returns "pattern not found". It used to report the service as unavailable.
+- Neo4j URIs using `bolt+s://`, `bolt+ssc://`, `neo4j+s://` or `neo4j+ssc://` are accepted. They used to fail validation at startup.
+- `--health` reads `server.port` from the config file. It used to see only defaults and environment variables.
+- `--version` prints to stdout instead of stderr.
+
 ## [0.5.1] - 2026-10-16
 
 ### Changed
