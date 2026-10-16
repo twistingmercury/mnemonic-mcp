@@ -7,11 +7,9 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/spf13/pflag"
-	"github.com/spf13/viper"
 	"github.com/twistingmercury/mnemonic/internal/config"
 	"github.com/twistingmercury/mnemonic/internal/server"
 	"github.com/twistingmercury/mnemonic/internal/version"
@@ -58,7 +56,11 @@ const healthCheckTimeout = 3 * time.Second
 // endpoint and reports the result. It is designed for use as a Docker
 // HEALTHCHECK command in scratch/static containers where curl is unavailable.
 func checkHealth() (exitCode int) {
-	port := resolveServerPort()
+	port, err := resolveServerPort()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "unhealthy: %v\n", err)
+		return 1
+	}
 	url := fmt.Sprintf("http://localhost:%d%s", port, config.DefaultHealthPath)
 
 	client := &http.Client{Timeout: healthCheckTimeout}
@@ -84,19 +86,26 @@ func checkHealth() (exitCode int) {
 	return 1
 }
 
-// resolveServerPort reads the server port from config sources (env vars,
-// config file, defaults) without performing full validation. This avoids
-// requiring database credentials just to run a health probe.
-func resolveServerPort() int {
-	v := viper.New()
-	config.SetDefaults(v)
+// resolveServerPort reads server.port through the same resolver the server
+// loads from, so a port set only in the config file is still probed, but
+// without full validation: the probe must not need database or OpenAI
+// credentials, nor fail on an unrelated bad setting.
+func resolveServerPort() (int, error) {
+	v, err := config.Resolve()
+	if err != nil {
+		return 0, err
+	}
 
-	// Allow env-var override (e.g. MNEMONIC_SERVER_PORT maps to server.port).
-	v.SetEnvPrefix(config.EnvPrefix)
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
-
-	return v.GetInt("server.port")
+	// UnmarshalKey applies the same decoding as the server's Unmarshal, so a
+	// value the server would reject is rejected here too rather than read as 0.
+	var port int
+	if err := v.UnmarshalKey("server.port", &port); err != nil {
+		return 0, fmt.Errorf("invalid server.port: %w", err)
+	}
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("server.port %d is outside 1-65535", port)
+	}
+	return port, nil
 }
 
 // formatHealthStatus returns a human-readable one-line summary from the

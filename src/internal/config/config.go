@@ -116,16 +116,42 @@ type TracingConfig struct {
 	OTLPInsecure bool    `mapstructure:"otlp_insecure"`
 }
 
-// Load loads configuration from all sources with the following precedence:
-// 1. Compiled defaults (lowest priority)
+// Load loads, unmarshals and validates the configuration that Resolve
+// assembles. Going through Resolve keeps the server and any other reader of
+// the same sources, such as the --health probe, from drifting apart on
+// precedence or file selection.
+func Load() (*MnemonicConfig, error) {
+	v, err := Resolve()
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := &MnemonicConfig{}
+	if err := v.Unmarshal(cfg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	if errs := cfg.Validate(); len(errs) > 0 {
+		return nil, fmt.Errorf("configuration validation failed:\n%w", errors.Join(errs...))
+	}
+
+	return cfg, nil
+}
+
+// Resolve layers the configuration sources into a viper instance without
+// unmarshalling or validating them, for callers that need a few keys and must
+// not fail on unrelated sections (for example missing credentials).
+//
+// Precedence, lowest to highest:
+// 1. Compiled defaults
 // 2. Configuration file
-// 3. Environment variables (highest priority)
+// 3. Environment variables
 //
 // The config file is discovered in the following order:
 // 1. $MNEMONIC_CONFIG_FILE (if set; a read error is then fatal)
 // 2. /etc/mnemonic/config.yaml (production)
 // 3. ./config.yaml (development)
-func Load() (*MnemonicConfig, error) {
+func Resolve() (*viper.Viper, error) {
 	v := viper.New()
 	SetDefaults(v)
 
@@ -142,16 +168,7 @@ func Load() (*MnemonicConfig, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
-	cfg := &MnemonicConfig{}
-	if err := v.Unmarshal(cfg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
-	}
-
-	if errs := cfg.Validate(); len(errs) > 0 {
-		return nil, fmt.Errorf("configuration validation failed:\n%w", errors.Join(errs...))
-	}
-
-	return cfg, nil
+	return v, nil
 }
 
 // SetDefaults sets all default values in the viper instance.
