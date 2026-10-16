@@ -3,7 +3,7 @@
 [![Mnemonic MCP CI](https://github.com/twistingmercury/mnemonic-mcp/actions/workflows/mnemonic-ci.yaml/badge.svg)](https://github.com/twistingmercury/mnemonic-mcp/actions/workflows/mnemonic-ci.yaml)
 
 > **Maturity Level**: Emerging — MCP search server functional, Admin REST API in a separate service (`mnemonic-api`)
-> **Version**: v0.5.0
+> **Version**: v0.5.1
 >
 > - **Emerging**: Prototype, not production-ready, expect breaking changes
 > - **Basic**: Production-ready but actively evolving, expect minor version changes
