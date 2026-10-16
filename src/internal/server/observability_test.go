@@ -10,10 +10,10 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/twistingmercury/mnemonic/internal/middleware"
 	"github.com/twistingmercury/otelx/v2"
 	"go.opentelemetry.io/otel"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
@@ -37,9 +37,7 @@ func useTraceExporter(t *testing.T) *tracetest.InMemoryExporter {
 // newTestRouter builds the production router with /health and /version routes.
 func newTestRouter(t *testing.T) *gin.Engine {
 	t.Helper()
-	requestMetrics, err := middleware.NewRequestMetrics(sdkmetric.NewMeterProvider().Meter("test"))
-	require.NoError(t, err)
-	router := setupRouter(&otelx.Telemetry{Logger: zerolog.Nop()}, requestMetrics)
+	router := setupRouter(&otelx.Telemetry{Logger: zerolog.Nop()})
 	for _, path := range []string{"/health", "/version"} {
 		router.GET(path, func(c *gin.Context) { c.Status(http.StatusOK) })
 	}
@@ -60,4 +58,40 @@ func TestTracingSkipsHealth(t *testing.T) {
 	require.Len(t, spans, 1)
 	assert.Equal(t, trace.SpanKindServer, spans[0].SpanKind)
 	assert.Contains(t, spans[0].Name, "/version")
+}
+
+// TestRequestDurationSkipsHealth verifies that otelgin records
+// http.server.request.duration through the global meter provider, as otelx
+// installs it, for a normal route and not for /health.
+func TestRequestDurationSkipsHealth(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	old := otel.GetMeterProvider()
+	otel.SetMeterProvider(mp)
+	t.Cleanup(func() {
+		otel.SetMeterProvider(old)
+		require.NoError(t, mp.Shutdown(context.Background()))
+	})
+	router := newTestRouter(t)
+
+	for _, path := range []string{"/health", "/version"} {
+		router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
+	}
+
+	var data metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &data))
+	var routes []string
+	for _, scope := range data.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			if m.Name != "http.server.request.duration" {
+				continue
+			}
+			for _, point := range m.Data.(metricdata.Histogram[float64]).DataPoints {
+				route, _ := point.Attributes.Value("http.route")
+				routes = append(routes, route.AsString())
+				assert.EqualValues(t, 1, point.Count)
+			}
+		}
+	}
+	assert.Equal(t, []string{"/version"}, routes)
 }

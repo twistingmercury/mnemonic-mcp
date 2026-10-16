@@ -24,7 +24,6 @@ import (
 	"github.com/twistingmercury/mnemonic/internal/health"
 	"github.com/twistingmercury/mnemonic/internal/mcpserver"
 	"github.com/twistingmercury/mnemonic/internal/metrics"
-	"github.com/twistingmercury/mnemonic/internal/middleware"
 	chunkrepo "github.com/twistingmercury/mnemonic/internal/repository/chunk"
 	graphrepo "github.com/twistingmercury/mnemonic/internal/repository/graph"
 	patternrepo "github.com/twistingmercury/mnemonic/internal/repository/pattern"
@@ -83,11 +82,7 @@ func ListenAndServe(cfg *config.MnemonicConfig) error {
 	toolDeps := wireDependencies(pgPool, neo4jDriver, cfg, logger, registry)
 
 	// Build operations HTTP server.
-	requestMetrics, err := middleware.NewRequestMetrics(otel.Meter("mnemonic/http"))
-	if err != nil {
-		return fmt.Errorf("failed to create request metrics: %w", err)
-	}
-	router := setupRouter(tel, requestMetrics)
+	router := setupRouter(tel)
 	operations.SetupHandlers(router, health.Descriptors(health.Dependencies{
 		PGPool:      pgPool,
 		Neo4jDriver: neo4jDriver,
@@ -254,7 +249,7 @@ func runMCPServer(ctx context.Context, srv *http.Server, logger zerolog.Logger) 
 const mcpShutdownTimeout = 5 * time.Second
 
 // setupRouter creates and configures the Gin router with middleware.
-func setupRouter(tel *otelx.Telemetry, requestMetrics *middleware.RequestMetrics) *gin.Engine {
+func setupRouter(tel *otelx.Telemetry) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 
@@ -276,7 +271,6 @@ func setupRouter(tel *otelx.Telemetry, requestMetrics *middleware.RequestMetrics
 		otelxgin.WithSkipPaths(skipPaths...),
 		otelxgin.WithRequestHeaders("X-Request-ID", "X-Correlation-ID"),
 	))
-	router.Use(requestMetrics.MiddlewareWithSkipPaths(skipPaths))
 
 	return router
 }
