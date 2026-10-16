@@ -30,7 +30,7 @@ func main() {
 	pflag.Parse()
 
 	if *verFlag {
-		println(version.Print())
+		fmt.Println(version.Print())
 		os.Exit(0)
 	}
 
