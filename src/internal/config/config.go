@@ -414,8 +414,3 @@ func (c *Neo4jConfig) SafeURI() string {
 
 	return fmt.Sprintf("%s%s:*****@%s", scheme, username, hostPart)
 }
-
-// Credentials returns the username and password for use with neo4j.BasicAuth().
-func (c *Neo4jConfig) Credentials() (username, password string) {
-	return c.Username, c.Password
-}

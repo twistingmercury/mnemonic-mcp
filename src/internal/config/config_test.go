@@ -931,59 +931,6 @@ func TestNeo4jSafeURI(t *testing.T) {
 	}
 }
 
-// TestNeo4jCredentials tests the Credentials() helper method.
-func TestNeo4jCredentials(t *testing.T) {
-	tests := []struct {
-		name             string
-		username         string
-		password         string
-		expectedUsername string
-		expectedPassword string
-	}{
-		{
-			name:             "standard credentials",
-			username:         "neo4j",
-			password:         "secretpassword",
-			expectedUsername: "neo4j",
-			expectedPassword: "secretpassword",
-		},
-		{
-			name:             "empty password",
-			username:         "neo4j",
-			password:         "",
-			expectedUsername: "neo4j",
-			expectedPassword: "",
-		},
-		{
-			name:             "custom username",
-			username:         "admin",
-			password:         "admin123",
-			expectedUsername: "admin",
-			expectedPassword: "admin123",
-		},
-		{
-			name:             "special characters in password",
-			username:         "user",
-			password:         "p@ss:word!#$%",
-			expectedUsername: "user",
-			expectedPassword: "p@ss:word!#$%",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Neo4jConfig{
-				URI:      "bolt://localhost:7687",
-				Username: tt.username,
-				Password: tt.password,
-			}
-			username, password := cfg.Credentials()
-			assert.Equal(t, tt.expectedUsername, username)
-			assert.Equal(t, tt.expectedPassword, password)
-		})
-	}
-}
-
 // TestBooleanEnvironmentVariables tests boolean parsing from env vars.
 func TestBooleanEnvironmentVariables(t *testing.T) {
 	tests := []struct {
